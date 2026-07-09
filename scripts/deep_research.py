@@ -386,7 +386,13 @@ def _gemini_extract(interaction, agent: str) -> dict:
         if text.strip():
             candidates.append((label, text))
     bodyish = [c for c in candidates if not re.search(r"ground|source|citation|search", c[0])]
-    report_text = max(bodyish or candidates, key=lambda c: len(c[1]))[1] if candidates else ""
+    # 長報告會拆多個 step（實測 6.6k+14.7k+22.8k 三段）— 按序串接所有實質本體段，
+    # 不取最長（會丟前半）；<600 字的段視為 query 回音/狀態訊息排除
+    substantial = [c[1] for c in (bodyish or candidates) if len(c[1]) >= 600]
+    if substantial:
+        report_text = "\n\n".join(substantial)
+    else:
+        report_text = max(bodyish or candidates, key=lambda c: len(c[1]))[1] if candidates else ""
     if not report_text:  # 舊 schema fallback（萬一）
         report_text = "".join(o.text for o in (getattr(interaction, "outputs", None) or [])
                               if getattr(o, "text", None))
