@@ -9,10 +9,10 @@ Use this as the wake-up checklist before spending. It is a memory aid, not a rep
 1. Infer the research target from context; ask framing questions only if ambiguity would change the answer or plan.
 2. Ask and record the three-axis contract: depth × independence × strictness. This is mandatory on every `/deep`.
 3. Create Research State for medium+ or any multi-action run.
-4. Start cheap: existing artifacts, host search/sonar, `cascade`, `scholar`.
+4. Compose tools freely; choose the cheapest action that reduces the weakest load-bearing uncertainty.
 5. Reconcile claims into `corroborated`, `single-source`, or `disputed`.
 6. Spot-check load-bearing claims before delivery.
-7. Deliver findings with evidence status, spend, and artifacts.
+7. Deliver a handoff artifact with evidence status, verification checks, spend, artifacts, and next inspection points.
 
 ## Discovery and install (Codex-specific -- read first)
 

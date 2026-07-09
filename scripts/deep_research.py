@@ -50,6 +50,7 @@ OPENAI_BASE = "https://api.openai.com"
 OPENAI_PRICE = {"o3-deep-research": (10.0, 40.0), "o4-mini-deep-research": (2.0, 8.0)}
 OPENAI_SEARCH_PER_1K = 10.0
 OPENAI_TOOL_CAP = {"minimal": 10, "low": 20, "medium": 40, "high": None}
+RETRY_GET_STATUSES = {429, 500, 502, 503, 504}
 
 
 def _load_env():
@@ -68,6 +69,39 @@ def _require_key(name: str) -> str:
 
 def _log(msg: str):
     print(f"[deep] {msg}", file=sys.stderr)
+
+
+def _retry_delay(headers: dict, attempt: int, base_delay: float) -> float:
+    retry_after = (headers or {}).get("retry-after")
+    if retry_after:
+        try:
+            return min(float(retry_after), 30.0)
+        except ValueError:
+            pass
+    return min(base_delay * (2 ** (attempt - 1)), 30.0)
+
+
+def _get_with_retries(url: str, *, headers=None, params=None, timeout=30,
+                      attempts=3, base_delay=1.0, label="GET"):
+    """Retry safe GETs only. Paid submit POSTs intentionally do not use this."""
+    import requests
+
+    for attempt in range(1, attempts + 1):
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=timeout)
+        except requests.RequestException as e:
+            if attempt == attempts:
+                raise
+            delay = min(base_delay * (2 ** (attempt - 1)), 30.0)
+            _log(f"{label} transport error: {e}; retry in {delay:.1f}s ({attempt}/{attempts})")
+            time.sleep(delay)
+            continue
+        if r.status_code not in RETRY_GET_STATUSES or attempt == attempts:
+            return r
+        delay = _retry_delay(r.headers, attempt, base_delay)
+        _log(f"{label} HTTP {r.status_code}; retry in {delay:.1f}s ({attempt}/{attempts})")
+        time.sleep(delay)
+    raise RuntimeError(f"{label} retry loop exhausted")
 
 
 class JobError(RuntimeError):
@@ -101,8 +135,6 @@ def _pplx_extract(data: dict, model: str, effort) -> dict:
 
 
 def _pplx_poll(request_id: str, timeout_min: float) -> dict:
-    import requests
-
     headers = _pplx_headers()
     token = f"perplexity:{request_id}"
     t0 = time.monotonic()
@@ -110,7 +142,12 @@ def _pplx_poll(request_id: str, timeout_min: float) -> dict:
         elapsed = time.monotonic() - t0
         if elapsed > timeout_min * 60:
             raise JobError(f"輪詢超過 {timeout_min:.0f} 分鐘上限 — 稍後可 --resume \"{token}\"", resume=token)
-        r = requests.get(f"{PPLX_BASE}/v1/async/sonar/{request_id}", headers=headers, timeout=30)
+        try:
+            r = _get_with_retries(f"{PPLX_BASE}/v1/async/sonar/{request_id}",
+                                  headers=headers, timeout=30, attempts=3,
+                                  base_delay=1.0, label="perplexity poll")
+        except Exception as e:
+            raise JobError(f"poll transport 失敗：{e}", resume=token)
         if r.status_code != 200:
             raise JobError(f"poll 失敗 HTTP {r.status_code}: {r.text[:300]}", resume=token)
         data = r.json()
@@ -224,8 +261,6 @@ S2_LIMIT = {"minimal": 5, "low": 10, "medium": 20, "high": 40}
 
 def call_scholar(query: str, effort: str, model, timeout_min, files=None) -> dict:
     """Academic literature search. Query = keyword phrase, not a question. 1 req/sec."""
-    import requests
-
     key = os.getenv("S2_API_KEY")
     headers = {"x-api-key": key} if key else {}
     if not key:
@@ -233,37 +268,41 @@ def call_scholar(query: str, effort: str, model, timeout_min, files=None) -> dic
     limit = S2_LIMIT.get(effort, 20)
     params = {"query": query, "limit": limit, "fields": S2_FIELDS}
     _log(f"文獻檢索（semantic scholar, limit={limit}）")
-    r = requests.get("https://api.semanticscholar.org/graph/v1/paper/search",
-                     headers=headers, params=params, timeout=30)
-    if r.status_code == 429:  # S2 rate limit: 1 req/sec cumulative — retry once
-        time.sleep(1.5)
-        r = requests.get("https://api.semanticscholar.org/graph/v1/paper/search",
-                         headers=headers, params=params, timeout=30)
+    r = _get_with_retries("https://api.semanticscholar.org/graph/v1/paper/search",
+                          headers=headers, params=params, timeout=30,
+                          attempts=3, base_delay=1.5, label="semantic scholar")
     if r.status_code != 200:
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     data = r.json()
     papers = data.get("data") or []
 
     lines = [f"## 文獻檢索結果（{len(papers)} / 共 {data.get('total', '?')} 篇，按相關性）\n"]
+    sources = []
     for i, p in enumerate(papers, 1):
         authors = ", ".join(a.get("name", "") for a in (p.get("authors") or [])[:4])
         if len(p.get("authors") or []) > 4:
             authors += " et al."
         tldr = (p.get("tldr") or {}).get("text") or (p.get("abstract") or "")[:300]
         pdf = (p.get("openAccessPdf") or {}).get("url")
+        url = p.get("url", "")
         lines.append(f"\n{i}. **{p.get('title', '?')}**（{p.get('year', '?')}）— 引用 {p.get('citationCount', 0)}\n")
         lines.append(f"   {authors}\n")
         if tldr:
             lines.append(f"   {tldr}\n")
-        link = f"   [S2]({p.get('url', '')})"
+        link = f"   [S2]({url})"
         if pdf:
             link += f" ｜ [PDF]({pdf})"
         lines.append(link + "\n")
+        if url:
+            sources.append({"title": p.get("title") or url,
+                            "url": url,
+                            "date": str(p.get("year")) if p.get("year") else None,
+                            "citationCount": p.get("citationCount", 0)})
 
     return {"model": "s2-graph/paper-search", "effort": effort,
             "report_text": "".join(lines),
             "usage": {"total_results": data.get("total"), "returned": len(papers)},
-            "cost_estimate_usd": 0.0, "sources": []}
+            "cost_estimate_usd": 0.0, "sources": sources}
 
 
 # ── OpenAI ────────────────────────────────────────────────────────────────────
@@ -305,8 +344,6 @@ def _openai_extract(data: dict, model: str, effort) -> dict:
 
 
 def _openai_poll(resp_id: str, timeout_min: float) -> dict:
-    import requests
-
     headers = _openai_headers()
     token = f"openai:{resp_id}"
     t0 = time.monotonic()
@@ -314,7 +351,12 @@ def _openai_poll(resp_id: str, timeout_min: float) -> dict:
         elapsed = time.monotonic() - t0
         if elapsed > timeout_min * 60:
             raise JobError(f"輪詢超過 {timeout_min:.0f} 分鐘上限 — 稍後可 --resume \"{token}\"", resume=token)
-        r = requests.get(f"{OPENAI_BASE}/v1/responses/{resp_id}", headers=headers, timeout=30)
+        try:
+            r = _get_with_retries(f"{OPENAI_BASE}/v1/responses/{resp_id}",
+                                  headers=headers, timeout=30, attempts=3,
+                                  base_delay=1.0, label="openai poll")
+        except Exception as e:
+            raise JobError(f"poll transport 失敗：{e}", resume=token)
         if r.status_code != 200:
             raise JobError(f"poll 失敗 HTTP {r.status_code}: {r.text[:300]}", resume=token)
         data = r.json()

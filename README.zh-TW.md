@@ -12,6 +12,8 @@
 
 核心目標很直接：**用每一美元換到最多有用資訊**，同時讓主張可追溯、衝突可見，並把昂貴呼叫留給真正能降低不確定性的地方。
 
+主要宿主：**Claude Code**。Codex 是同一套 Organizer protocol 的 secondary binding。
+
 ## 為什麼需要它
 
 常見的 deep research 工作流多半是單一引擎、一次性輸出，而且難以稽核。這個 harness 把研究視為反覆迭代的證據循環：
@@ -77,11 +79,11 @@ Repo 裡的美元數字只代表當前清單價格下的概略估算。程式會
 
 ## Worker Affordances
 
-Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。
+Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有固定順序；選擇能降低最弱承重不確定性的最低成本 action。
 
 | Provider | 角色 | Index family | 典型成本 | 典型時間 |
 |---|---|---|---|---|
-| `cascade` | Scout wave：4 個平行 `sonar-pro` framing：direct、counter、landscape、falsifier | Perplexity | ~$0.10-0.15 | ~30 秒 |
+| `cascade` | 四角度快速偵察：直接回答、反證、版圖、推翻條件 | Perplexity | ~$0.10-0.15 | ~30 秒 |
 | `sonar` | 快速 grounded lookup，用於小缺口或 spot check | Perplexity | ~$0.01 | 數秒 |
 | `scholar` | Semantic Scholar 文獻搜尋 | Semantic Scholar | 免費 | 數秒 |
 | `perplexity` | 長篇、有引用的 deep-research report | Perplexity | ~$0.5-1 | 2-5 分鐘 |
@@ -95,7 +97,7 @@ Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。
 
 ### Claude Code
 
-把 repo clone 到 Claude Code 的 skills 目錄。之後 `/deep` 會被當成 skill 探測到。
+Claude Code 是主要宿主。把 repo clone 到 Claude Code 的 skills 目錄。之後 `/deep` 會被當成 skill 探測到。
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/deep
@@ -103,7 +105,7 @@ git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/d
 
 ### Codex
 
-把 repo clone 到任意位置，然後讓你的專案能發現它。Codex 會從 session working directory 往上尋找 `AGENTS.md`；它不會掃描 `~/.claude/skills/`。
+Codex 是 secondary binding。把 repo clone 到任意位置，然後讓你的專案能發現它。Codex 會從 session working directory 往上尋找 `AGENTS.md`；它不會掃描 `~/.claude/skills/`。
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/tools/research-cascade
@@ -208,11 +210,12 @@ PY=python3
 - 在這個 workflow 裡，Perplexity `reasoning_effort=minimal` 視為 ungrounded：它可能計費搜尋，卻不回傳引用。真正研究請用 `medium` 或更高。
 - Perplexity 會回傳官方 `usage.cost.total_cost`；worker 會照實報告。
 - OpenAI 這裡目前不回傳 provider cost field；worker 會用 token 數和 web-search call 數估算。
-- Semantic Scholar 應該收到 keyword phrases，而不是自然語言問題；也不要平行呼叫。
+- Semantic Scholar 應該收到 keyword phrases，而不是自然語言問題；也不要平行呼叫。Worker 會 retry 暫時性的 GET 失敗，並回傳結構化 paper sources 方便 handoff。
 - OpenAI deep-research models 需要 verified organization。
 - Gemini 使用 worker 目標支援的 Interactions API `steps` schema，並需要 `google-genai`。
 - Async poll 失敗時會回傳含有 `error` 與 `resume` 的 JSON；Organizer 應該 resume，而不是重新付費提交。
 - Report 檔名包含 `query + pid` 的短 hash，避免平行 probe 或純 CJK query 互相覆蓋。
+- 最終交付偏 handoff artifact：包含 contract、證據狀態、驗證檢查、花費、產物與下一步檢查點。
 
 ## 狀態
 

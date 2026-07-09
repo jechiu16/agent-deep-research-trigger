@@ -42,6 +42,14 @@ The bundled worker CLI is `scripts/deep_research.py` (deps `requests` + `python-
 | host-search | host's native web search | usually free | search results | host-dependent | spot-checks; hosts without one use `sonar` instead |
 | host-fetch | host's native URL fetch | usually free | page content | — | read a specific source when a claim hinges on it |
 
+**Selection heuristics（free composition, fixed discipline）**:
+- choose the cheapest action that can reduce the weakest load-bearing uncertainty
+- use `cascade` as a four-angle scout when the question needs fast orientation: direct answer, counter-evidence, landscape, and falsifier
+- use `scholar` when the answer depends on academic literature, methods, papers, or citation trails
+- use `sonar` or host search/fetch for narrow facts, source-of-record checks, and verification-floor spot checks
+- use deep engines only when cheap evidence cannot satisfy the contract's independence or strictness bar
+- use `deepseek` only to process already-fetched material; never treat it as a retrieval source
+
 **Privacy pause**: `deepseek --files` and any external worker that receives local files sends file contents outside the host. Before using it on user/local files, confirm the files are safe to send, or redact/summarize them first. If privacy is unclear, use host-side reading and Organizer extraction instead.
 
 **Failure / recovery playbook**:
@@ -127,7 +135,7 @@ This is a protocol for the Organizer's attention, not a fixed pipeline. Infer th
 
 **Cost ordering（the shared-trunk economy）**: exhaust free moves first — reasoning over the existing pool（Organizer or deepseek）costs nothing and comes before any retrieval; then $0.01 targeted lookups; paid retrieval last, only for what the pool provably can't answer. The counterweight: savings come from sharing, trust comes from *not* sharing — the independence bar decides how much must be re-derived in isolation, and that is never traded away for cost.
 
-Typical opening: `cascade ∥ scholar` (cheap heterogeneous retrieval). **If the opening fully answers the question AND the load-bearing claims already meet the contract's independence bar, strictness level, and verification floor, stop and deliver** — don't spend because the budget exists. But a cheap opening rarely clears a `拍板` bar (which demands ≥2 index families + a blind pass), so "looks answered" is not "contract-settled".
+Common cheap opening when broad orientation and literature context are both useful: `cascade ∥ scholar` (cheap heterogeneous retrieval). This is a useful pattern, not a required first step. **If the opening fully answers the question AND the load-bearing claims already meet the contract's independence bar, strictness level, and verification floor, stop and deliver** — don't spend because the budget exists. But a cheap opening rarely clears a `拍板` bar (which demands ≥2 index families + a blind pass), so "looks answered" is not "contract-settled".
 
 **3 EXECUTE** — Launch the batch (async workers in the background; keep the conversation alive). Respect rate limits from the affordance catalog. **Answer-first**: when the opening wave lands, give the user the provisional read（marked as provisional）while deeper actions run — their reaction is live steering input for the remaining spend.
 
@@ -155,15 +163,41 @@ Preset paths（one pick instead of three）: **快查** = shallow＋single＋fir
 
 Before delivery, the 2–3 most load-bearing claims (headline numbers, dates, "X announced Y") get an independent spot-check — host-search where free, sonar probes otherwise. Discrepancies are flagged prominently in the verdict. Research reports are hypotheses, not facts.
 
-## Delivery
+## Delivery（handoff-oriented）
 
-In the user's language:
+Deliver in the user's language, but optimize the artifact for a future Agent or Claude/Codex session to continue from it. A complete delivery should include:
 
-- key findings, each traceable to a pool claim and its status（corroborated N-way ／ single-source ／ disputed）
-- unresolved disputes stated plainly — an honest open question beats laundered certainty
-- actual spend vs the contract; state file and report paths
-- your recommendation for the user's actual decision, separated from the evidence
+- executive answer: the best current answer in plain language
+- research contract: depth, independence, strictness, plus any framing assumptions
+- key findings: each traceable to a pool claim and its status（corroborated N-way ／ single-source ／ disputed）
+- load-bearing claims: what would change the conclusion if wrong
+- verification checks: what was spot-checked and what changed, if anything
+- unresolved disputes: stated plainly — an honest open question beats laundered certainty
+- spend and artifacts: actual spend vs the contract; state file, ledger, and report paths
+- recommendation: the Organizer's decision recommendation, separated from the evidence
+- handoff block: what to inspect next if another Agent resumes the session
+
+**Done checklist**:
+
+- three-axis contract recorded and reflected in the answer
+- Research State updated if `medium+` or multi-action
+- load-bearing claims have evidence status, not just prose
+- verification floor completed or explicitly marked unavailable
+- unresolved disputes and residual uncertainty are visible
+- spend, ledger, and artifact paths are included
+- recommendation is separated from evidence
 
 ## Query-writing standards
 
 English; one core question per worker run; explicit exclusions（"focus on X; ignore Y"）; a context clause（"in the context of …"）; ask for primary sources; scholar gets keyword phrases, not questions.
+
+## Scenario calibration
+
+These are behavior examples, not pipelines:
+
+| Scenario | Expected Organizer posture |
+|---|---|
+| `/deep quick fact check` | Ask the three-axis contract, recommend `快查`, use one narrow lookup or host source if confirmed, deliver with evidence status. |
+| `/deep literature review` | Ask the contract, recommend at least `日常`, include `scholar`, keep paper claims separate from model summaries. |
+| `/deep decision-critical research` | Ask the contract, recommend `拍板`, require cross-family evidence and blind verification for load-bearing claims. |
+| `/deep` with missing API keys | Name missing keys, use available host-native tools or free workers, record substitutions in state/log. |

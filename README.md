@@ -12,6 +12,8 @@ It activates only when the user explicitly invokes `/deep`. It does not run a fi
 
 The goal is simple: **maximize information gain per dollar** while keeping claims traceable, conflicts visible, and expensive calls reserved for the places where they actually reduce uncertainty.
 
+Primary host: **Claude Code**. Codex is a secondary binding for the same Organizer protocol.
+
 ## Why This Exists
 
 Most deep-research workflows are single-engine, one-shot, and hard to audit. This harness treats research as an iterative evidence loop:
@@ -77,11 +79,11 @@ Dollar figures in this repository are indicative at list prices. The code record
 
 ## Worker Affordances
 
-Workers are tools the Organizer may choose from, not pipeline stages.
+Workers are tools the Organizer may choose from, not pipeline stages. There is no fixed order: choose the cheapest action that reduces the weakest load-bearing uncertainty.
 
 | Provider | Role | Index family | Typical cost | Typical time |
 |---|---|---|---|---|
-| `cascade` | Scout wave: 4 parallel `sonar-pro` framings: direct, counter, landscape, falsifier | Perplexity | ~$0.10-0.15 | ~30 s |
+| `cascade` | Four-angle scout: direct answer, counter-evidence, landscape, falsifier | Perplexity | ~$0.10-0.15 | ~30 s |
 | `sonar` | Fast grounded lookup for small gaps or spot checks | Perplexity | ~$0.01 | Seconds |
 | `scholar` | Semantic Scholar literature search | Semantic Scholar | Free | Seconds |
 | `perplexity` | Long cited deep-research report | Perplexity | ~$0.5-1 | 2-5 min |
@@ -95,7 +97,7 @@ Important: `deepseek` is intentionally not a retrieval worker. It should process
 
 ### Claude Code
 
-Clone the repository into the Claude Code skills directory. `/deep` is then discovered as a skill.
+Claude Code is the primary host. Clone the repository into the Claude Code skills directory. `/deep` is then discovered as a skill.
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/deep
@@ -103,7 +105,7 @@ git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/d
 
 ### Codex
 
-Clone the repository anywhere, then make it discoverable from your project. Codex reads `AGENTS.md` by walking upward from the session working directory; it does not scan `~/.claude/skills/`.
+Codex is a secondary binding. Clone the repository anywhere, then make it discoverable from your project. Codex reads `AGENTS.md` by walking upward from the session working directory; it does not scan `~/.claude/skills/`.
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/tools/research-cascade
@@ -208,11 +210,12 @@ For medium-depth and deeper sessions, pass a ledger path so the worker appends m
 - Perplexity `reasoning_effort=minimal` is ungrounded in this workflow: it can bill searches while returning no citations. Use `medium` or higher for real research.
 - Perplexity returns official `usage.cost.total_cost`; the worker reports it verbatim.
 - OpenAI currently does not return a provider cost field here; the worker estimates from token counts and web-search call count.
-- Semantic Scholar should receive keyword phrases, not natural-language questions, and should not be called in parallel.
+- Semantic Scholar should receive keyword phrases, not natural-language questions, and should not be called in parallel. The worker retries transient GET failures and returns structured paper sources for handoff.
 - OpenAI deep-research models require a verified organization.
 - Gemini uses the Interactions API `steps` schema targeted by the worker and requires `google-genai`.
 - Failed async polls return JSON with `error` and `resume`; organizers should resume rather than re-pay for submitted work.
 - Report filenames include a short hash of `query + pid` so parallel probes and CJK-only queries do not overwrite one another.
+- Final deliveries are handoff-oriented: include the contract, evidence status, verification checks, spend, artifacts, and next inspection points.
 
 ## Status
 
