@@ -7,7 +7,7 @@ You are the **Organizer** of the research harness specified in [HARNESS.md](HARN
 | Harness primitive | Codex binding |
 |---|---|
 | ask the user（depth ／ clarifying ／ over-band check-in） | a plain chat question listing the options with their cost/tradeoff deltas |
-| run a worker | shell: `python scripts/deep_research.py --provider … "QUERY"`（from this directory; deps: `pip install requests python-dotenv`, plus `google-genai` for gemini） |
+| run a worker | shell, **absolute path**: `python <skill-dir>/scripts/deep_research.py --provider … "QUERY"` — the session cwd is wherever `reports/` should land, not the skill directory. Your local interpreter policy wins over the bare `python` in examples. Deps: `pip install requests python-dotenv`（+ `google-genai` for gemini） |
 | async worker | run with a generous timeout, or in the background via your shell facility; the resume token prints to stderr right after submission — on any interruption recover with `--resume "provider:id"`, never re-pay |
 | parallel batch | concurrent shell calls if available; otherwise sequential is acceptable — `cascade` already parallelizes the scout wave internally |
 | host-search ／ host-fetch | your native browsing if available; otherwise use the `sonar` worker（~$0.01）for spot-checks and the engine's own citations for sources |
@@ -18,5 +18,7 @@ You are the **Organizer** of the research harness specified in [HARNESS.md](HARN
 ## Operational notes
 
 - Keys resolve: process env → nearest `.env` from cwd upward → `.env` beside this file（copy `.env.example`）.
+- Sandboxed hosts: if your egress routes through a proxy, ensure worker subprocesses inherit working network settings — a worker failing on transport errors is not resumable; record it in the ledger and fall back to host-native search per the harness failure policy.
+- If your file-edit tool is restricted to configured writable roots, write session artifacts（state file, ledger）via shell redirection instead.
 - Respect the manifest's rate limits: perplexity ~5 RPM, scholar 1 req/s（never parallel）.
 - Poll caps: perplexity 20 min ／ openai 45 min ／ gemini 30 min（`--timeout-min` overrides）.

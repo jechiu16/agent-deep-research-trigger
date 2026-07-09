@@ -40,12 +40,16 @@ Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `goog
 | host-search | host's native web search | usually free | search results | host-dependent | spot-checks; hosts without one use `sonar` instead |
 | host-fetch | host's native URL fetch | usually free | page content | — | read a specific source when a claim hinges on it |
 
-**Failure policy**: a failed worker never re-runs paid work without a decision. Poll died or timed out → `--resume "provider:id"` — never re-pay for a lost job.
+**Failure policy**:
+- a failed worker never re-runs paid work without a decision; poll died or timed out → `--resume "provider:id"` — never re-pay for a lost job
+- a worker that fails **before submission**（transport／proxy／auth errors — common in sandboxed hosts）is not resumable: record it in the ledger, then fall back to a host-native equivalent or another worker
+- **evidence quality beats tool loyalty**: if host-native search alone satisfies a shallow contract when workers are unavailable, that's a valid session — note the substitution in the log
+- example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins
 
 ## Hooks are hybrid
 
 **Mechanical（code-guaranteed — never depends on Organizer discipline）**:
-- every worker call from `standard` depth up passes `--ledger reports/deep_state_<slug>.ledger.jsonl` — the engine appends its own completion／failure line（provider, cost, wall time, artifact path, resume token）to an append-only JSONL; the state file's ledger table is the Organizer's curated render of it
+- every worker call from `medium` depth up passes `--ledger reports/deep_state_<slug>.ledger.jsonl`（recommended even at shallow — it's free）— the engine appends its own completion／failure line（provider, cost, wall time, artifact path, resume token）to an append-only JSONL; the state file's ledger table is the Organizer's curated render of it
 - blind-verification queries are template-generated（see isolated branch）
 - rate limiting and resume tokens live in the engine
 
@@ -53,7 +57,7 @@ Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `goog
 
 ## Research State
 
-From `medium` depth up — or whenever more than one action runs — keep state on disk: `reports/deep_state_<yyyymmdd>_<slug>.md`, rewritten after every reconcile hook. A quick single-action question skips it; the report file is the artifact.
+From `medium` depth up — or whenever more than one action runs（a failure plus its fallback counts as two）— keep state on disk: `reports/deep_state_<yyyymmdd>_<slug>.md`, rewritten after every reconcile hook. A quick single-action question skips it; the report file is the artifact.
 
 ```
 # Research State: <question>
@@ -85,7 +89,7 @@ disputes: <claim ids + what evidence would settle each>
 **2 CHOOSE** — Pick the next **batch** of actions with the best expected information gain per dollar. Iterations are coarse — batch parallel-safe actions into one wave; never micro-loop one worker at a time. Branch typing per action:
 
 - **shared branch** — builds on the pool (queries refined by earlier findings)
-- **isolated branch** — blind verification: the query is **template-generated**, never composed freely by the Organizer（who has read the pool and would leak framing）: `Verify or refute: <claim verbatim>. What is the primary evidence for and against?` — carries the bare claim only; prefer a different index family than the claim's current sources
+- **isolated branch** — blind verification: the query is **template-generated**, never composed freely by the Organizer（who has read the pool and would leak framing）: `Verify or refute: <claim verbatim>. What is the primary evidence for and against?` — carries the bare claim only; prefer a different index family than the claim's current sources. For **source-of-record claims**（official prices, documented limits, dated announcements）, independently fetching an alternate authoritative page counts as the blind check — no model needed
 - **targeted lookup** — one sonar／host-search probe for a small gap or a specific dispute
 
 **Cost ordering（the shared-trunk economy）**: exhaust free moves first — reasoning over the existing pool（Organizer or deepseek）costs nothing and comes before any retrieval; then $0.01 targeted lookups; paid retrieval last, only for what the pool provably can't answer. The counterweight: savings come from sharing, trust comes from *not* sharing — the independence bar decides how much must be re-derived in isolation, and that is never traded away for cost.
