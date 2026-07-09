@@ -61,7 +61,8 @@ hypothesis: <best answer so far; provisional until verified>
 next action: <one sentence: cheapest uncertainty reducer>
 spend: running total $X.XX; ledger=<path>
 claims: <id | claim | why it matters | status | next check>
-evidence: <id | claim | status | sources | independence | as-of>
+evidence: <id | claim | status | sources [T1-T3] | independence | as-of>
+verification: checked=<n> flipped=<m> | <one line on what flipped and why>
 open: gaps=<...>; disputes=<...>
 log: <n>: chose <batch> because <one line>
 ```
@@ -69,6 +70,14 @@ log: <n>: chose <batch> because <one line>
 Statuses: `corroborated`, `single-source`, `corroborated-same-family`, `disputed`, `retired`, `unverified`.
 
 `as-of` is the evidence vintage: publication or retrieval date. Date-sensitive claims (prices, policies, versions, availability) must carry it; a stale source does not clear the bar on a volatile topic.
+
+Source tiers — annotate each source, because corroboration is authority-weighted, not vote-counted:
+
+- **T1** source of record / primary: official docs, regulator filings, standards, the vendor's own pages for claims about the vendor, a peer-reviewed paper for its own findings, primary data series.
+- **T2** quality secondary: reporting or reviews that cite primaries, textbooks, reputable benchmarks.
+- **T3** aggregator/UGC/SEO content — and uncited model prose, which is not evidence at all.
+
+The `verification:` line appears from `medium` depth up before delivery (see Verification Floor).
 
 ## Organizer Loop
 
@@ -90,13 +99,23 @@ Branch types:
 
 **5 RECONCILE** - Compare claims across sources. Same-family agreement does not clear a cross-family independence bar. Unanimous cross-engine agreement on a recent or contested topic is itself a signal: engines crawl the same web, so check whether the agreeing sources trace to one upstream origin before counting them as independent. Promote conflicts to `disputed` and write what would settle them. Update the state.
 
+Corroboration is authority-weighted:
+
+- T3-only agreement never marks a claim `corroborated`, no matter how many T3 sources pile up — treat it as `single-source` strength until a T1/T2 confirms.
+- For source-of-record claims (the source *defines* the fact: an official price, a documented API limit, statute text), one T1 clears the bar — fetch it directly rather than corroborating aggregator echoes of it.
+- For empirical claims (performance, quality, market behavior), no single source clears a two-source bar, T1 included; independence across origins is what matters.
+
 **6 TERMINATE?** - Stop when load-bearing claims meet the contract, or when marginal gain is clearly below marginal cost, or when further spend exceeds the contract without a strong reason. If justified overspend would be large, check in with the user. At `decision` strictness, weigh marginal spend against the cost of a wrong recommendation, not against dollars already spent — frugality is the default posture, not the point of a decision run.
 
 ## Verification Floor
 
 Before delivery, independently spot-check the two or three most load-bearing claims: headline numbers, dates, official limits, or claims that would change the recommendation if wrong. Prefer host search/fetch when available; otherwise use a narrow worker probe. If verification is unavailable, say so plainly.
 
-For `decision` runs, add one adversarial pass in a fresh context: `Argue that this recommendation is wrong: <recommendation + key evidence>`. The Organizer that formed the hypothesis should not be its only judge; a surviving recommendation is stronger, a broken one just saved the user from it.
+Record the yield in the state's `verification:` line — checked N, flipped M. A high flip rate means the statuses upstream were optimistic; say so in delivery and discount the unchecked labels accordingly. This is the session's only calibration signal; do not hide it.
+
+Blind checks receive the claim exactly as recorded in state — no paraphrase, no confidence adverbs ("widely accepted", "clearly"). Rewording is how the Organizer's bias re-enters a blind pass.
+
+For `decision` runs, verify the joints, not only the leaves: decompose the recommendation into its load-bearing premises and the inferences joining them (`A + B → C`), then check the weakest inference — most wrong recommendations die at a joint between true facts. Add one adversarial pass in a fresh context, giving it this argument map: `Argue that this recommendation is wrong: <premises + inference + recommendation>`. The Organizer that formed the hypothesis should not be its only judge; a surviving recommendation is stronger, a broken one just saved the user from it.
 
 ## Delivery
 
@@ -108,7 +127,7 @@ Include:
 - research contract and framing assumptions
 - key findings with evidence status
 - load-bearing claims and what would change the conclusion
-- verification checks and any changes they caused
+- verification checks with their yield (checked N / flipped M) and any status changes they caused
 - unresolved disputes and residual uncertainty
 - spend, ledger, state file, and report paths
 - recommendation, separated from evidence

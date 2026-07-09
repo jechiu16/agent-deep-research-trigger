@@ -42,7 +42,7 @@ Use this before spending. It is a memory aid, not a replacement for [HARNESS.md]
 
 - Missing key: name the env var (`PERPLEXITY_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`; `S2_API_KEY` optional) and both `.env` locations.
 - Framing: infer the research target from context; ask clarifiers only when a missing premise changes scope, worker choice, cost, or answer.
-- Mandatory contract: ask one card every `/deep`. Recommend `fast`, `standard`, or `decision`, and spell out the three axis values in each option. Include the estimated spend range and the intended first wave in each option — the user pulls the trigger with the price and the plan visible. Let `Other` set the axes individually.
+- Mandatory contract: ask one card every `/deep`. Recommend `fast`, `standard`, or `decision`, and spell out the three axis values in each option. Include the estimated spend range and the intended first wave in each option — the user pulls the trigger with the price and the plan visible. When past ledgers exist, ground the estimates in `--cost-stats` actuals instead of the spec's list prices. Let `Other` set the axes individually.
 - Harvest before you buy: at INSPECT, if `reports/*.ledger.jsonl` exists, run `--list-pending` and `--resume` any pending token before new spend. `doctor.py` also surfaces these.
 - Reuse before you buy: `reports/` accumulates paid artifacts; `ls -t reports/deep_*.md` plus a topic grep before re-purchasing research that may already exist.
 - Privacy pause: before using `deepseek --files` or any external worker on local/user files, confirm the files are safe to send or redact/summarize first.

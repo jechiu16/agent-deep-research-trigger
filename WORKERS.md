@@ -50,6 +50,7 @@ Example commands use bare `python` for clarity. Host bindings decide the actual 
 - Use deep engines only when cheap evidence cannot satisfy the contract's independence or strictness bar.
 - Use `deepseek` only to process already-fetched material; never treat it as a retrieval source.
 - High cross-engine agreement is not automatically independence: engines crawl the same web. On recent or contested topics, check whether the agreeing sources share one upstream origin.
+- Worker citation lists skew T3 (aggregators, SEO content). For load-bearing claims, fetch the T1 source of record yourself (host fetch / `sonar` with a site-targeted query) instead of stacking aggregator echoes — see HARNESS source tiers.
 - If the topic is region- or language-bound, send at least one probe in that language; English-only queries systematically miss local sources.
 
 ## Parallelism

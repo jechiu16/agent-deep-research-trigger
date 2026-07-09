@@ -17,6 +17,7 @@ Usage:
   python deep_research.py --provider openai --submit-only "question"   # fire-and-return; harvest later
   python deep_research.py --resume "openai:resp_abc123"
   python deep_research.py --list-pending [--ledger FILE]               # unharvested async jobs
+  python deep_research.py --cost-stats [--ledger FILE]                 # per-provider actual costs
 
 Output: single JSON object on stdout:
   {query, provider, model, effort, report_path, report, usage, cost_estimate_usd, wall_time_s}
@@ -798,6 +799,38 @@ def scan_pending(ledger_paths) -> list:
             for token, (status, rec, path) in state.items() if status == "pending"]
 
 
+def cost_stats(ledger_paths) -> dict:
+    """帳本實價統計（per provider）— 契約卡的估價根據，取代 spec 裡會腐爛的定價數字。
+    只聚合價格，不聚合主張品質；這不是跨 session 學習，是報價單。"""
+    stats = {}
+    for path in ledger_paths:
+        try:
+            lines = Path(path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            cost = rec.get("cost_usd")
+            if rec.get("event") not in (None, "completed") or cost is None:
+                continue  # None event = 舊版 completion record，一樣算
+            s = stats.setdefault(rec.get("provider", "?"), {"runs": 0, "total_usd": 0.0,
+                                                            "min_usd": None, "max_usd": None})
+            s["runs"] += 1
+            s["total_usd"] += cost
+            s["min_usd"] = cost if s["min_usd"] is None else min(s["min_usd"], cost)
+            s["max_usd"] = cost if s["max_usd"] is None else max(s["max_usd"], cost)
+    for s in stats.values():
+        s["total_usd"] = round(s["total_usd"], 4)
+        s["mean_usd"] = round(s["total_usd"] / s["runs"], 4)
+    return stats
+
+
 if __name__ == "__main__":
     _fix_console_encoding()
     parser = argparse.ArgumentParser(description="Deep Research CLI（多 provider）")
@@ -811,6 +844,8 @@ if __name__ == "__main__":
                         help="async provider 提交即返回（印 resume token），不輪詢 — 多引擎並行 wave 用")
     parser.add_argument("--list-pending", action="store_true",
                         help="掃描帳本列出已提交未收割的 async job（不打網路、不花錢）")
+    parser.add_argument("--cost-stats", action="store_true",
+                        help="帳本實價統計（per provider）— 契約卡估價用，不打網路")
     parser.add_argument("--files", action="append", default=None, metavar="FILE",
                         help="deepseek 加工層的檔案輸入（一面旗一個檔，可重複）")
     parser.add_argument("--ledger", default=None, metavar="FILE",
@@ -818,11 +853,14 @@ if __name__ == "__main__":
     parser.add_argument("query", nargs="*", help="研究問題")
     args = parser.parse_args()
 
-    if args.list_pending:
+    if args.list_pending or args.cost_stats:
         paths = [args.ledger] if args.ledger else sorted(Path.cwd().glob("reports/*.ledger.jsonl"))
-        pending = scan_pending(paths)
-        print(json.dumps({"pending": pending, "scanned": [str(p) for p in paths]},
-                         ensure_ascii=False, indent=2))
+        out = {"scanned": [str(p) for p in paths]}
+        if args.list_pending:
+            out["pending"] = scan_pending(paths)
+        if args.cost_stats:
+            out["cost_stats"] = cost_stats(paths)
+        print(json.dumps(out, ensure_ascii=False, indent=2))
         sys.exit(0)
     if args.submit_only and args.resume:
         parser.error("--submit-only 與 --resume 互斥（一個是提交、一個是收割）")

@@ -83,6 +83,15 @@ def validate(state_path: Path, ledger_path):
     if status_done and re.search(r"\bdisputed\b", text):
         info.append("delivery carries `disputed` claims — fine if surfaced honestly")
 
+    depth = contract.group(1) if contract else None
+    if status_done and depth and depth != "shallow":
+        if not re.search(r"\[T[123]\]|\bT[123]\b", text):
+            warns.append("no source tier annotations ([T1]/[T2]/[T3]) — corroboration is "
+                         "authority-weighted; untiered sources default to T3 suspicion")
+        if not re.search(r"(?im)^verification:", text):
+            warns.append("no `verification:` line (checked=N flipped=M) — the session's "
+                         "calibration signal is missing")
+
     if ledger_path is None:
         pointer = re.search(r"ledger=([^\s;]+)", text)
         if pointer:

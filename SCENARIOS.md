@@ -36,8 +36,8 @@ running total: $0.11
 | C2 | Tool X stores data in-region | procurement blocker | disputed | compare official docs and DPA |
 
 ## Evidence Pool
-| id | claim | status | sources | independence |
-| E1 | audit logs available on enterprise plan | single-source | cascade -> report path | Perplexity |
+| id | claim | status | sources | independence | as-of |
+| E1 | audit logs available on enterprise plan | single-source | cascade -> report path [T3] | Perplexity | 2026-07-09 |
 
 ## Open
 gaps: pricing tier, retention period, export format
@@ -86,3 +86,5 @@ Pass condition: recommends `decision`, requires cross-family or source-of-record
 - Re-submitting a paid async job while the ledger holds an unharvested resume token.
 - Treating unanimous cross-engine agreement as independence without checking for a shared upstream source.
 - Handing the blind-check agent the state file or current hypothesis — that is not blind.
+- Counting a pile of aggregators as corroboration: T3-only agreement never clears the bar.
+- Paraphrasing a claim for its blind check with confidence adverbs — pass it verbatim as recorded in state.

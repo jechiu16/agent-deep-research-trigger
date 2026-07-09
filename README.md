@@ -221,6 +221,7 @@ python scripts/validate_transcripts.py
 "$PY" scripts/deep_research.py --provider openai --submit-only "fire-and-return; harvest later"
 "$PY" scripts/deep_research.py --resume "openai:resp_abc123"
 "$PY" scripts/deep_research.py --list-pending
+"$PY" scripts/deep_research.py --cost-stats
 "$PY" scripts/validate_state.py reports/deep_state_20260709_topic.md
 ```
 
@@ -251,6 +252,7 @@ For medium-depth and deeper sessions, pass a ledger path so the worker appends m
 - Gemini uses the Interactions API `steps` schema targeted by the worker and requires `google-genai`.
 - Failed async polls return JSON with `error` and `resume`; organizers should resume rather than re-pay for submitted work.
 - With `--ledger`, async submissions are journaled at submission time (`event: submitted`), so a killed process never loses a paid resume token; `--list-pending` (and `doctor.py`) list unharvested jobs.
+- `--cost-stats` aggregates per-provider actual costs from your ledgers — ground contract-card estimates in your own price history instead of this README's indicative numbers.
 - `--submit-only` fires an async engine and returns immediately — submit several engines in one wave, verify cheap claims while they run, then `--resume` each token.
 - If extraction of a completed job fails, the raw provider payload is saved to `reports/deep_raw_*.json` first — paid content survives schema drift, and `--resume` re-harvests after a fix at no extra cost.
 - Report filenames include a short hash of `query + pid` so parallel probes and CJK-only queries do not overwrite one another.

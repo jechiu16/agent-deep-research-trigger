@@ -221,6 +221,7 @@ python scripts/validate_transcripts.py
 "$PY" scripts/deep_research.py --provider openai --submit-only "提交即返回，稍後收割"
 "$PY" scripts/deep_research.py --resume "openai:resp_abc123"
 "$PY" scripts/deep_research.py --list-pending
+"$PY" scripts/deep_research.py --cost-stats
 "$PY" scripts/validate_state.py reports/deep_state_20260709_topic.md
 ```
 
@@ -251,6 +252,7 @@ python scripts/validate_transcripts.py
 - Gemini 使用 worker 目標支援的 Interactions API `steps` schema，並需要 `google-genai`。
 - Async poll 失敗時會回傳含有 `error` 與 `resume` 的 JSON；Organizer 應該 resume，而不是重新付費提交。
 - 帶 `--ledger` 時，async 提交會在提交當下就落帳（`event: submitted`）— process 被殺也不會丟已付費的 resume token；`--list-pending`（以及 `doctor.py`）會列出未收割的 job。
+- `--cost-stats` 從你自己的帳本聚合 per-provider 實價 — 契約卡估價用你的價格史，不用 README 裡會腐爛的參考數字。
 - `--submit-only` 提交即返回 — 一輪齊發多個引擎，趁它們跑的時候做便宜驗證，再逐一 `--resume` 收割。
 - Completed job 的抽取若失敗，原始 provider payload 會先存進 `reports/deep_raw_*.json` — 已付費內容不因 schema 漂移而蒸發，修好後 `--resume` 零成本重收割。
 - Report 檔名包含 `query + pid` 的短 hash，避免平行 probe 或純 CJK query 互相覆蓋。

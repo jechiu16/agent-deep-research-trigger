@@ -45,7 +45,7 @@ Below, `$DEEP_HARNESS_DIR` means the absolute path to this checkout.
 ## Operational Notes
 
 - Keys resolve: process env -> nearest `.env` from cwd upward -> `.env` beside the scripts.
-- Mandatory contract: every `/deep` asks and records depth, independence, and strictness. Recommend `fast`, `standard`, or `decision`, but let the user confirm or choose.
+- Mandatory contract: every `/deep` asks and records depth, independence, and strictness. Recommend `fast`, `standard`, or `decision`, but let the user confirm or choose. When past ledgers exist, ground spend estimates in `--cost-stats` actuals instead of list prices.
 - Framing: infer the research target from context by default; ask clarifying questions only when a missing premise would change scope, worker choice, cost, or answer.
 - Worker output: stdout is one JSON object; exit code signals success/failure; stderr is progress only. Parse stdout, not stderr.
 - Privacy pause: before using `deepseek --files` or any external worker on local/user files, confirm the files are safe to send or redact/summarize first.
