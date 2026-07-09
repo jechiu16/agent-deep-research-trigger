@@ -25,13 +25,15 @@ Most deep-research workflows are single-engine, one-shot, and hard to audit. Thi
 | Worker affordances | Choose the cheapest adequate tool first; escalate only when the evidence needs it. |
 | Claim-level reconciliation | Track specific claims as corroborated, single-source, disputed, or retired. |
 | Verification floor | Spot-check the most load-bearing claims before delivery. |
-| Host-neutral core | The spec is in `HARNESS.md`; host bindings stay thin. |
+| Host-neutral core | The runtime spine is in `HARNESS.md`; worker details and scenarios load only when needed. |
 
 ## Repository Map
 
 | File | Purpose |
 |---|---|
-| [HARNESS.md](HARNESS.md) | Host-neutral Organizer protocol: tool affordances, state discipline, loop, hooks, presets, and recovery playbook. |
+| [HARNESS.md](HARNESS.md) | Short host-neutral Organizer spine: contract, state, loop, verification, delivery, and boundaries. |
+| [WORKERS.md](WORKERS.md) | Worker reference: affordance catalog, CLI contract, parallelism, rate limits, privacy, and recovery. |
+| [SCENARIOS.md](SCENARIOS.md) | Calibration examples and forward-test prompts for `/deep` behavior. |
 | [SKILL.md](SKILL.md) | Claude Code binding. Registers `/deep` and maps harness primitives to Claude Code tools. |
 | [AGENTS.md](AGENTS.md) | Codex binding. Explains discovery, install wiring, and Codex-native operating rules. |
 | [scripts/deep_research.py](scripts/deep_research.py) | Bundled worker CLI. One call, one action, resumable where supported, JSON on stdout. |
@@ -71,15 +73,15 @@ Preset names used by the harness:
 
 | Preset | Composition | Typical use |
 |---|---|---|
-| `快查` | shallow + single source OK + first satisfactory answer | Cheap fact-checks and quick orientation. |
-| `日常` | medium + 2-source bar + close obvious gaps | Normal research and cited summaries. |
-| `拍板` | deep + cross-family blind verification + chase disputes | Decision-critical work. |
+| `fast` | shallow + single source OK + first satisfactory answer | Cheap fact-checks and quick orientation. |
+| `standard` | medium + 2-source bar + close obvious gaps | Normal research and cited summaries. |
+| `decision` | deep + cross-family blind verification + chase disputes | Decision-critical work. |
 
 Dollar figures in this repository are indicative at list prices. The code records cost where providers expose it, but it does not enforce a budget ceiling.
 
 ## Worker Affordances
 
-Workers are tools the Organizer may choose from, not pipeline stages. There is no fixed order: choose the cheapest action that reduces the weakest load-bearing uncertainty.
+Workers are tools the Organizer may choose from, not pipeline stages. There is no fixed order: choose the cheapest action that reduces the weakest load-bearing uncertainty. The table below is only a GitHub overview; the execution reference is [WORKERS.md](WORKERS.md).
 
 | Provider | Role | Index family | Typical cost | Typical time |
 |---|---|---|---|---|
@@ -91,7 +93,7 @@ Workers are tools the Organizer may choose from, not pipeline stages. There is n
 | `gemini` | Gemini Deep Research report | Google | Varies | 3-10 min |
 | `deepseek` | File-only processor for merging, extracting, and comparing existing artifacts | None | ~free | 1-5 min |
 
-Important: `deepseek` is intentionally not a retrieval worker. It should process already-fetched material, not invent new evidence.
+Important: `deepseek` is intentionally not a retrieval worker. It should process already-fetched material, not invent new evidence. See [WORKERS.md](WORKERS.md) for stdout JSON, ledger behavior, resume handling, parallelism, and recovery rules.
 
 ## Install
 
@@ -123,7 +125,7 @@ See [AGENTS.md](AGENTS.md) for the full Codex-specific install notes.
 
 ### Any Other Host
 
-Clone the repository anywhere. The host agent only needs to read [HARNESS.md](HARNESS.md) and invoke [scripts/deep_research.py](scripts/deep_research.py) by absolute path.
+Clone the repository anywhere. The host agent needs to read [HARNESS.md](HARNESS.md), then [WORKERS.md](WORKERS.md) only when choosing or invoking workers.
 
 ## Worker Dependencies
 

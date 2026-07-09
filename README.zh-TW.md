@@ -25,13 +25,15 @@
 | Worker affordances | 先選足夠便宜的工具；只有證據需要時才升級昂貴 worker。 |
 | 主張層級對帳 | 逐條標記主張為已佐證、單一來源、有爭議或已淘汰。 |
 | 驗證底線 | 交付前獨立抽查最關鍵、最承重的主張。 |
-| 宿主中立 | 核心規格在 `HARNESS.md`；不同宿主只需要薄薄一層 binding。 |
+| 宿主中立 | Runtime spine 在 `HARNESS.md`；worker 細節與 scenarios 需要時才載入。 |
 
 ## Repo 結構
 
 | 檔案 | 用途 |
 |---|---|
-| [HARNESS.md](HARNESS.md) | 宿主中立的 Organizer protocol：工具 affordances、狀態紀律、循環、hook、preset 與 recovery playbook。 |
+| [HARNESS.md](HARNESS.md) | 短版宿主中立 Organizer spine：contract、state、loop、verification、delivery 與 boundary。 |
+| [WORKERS.md](WORKERS.md) | Worker reference：affordance catalog、CLI contract、parallelism、rate limits、privacy 與 recovery。 |
+| [SCENARIOS.md](SCENARIOS.md) | `/deep` 行為校準案例與 forward-test prompts。 |
 | [SKILL.md](SKILL.md) | Claude Code binding。註冊 `/deep` 並把 harness primitive 對應到 Claude Code 工具。 |
 | [AGENTS.md](AGENTS.md) | Codex binding。說明 discovery、安裝接線方式與 Codex 的操作規則。 |
 | [scripts/deep_research.py](scripts/deep_research.py) | 內建 worker CLI。一次呼叫就是一次 action；支援可恢復任務；stdout 輸出 JSON。 |
@@ -71,15 +73,15 @@ Harness 使用的 preset：
 
 | Preset | 組成 | 適合情境 |
 |---|---|---|
-| `快查` | shallow + 單一來源可接受 + 第一個滿意答案即可 | 低成本 fact-check 或快速建立方向感。 |
-| `日常` | medium + 2-source bar + 補齊明顯缺口 | 一般研究、帶引用摘要、日常判斷。 |
-| `拍板` | deep + 跨 index family 盲驗 + 追爭議 | 高風險或會影響決策的研究。 |
+| `fast` | shallow + 單一來源可接受 + 第一個滿意答案即可 | 低成本 fact-check 或快速建立方向感。 |
+| `standard` | medium + 2-source bar + 補齊明顯缺口 | 一般研究、帶引用摘要、日常判斷。 |
+| `decision` | deep + 跨 index family 盲驗 + 追爭議 | 高風險或會影響決策的研究。 |
 
 Repo 裡的美元數字只代表當前清單價格下的概略估算。程式會記錄 provider 回傳的成本資訊，但不會強制執行預算上限。
 
 ## Worker Affordances
 
-Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有固定順序；選擇能降低最弱承重不確定性的最低成本 action。
+Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有固定順序；選擇能降低最弱承重不確定性的最低成本 action。下表只是 GitHub overview；真正執行時的 reference 在 [WORKERS.md](WORKERS.md)。
 
 | Provider | 角色 | Index family | 典型成本 | 典型時間 |
 |---|---|---|---|---|
@@ -91,7 +93,7 @@ Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有
 | `gemini` | Gemini Deep Research report | Google | 視 provider 而定 | 3-10 分鐘 |
 | `deepseek` | 只處理檔案：合併、抽取、比較既有 artifacts | 無 | 近乎免費 | 1-5 分鐘 |
 
-重要：`deepseek` 在這個 harness 裡不是 retrieval worker。它只應處理已經抓回來的材料，不應用來憑空產生新證據。
+重要：`deepseek` 在這個 harness 裡不是 retrieval worker。它只應處理已經抓回來的材料，不應用來憑空產生新證據。stdout JSON、ledger、resume、parallelism 與 recovery 規則請見 [WORKERS.md](WORKERS.md)。
 
 ## 安裝
 
@@ -123,7 +125,7 @@ Workers live at `<absolute path>/scripts/deep_research.py`.
 
 ### 其他宿主
 
-把 repo clone 到任意位置。宿主 Agent 只需要讀取 [HARNESS.md](HARNESS.md)，並用絕對路徑呼叫 [scripts/deep_research.py](scripts/deep_research.py)。
+把 repo clone 到任意位置。宿主 Agent 先讀 [HARNESS.md](HARNESS.md)；只有在選擇或執行 worker 時才讀 [WORKERS.md](WORKERS.md)。
 
 ## Worker 依賴
 

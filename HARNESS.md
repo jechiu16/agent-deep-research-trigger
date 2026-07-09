@@ -1,203 +1,119 @@
-# Research Harness Specification
+# /deep Organizer Harness
 
-**This file is host-neutral.** Any capable tool-using LLM agent (Claude Code, Codex, or another) can act as the Organizer. Host bindings live in [SKILL.md](SKILL.md) (Claude Code) and [AGENTS.md](AGENTS.md) (Codex).
+**Host-neutral runtime spine.** Claude Code uses [SKILL.md](SKILL.md); Codex uses [AGENTS.md](AGENTS.md). Worker details live in [WORKERS.md](WORKERS.md). Calibration examples live in [SCENARIOS.md](SCENARIOS.md).
 
-## What this is
+## What This Is
 
-`/deep` is not a research tool — it is an **explicit trigger** that wakes the host agent into an Organizer role. Do not run this protocol for ordinary research requests unless the user explicitly invokes `/deep`. The harness is the Organizer protocol: a discipline for framing the question, choosing tools, keeping state, checking claims, and knowing when to stop. It is:
+`/deep` is not a research engine. It is an explicit trigger that wakes the host agent into an **Organizer** role for one bounded research session.
 
-- **single-execution** — one trigger, one research session, one verdict
-- **stateful** — evidence, spend, and open disputes live in a Research State file, not in anyone's working memory
-- **bounded** — a depth preset sets the spending spirit; the loop terminates on settled claims or diminishing returns
-- **hybrid-path** — evidence is shared where reuse is safe, re-derived independently where verification demands it
+The Organizer's job is to frame the question, set the research contract, choose tools, maintain state, reconcile claims, verify load-bearing evidence, and deliver a handoff-ready answer.
 
-The objective: **maximum information gain per dollar across the available tool portfolio** — not maximum thoroughness, not minimum cost. The loop's steering question is always: *which load-bearing claim is weakest right now, and what is the cheapest action that strengthens it?*
+The objective is **maximum information gain per dollar across the available tool portfolio**. The steering question is always:
 
-## Vocabulary
+> Which load-bearing claim is weakest right now, and what is the cheapest action that strengthens it?
 
-| Term | Meaning |
+## Non-Negotiables
+
+- Trigger only on explicit `/deep`; ordinary research requests do not activate this protocol.
+- Infer the research target from context by default; ask framing questions only when ambiguity would change scope, cost, worker choice, or answer.
+- Always ask and record the three-axis research contract before worker spend.
+- Keep Research State for `medium+` depth or any multi-action run.
+- Treat worker reports as evidence inputs, not final truth.
+- Reconcile claims into evidence statuses before delivery.
+- Spot-check the most load-bearing claims before delivery.
+- Include spend and artifact paths in the final answer.
+
+## 60-Second Execution Checklist
+
+1. Frame the question from context; ask only scope-changing clarifiers.
+2. Ask and record the contract: depth x independence x strictness.
+3. Create Research State if `medium+` or more than one action is likely.
+4. Choose the first batch by weakest load-bearing uncertainty, not by a fixed tool order.
+5. Execute parallel-safe actions together; respect rate limits.
+6. Normalize and reconcile claims; mark disputed or single-source items honestly.
+7. Verify load-bearing claims, then deliver answer, spend, artifacts, and handoff notes.
+
+## Research Contract
+
+One card, three axes. The Organizer may recommend a preset, but the user must confirm or choose the axes before worker spend.
+
+| Axis | Options |
 |---|---|
-| Trigger | explicit `/deep <question> [hints]` — wakes the Organizer |
-| Organizer | the host agent running this loop; owns all judgment |
-| Harness | this Organizer protocol: tool affordances + state discipline + loop contract |
-| Loop | inspect → choose → execute → normalize → reconcile → terminate? |
-| Hooks | bounded Organizer judgments at fixed points — not code |
-| Workers | optional tools the Organizer may invoke; not pipeline stages |
+| **Depth** | `shallow`: one probe wave or quick answer; `medium`: probes plus one or two standard reports; `deep`: multiple engines and iteration |
+| **Independence** | `single`: one adequate source; `two-source`: load-bearing claims need two sources; `cross-family-blind`: two index families plus one blind isolated pass |
+| **Strictness** | `first`: stop at first satisfactory answer; `gaps`: close obvious gaps; `chase`: pursue disputes until resolved or clearly unresolvable |
 
-## Worker affordance catalog
+Preset shortcuts: `fast` = shallow x single x first; `standard` = medium x two-source x gaps; `decision` = deep x cross-family-blind x chase.
 
-These workers are affordances for the Organizer, not a required pipeline. Choose them from the live Research State and the research contract: cheap and specific first, expensive and broad only when they reduce real uncertainty.
-
-The bundled worker CLI is `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `google-genai` for gemini). One call = one action. **Stdout is always one JSON object** and the exit code signals success/failure: success carries `report`／`report_path`／`usage`／`cost_estimate_usd`／`wall_time_s`; failure (non-zero exit) carries `error` and, for submitted-then-lost async jobs, `resume` (`provider:id`). Stderr is progress only (`[deep] …` lines). Reports land in `<cwd>/reports/`. Keys resolve: process env -> nearest `.env` from cwd upward -> `.env` beside this file.
-
-| Worker | Invocation core | Cost / latency | Output | Index family | Notes |
-|---|---|---|---|---|---|
-| cascade | `--provider cascade` | ~$0.10–0.15 / ~30 s | 4 merged probes: direct／counter／landscape／falsifier, cited | Perplexity | canonical opening move; raises if all probes fail |
-| sonar | `--provider sonar` | ~$0.01 / ~3 s | one grounded cited answer | Perplexity | targeted lookups, dispute adjudication |
-| scholar | `--provider scholar --effort minimal…high` | free / ~5 s | 5–40 papers (TLDR, citation counts, PDFs) | Semantic Scholar | **keyword queries, not questions**; 1 req/s — never parallel; works keyless (stricter limits) |
-| perplexity | `--provider perplexity --effort medium/high` | $0.5–1 / 2–5 min | long cited report | Perplexity | async+resume; ~5 RPM; `minimal` is UNGROUNDED — never use for real research |
-| openai | `--provider openai --effort medium/high` | $0.4–8 / 5–25 min | long cited report | OpenAI (2nd family) | `high`→o3, else o4-mini with tool caps; async+resume; needs a verified org |
-| gemini | `--provider gemini` | varies / 3–10 min | long report, sources inline | Google (3rd family) | async+resume |
-| deepseek | `--provider deepseek --files a.md --files b.md "instruction"` | ~free / 1–5 min | processed artifact | none — no retrieval | **processor only**: merges, claim tables, comparisons; never a researcher (hallucinates ungrounded) |
-| host-search | host's native web search | usually free | search results | host-dependent | spot-checks; hosts without one use `sonar` instead |
-| host-fetch | host's native URL fetch | usually free | page content | — | read a specific source when a claim hinges on it |
-
-**Selection heuristics（free composition, fixed discipline）**:
-- choose the cheapest action that can reduce the weakest load-bearing uncertainty
-- use `cascade` as a four-angle scout when the question needs fast orientation: direct answer, counter-evidence, landscape, and falsifier
-- use `scholar` when the answer depends on academic literature, methods, papers, or citation trails
-- use `sonar` or host search/fetch for narrow facts, source-of-record checks, and verification-floor spot checks
-- use deep engines only when cheap evidence cannot satisfy the contract's independence or strictness bar
-- use `deepseek` only to process already-fetched material; never treat it as a retrieval source
-
-**Privacy pause**: `deepseek --files` and any external worker that receives local files sends file contents outside the host. Before using it on user/local files, confirm the files are safe to send, or redact/summarize them first. If privacy is unclear, use host-side reading and Organizer extraction instead.
-
-**Failure / recovery playbook**:
-
-| Situation | Organizer move |
-|---|---|
-| Missing key | Name the missing env var, use available workers or host search/fetch, and note the substitution in the state/log. |
-| Worker fails before submission | Record the failure, then fall back to a host-native equivalent or another worker. Write `reports/host_fallback_<slug>.md` with retrieved URLs, extracted claims, source policy, and a `$0.00` ledger line. |
-| Paid async job times out or poll dies | Resume with `--resume "provider:id"`; never re-submit paid work while a resume token exists. |
-| Citations are missing or weak | Mark the claim `single-source` or `unverified`; do not treat model prose as grounded evidence. |
-| Sources conflict | Promote the item to `disputed`, write what evidence would settle it, and spend only on that dispute if it is load-bearing. |
-| Host-native retrieval satisfies the contract | Use it; evidence quality beats tool loyalty. Note the substitution in the log. |
-
-Example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins.
-
-## Responsibility boundaries
-
-The harness is a single-trigger skill, not a workflow engine. Keep the boundary clear each time `/deep` wakes up:
-
-**Organizer owns（cannot be delegated to code）**:
-- infer the research target from context, ask clarifying questions only when needed, and always set the research contract
-- choose shared, isolated, or targeted branches
-- generate blind-verification queries from the fixed template（see isolated branch）
-- curate claims, reconcile evidence, identify disputes, and decide when to stop
-- apply the verification floor before delivery
-
-**Host-required（Claude Code, Codex, or another Organizer host must do this）**:
-- choose the local Python interpreter and pass absolute worker paths when needed
-- pass `--ledger reports/deep_state_<slug>.ledger.jsonl` from `medium` depth up（recommended even at shallow）
-- create and rewrite the Research State file when the contract requires one
-- preserve stderr resume tokens in the conversation or state so interrupted async jobs can be resumed
-- respect provider rate limits from the worker affordance catalog
-
-**Worker CLI guarantees（implemented in `scripts/deep_research.py`）**:
-- worker stdout is one JSON object; exit code signals success/failure
-- async workers emit resume tokens after submission and support `--resume` where the provider allows it
-- when `--ledger` is passed, the CLI appends completion／failure records with provider, cost, wall time, artifact path, and resume token when available
-- report files are written under `<cwd>/reports/`
+Explicit user budgets override the depth preset's spending spirit, but prices are indicative only. No code enforces a hard budget ceiling.
 
 ## Research State
 
-Research State is the Organizer's external working memory for this one trigger, not a database. From `medium` depth up — or whenever more than one action runs（a failure plus its fallback counts as two）— keep it on disk: `reports/deep_state_<yyyymmdd>_<slug>.md`, rewritten after every reconcile hook. A quick single-action question skips it; the report file is the artifact.
+Research State is the Organizer's external working memory for this one trigger. Create `reports/deep_state_<yyyymmdd>_<slug>.md` from `medium` depth up, or whenever more than one action runs. Rewrite it after every reconcile step.
 
-```
+Use this compact shape:
+
+```md
 # Research State: <question>
-contract: depth=<shallow/medium/deep> ｜ independence=<bar> ｜ strictness=<level> ｜ status: running/done ｜ started: <ts>
-framing: <core question; exclusions; what success looks like>
-current answer hypothesis: <best answer so far; explicitly provisional until verification>
-next cheapest action: <one sentence: what would most reduce uncertainty per dollar>
-
-## Spend ledger（curated render of the machine-written .ledger.jsonl）
-| # | action | worker | actual$ | artifact |
-running total: $X.XX
-
-## Load-bearing claims
-| id | claim | why it matters | status | next check |
-
-## Evidence pool
-| id | claim | status | sources (worker → report path) | independence |
-   status ∈ corroborated / single-source / disputed / retired
-
-## Open
-gaps: <what's still uncovered>
-disputes: <claim ids + what evidence would settle each>
-
-## Log
-- <n>: chose <batch> because <one line>
+contract: depth=<...> | independence=<...> | strictness=<...> | status=running | started=<ts>
+framing: <core question, exclusions, success criteria>
+hypothesis: <best answer so far; provisional until verified>
+next action: <one sentence: cheapest uncertainty reducer>
+spend: running total $X.XX; ledger=<path>
+claims: <id | claim | why it matters | status | next check>
+evidence: <id | claim | status | sources | independence>
+open: gaps=<...>; disputes=<...>
+log: <n>: chose <batch> because <one line>
 ```
 
-## Organizer loop
+Statuses: `corroborated`, `single-source`, `corroborated-same-family`, `disputed`, `retired`, `unverified`.
 
-This is a protocol for the Organizer's attention, not a fixed pipeline. Infer the research target from conversation context by default; ask plan-adjustment questions only when ambiguity would change scope, worker choice, cost, or answer. Never skip the three-axis contract, and never skip state discipline or verification floor when they apply.
+## Organizer Loop
 
-**0 INIT** — Read the conversation context and infer what the user wants researched. If the framing is ambiguous in ways that change the answer or research plan (goal, region, timeframe, stakes, audience, exclusions), ask ≤3 clarifying questions; otherwise proceed with the inferred framing. Then establish the **research contract**（three axes, below）every time: infer a recommended preset from the question's stakes, present the three-axis options for user confirmation, and record the result. Write the initial state file when the contract requires one.
+**0 INIT** - Infer the target from conversation context. Ask up to three clarifying questions only if the answer would change the plan. Ask the three-axis contract every time and record it.
 
-**1 INSPECT** — Read the state. What is the weakest load-bearing element right now: uncovered ground, a single-source claim that matters, an open dispute? On the first iteration, also check `<cwd>/reports/` for recent artifacts on overlapping topics — reusing a past paid report through the processor is ~free（flag staleness against the question's time-sensitivity）.
+**1 INSPECT** - Read the state and recent `reports/` artifacts on overlapping topics. Reuse old paid reports only if their age and scope still fit the question.
 
-**2 CHOOSE** — Pick the next **batch** of actions with the best expected information gain per dollar. Iterations are coarse — batch parallel-safe actions into one wave; never micro-loop one worker at a time. Branch typing per action:
+**2 CHOOSE** - Pick the next batch with the best expected information gain per dollar. Use free reasoning over the current pool first, targeted lookups next, broad paid retrieval last. Read [WORKERS.md](WORKERS.md) when selecting or invoking workers.
 
-- **shared branch** — builds on the pool (queries refined by earlier findings)
-- **isolated branch** — blind verification: the query is **template-generated**, never composed freely by the Organizer（who has read the pool and would leak framing）: `Verify or refute: <claim verbatim>. What is the primary evidence for and against?` — carries the bare claim only; prefer a different index family than the claim's current sources. For **source-of-record claims**（official prices, documented limits, dated announcements）, independently fetching an alternate authoritative page counts as the blind check — no model needed
-- **targeted lookup** — one sonar／host-search probe for a small gap or a specific dispute
+Branch types:
 
-**Cost ordering（the shared-trunk economy）**: exhaust free moves first — reasoning over the existing pool（Organizer or deepseek）costs nothing and comes before any retrieval; then $0.01 targeted lookups; paid retrieval last, only for what the pool provably can't answer. The counterweight: savings come from sharing, trust comes from *not* sharing — the independence bar decides how much must be re-derived in isolation, and that is never traded away for cost.
+- **shared**: builds on the current evidence pool.
+- **isolated**: blind verification from the template `Verify or refute: <claim verbatim>. What is the primary evidence for and against?`
+- **targeted**: narrow lookup for a specific gap or dispute.
 
-Common cheap opening when broad orientation and literature context are both useful: `cascade ∥ scholar` (cheap heterogeneous retrieval). This is a useful pattern, not a required first step. **If the opening fully answers the question AND the load-bearing claims already meet the contract's independence bar, strictness level, and verification floor, stop and deliver** — don't spend because the budget exists. But a cheap opening rarely clears a `拍板` bar (which demands ≥2 index families + a blind pass), so "looks answered" is not "contract-settled".
+**3 EXECUTE** - Run parallel-safe actions in one wave. Avoid micro-looping one worker at a time. Keep resume tokens. If the first wave gives a useful provisional answer, share it as provisional while deeper actions continue.
 
-**3 EXECUTE** — Launch the batch (async workers in the background; keep the conversation alive). Respect rate limits from the affordance catalog. **Answer-first**: when the opening wave lands, give the user the provisional read（marked as provisional）while deeper actions run — their reaction is live steering input for the remaining spend.
+**4 NORMALIZE** - Extract verdict-relevant claims from each artifact with provenance. Use a processor only for already-fetched material; curate its output.
 
-**4 NORMALIZE（hook）** — Per artifact, the Organizer extracts the claims that bear on the question, with provenance（worker, report path）. Long reports（>~3k tokens）: delegate the draft extraction to `deepseek`（free）and curate the result; short outputs: extract directly. The pool is **two-layer**: a compact layer（the claims table in the state file — what the Organizer re-reads every iteration, verdict-relevance weighted but not hard-capped）and a full layer（the report files — what deepseek reads when processing; its 1M-token window minus 20% headroom is the size bound, which in practice never binds）. Merge into the pool; tag independence by index family.
+**5 RECONCILE** - Compare claims across sources. Same-family agreement does not clear a cross-family independence bar. Promote conflicts to `disputed` and write what would settle them. Update the state.
 
-**5 RECONCILE（hook）** — The Organizer compares claims across sources. A claim is `corroborated` only when its agreeing sources actually meet the contract's independence bar — two same-family outputs agreeing is **not** settled under a bar that requires ≥2 index families; mark it `single-source` (or `corroborated-same-family`) and keep it on the spend list until an independent source clears the bar. Conflicts → `disputed` plus a note on what would settle each. **Only chase unresolved disagreements and claims below the independence bar** — genuinely settled ground gets no more spend. Update gaps, append one log line, rewrite the state file.
+**6 TERMINATE?** - Stop when load-bearing claims meet the contract, or when marginal gain is clearly below marginal cost, or when further spend exceeds the contract without a strong reason. If justified overspend would be large, check in with the user.
 
-**6 TERMINATE?** — Stop when: load-bearing claims meet the contract's independence bar at its strictness level, OR marginal gain is clearly below marginal cost, OR spend has clearly outgrown the contract's depth without an obvious reason to continue. Depth is a spending spirit, not a ceiling — when further spend is clearly justified, say so to the user（check in if the overshoot would be large）and continue. Otherwise loop to 1.
+## Verification Floor
 
-## The research contract（three independent axes, set at INIT）
+Before delivery, independently spot-check the two or three most load-bearing claims: headline numbers, dates, official limits, or claims that would change the recommendation if wrong. Prefer host search/fetch when available; otherwise use a narrow worker probe. If verification is unavailable, say so plainly.
 
-One card, three axes — mandatory on every `/deep`. The Organizer infers a recommended preset from the question's stakes and context, but the user must confirm or choose the three-axis contract before worker spend.
+## Delivery
 
-| Axis | Options（composition, not dollar cutoffs） |
-|---|---|
-| **Depth**（spend appetite） | shallow: a probe wave or one quick answer ／ medium: probes + one or two standard reports ／ deep: multiple deep engines, iterated |
-| **Independence bar**（what it takes to believe a claim） | single source OK ／ load-bearing claims ≥2 sources ／ ≥2 index families + one blind isolated pass |
-| **Strictness**（chase persistence before stopping） | first satisfactory answer ／ close the obvious gaps ／ chase disputes until resolved or provably unresolvable |
+Deliver in the user's language, optimized for a future Agent or Claude/Codex session to continue from it.
 
-Preset paths（one pick instead of three）: **快查** = shallow＋single＋first ／ **日常** = medium＋2-sources＋gaps ／ **拍板** = deep＋families-blind＋chase. An explicit user budget（"預算 N"）overrides the depth axis.
+Include:
 
-**Prices are never normative**: any dollar figure in this spec is indicative at current list prices — the worker affordance catalog is the live price source, presets are defined by worker composition, and nothing in the code enforces a budget cutoff.
+- executive answer
+- research contract and framing assumptions
+- key findings with evidence status
+- load-bearing claims and what would change the conclusion
+- verification checks and any changes they caused
+- unresolved disputes and residual uncertainty
+- spend, ledger, state file, and report paths
+- recommendation, separated from evidence
+- handoff block: what to inspect next
 
-## Verification floor（non-negotiable）
+## Boundary Rules
 
-Before delivery, the 2–3 most load-bearing claims (headline numbers, dates, "X announced Y") get an independent spot-check — host-search where free, sonar probes otherwise. Discrepancies are flagged prominently in the verdict. Research reports are hypotheses, not facts.
-
-## Delivery（handoff-oriented）
-
-Deliver in the user's language, but optimize the artifact for a future Agent or Claude/Codex session to continue from it. A complete delivery should include:
-
-- executive answer: the best current answer in plain language
-- research contract: depth, independence, strictness, plus any framing assumptions
-- key findings: each traceable to a pool claim and its status（corroborated N-way ／ single-source ／ disputed）
-- load-bearing claims: what would change the conclusion if wrong
-- verification checks: what was spot-checked and what changed, if anything
-- unresolved disputes: stated plainly — an honest open question beats laundered certainty
-- spend and artifacts: actual spend vs the contract; state file, ledger, and report paths
-- recommendation: the Organizer's decision recommendation, separated from the evidence
-- handoff block: what to inspect next if another Agent resumes the session
-
-**Done checklist**:
-
-- three-axis contract recorded and reflected in the answer
-- Research State updated if `medium+` or multi-action
-- load-bearing claims have evidence status, not just prose
-- verification floor completed or explicitly marked unavailable
-- unresolved disputes and residual uncertainty are visible
-- spend, ledger, and artifact paths are included
-- recommendation is separated from evidence
-
-## Query-writing standards
-
-English; one core question per worker run; explicit exclusions（"focus on X; ignore Y"）; a context clause（"in the context of …"）; ask for primary sources; scholar gets keyword phrases, not questions.
-
-## Scenario calibration
-
-These are behavior examples, not pipelines:
-
-| Scenario | Expected Organizer posture |
-|---|---|
-| `/deep quick fact check` | Ask the three-axis contract, recommend `快查`, use one narrow lookup or host source if confirmed, deliver with evidence status. |
-| `/deep literature review` | Ask the contract, recommend at least `日常`, include `scholar`, keep paper claims separate from model summaries. |
-| `/deep decision-critical research` | Ask the contract, recommend `拍板`, require cross-family evidence and blind verification for load-bearing claims. |
-| `/deep` with missing API keys | Name missing keys, use available host-native tools or free workers, record substitutions in state/log. |
+- **Organizer judgment**: framing, contract, branch choice, reconciliation, verification, stop condition.
+- **Host responsibility**: interpreter choice, writable artifact path, user questions, background execution, preserving resume tokens.
+- **Worker guarantees**: see [WORKERS.md](WORKERS.md) for stdout JSON, exit codes, ledger behavior, reports, resume, and rate limits.
+- **Privacy pause**: before sending local/user files to external workers, confirm they are safe to send or redact/summarize first.
+- **Failure honesty**: missing keys, weak citations, transport failures, and conflicts are state facts, not annoyances to hide.
