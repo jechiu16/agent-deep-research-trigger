@@ -37,6 +37,9 @@ Most deep-research workflows are single-engine, one-shot, and hard to audit. Thi
 | [SKILL.md](SKILL.md) | Claude Code binding. Registers `/deep` and maps harness primitives to Claude Code tools. |
 | [AGENTS.md](AGENTS.md) | Codex binding. Explains discovery, install wiring, and Codex-native operating rules. |
 | [scripts/deep_research.py](scripts/deep_research.py) | Bundled worker CLI. One call, one action, resumable where supported, JSON on stdout. |
+| [scripts/doctor.py](scripts/doctor.py) | Local readiness check for Python, packages, keys, provider availability, and writable reports. |
+| [examples/quickstart](examples/quickstart) | Sample state, ledger, and report artifacts from the no-network demo path. |
+| [requirements.txt](requirements.txt) | Common Python dependencies for network workers and `.env` loading. |
 | [.env.example](.env.example) | API key template for worker providers. |
 
 ## How It Works
@@ -85,6 +88,7 @@ Workers are tools the Organizer may choose from, not pipeline stages. There is n
 
 | Provider | Role | Index family | Typical cost | Typical time |
 |---|---|---|---|---|
+| `demo` | Local no-network smoke test for JSON/report/ledger contract | None | Free | Instant |
 | `cascade` | Four-angle scout: direct answer, counter-evidence, landscape, falsifier | Perplexity | ~$0.10-0.15 | ~30 s |
 | `sonar` | Fast grounded lookup for small gaps or spot checks | Perplexity | ~$0.01 | Seconds |
 | `scholar` | Semantic Scholar literature search | Semantic Scholar | Free | Seconds |
@@ -127,12 +131,25 @@ See [AGENTS.md](AGENTS.md) for the full Codex-specific install notes.
 
 Clone the repository anywhere. The host agent needs to read [HARNESS.md](HARNESS.md), then [WORKERS.md](WORKERS.md) only when choosing or invoking workers.
 
+## 30-Second Smoke Test
+
+This verifies the local worker contract without keys, network calls, or spend:
+
+```bash
+python scripts/doctor.py
+python scripts/deep_research.py --provider demo \
+  --ledger reports/deep_state_demo.ledger.jsonl \
+  "smoke test"
+```
+
+Expected result: `doctor.py` prints provider readiness, the demo worker prints one JSON object on stdout, writes a report under `reports/`, and appends one ledger line. See [examples/quickstart](examples/quickstart) for sample artifacts.
+
 ## Worker Dependencies
 
 Install the common dependencies:
 
 ```bash
-pip install requests python-dotenv
+pip install -r requirements.txt
 ```
 
 Gemini support also needs:
@@ -181,6 +198,8 @@ PY=python3
 Run workers directly:
 
 ```bash
+python scripts/doctor.py
+"$PY" scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
 "$PY" scripts/deep_research.py --provider sonar "quick question"
 "$PY" scripts/deep_research.py --provider cascade "scout this research question"
 "$PY" scripts/deep_research.py --provider scholar "dynamic factor model nowcasting"

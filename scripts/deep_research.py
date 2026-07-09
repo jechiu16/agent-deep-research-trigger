@@ -2,6 +2,7 @@
 """Deep Research CLI — multi-provider research engine.
 
 Providers:
+  demo        local no-network smoke test        — validates JSON/report/ledger contract (free)
   sonar       Perplexity sonar-pro             — quick grounded answer (seconds, ~$0.01)
   cascade     4 parallel sonar probes           — scout: direct/counter/landscape/falsifier (~$0.10-0.15)
   scholar     Semantic Scholar paper search     — academic literature list (seconds, free)
@@ -54,7 +55,11 @@ RETRY_GET_STATUSES = {429, 500, 502, 503, 504}
 
 
 def _load_env():
-    from dotenv import load_dotenv, find_dotenv
+    try:
+        from dotenv import load_dotenv, find_dotenv
+    except ImportError:
+        _log("python-dotenv not installed; skipping .env loading")
+        return
 
     load_dotenv(find_dotenv(usecwd=True))
     load_dotenv(SKILL_DIR / ".env")
@@ -486,7 +491,33 @@ def call_deepseek(query: str, effort: str, model, timeout_min, files=None) -> di
             "cost_estimate_usd": None, "sources": []}
 
 
-PROVIDERS = {"sonar": call_sonar, "cascade": call_cascade, "scholar": call_scholar,
+def call_demo(query: str, effort: str, model, timeout_min, files=None) -> dict:
+    """Local smoke-test provider: no network, no keys, same output contract."""
+    model = model or "demo-local"
+    _log("demo provider: no network, no external API, no cost")
+    report_text = f"""# Demo Worker Result
+
+This is a local smoke test for `scripts/deep_research.py`. It proves that the worker can:
+
+- parse CLI arguments
+- write a report under `<cwd>/reports/`
+- print one JSON object on stdout
+- append a ledger record when `--ledger` is supplied
+
+It does **not** perform research and must not be used as evidence.
+
+## Echo
+
+Query: {query}
+Effort: {effort}
+"""
+    return {"model": model, "effort": effort,
+            "report_text": report_text,
+            "usage": {"demo": True, "input_chars": len(query), "files": len(files or [])},
+            "cost_estimate_usd": 0.0, "sources": []}
+
+
+PROVIDERS = {"demo": call_demo, "sonar": call_sonar, "cascade": call_cascade, "scholar": call_scholar,
              "perplexity": call_perplexity, "openai": call_openai, "gemini": call_gemini,
              "deepseek": call_deepseek}
 

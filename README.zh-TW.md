@@ -37,6 +37,9 @@
 | [SKILL.md](SKILL.md) | Claude Code binding。註冊 `/deep` 並把 harness primitive 對應到 Claude Code 工具。 |
 | [AGENTS.md](AGENTS.md) | Codex binding。說明 discovery、安裝接線方式與 Codex 的操作規則。 |
 | [scripts/deep_research.py](scripts/deep_research.py) | 內建 worker CLI。一次呼叫就是一次 action；支援可恢復任務；stdout 輸出 JSON。 |
+| [scripts/doctor.py](scripts/doctor.py) | 本機 readiness check：Python、套件、API keys、provider availability、reports 可寫性。 |
+| [examples/quickstart](examples/quickstart) | no-network demo path 產生的 sample state、ledger、report。 |
+| [requirements.txt](requirements.txt) | Network workers 與 `.env` 載入所需的常用 Python dependencies。 |
 | [.env.example](.env.example) | Worker provider 的 API key 範本。 |
 
 ## 運作方式
@@ -85,6 +88,7 @@ Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有
 
 | Provider | 角色 | Index family | 典型成本 | 典型時間 |
 |---|---|---|---|---|
+| `demo` | 本機 no-network smoke test，用來驗證 JSON/report/ledger contract | 無 | 免費 | 立即 |
 | `cascade` | 四角度快速偵察：直接回答、反證、版圖、推翻條件 | Perplexity | ~$0.10-0.15 | ~30 秒 |
 | `sonar` | 快速 grounded lookup，用於小缺口或 spot check | Perplexity | ~$0.01 | 數秒 |
 | `scholar` | Semantic Scholar 文獻搜尋 | Semantic Scholar | 免費 | 數秒 |
@@ -127,12 +131,25 @@ Workers live at `<absolute path>/scripts/deep_research.py`.
 
 把 repo clone 到任意位置。宿主 Agent 先讀 [HARNESS.md](HARNESS.md)；只有在選擇或執行 worker 時才讀 [WORKERS.md](WORKERS.md)。
 
+## 30 秒 Smoke Test
+
+這會驗證本機 worker contract，不需要 API key、不打網路、不花錢：
+
+```bash
+python scripts/doctor.py
+python scripts/deep_research.py --provider demo \
+  --ledger reports/deep_state_demo.ledger.jsonl \
+  "smoke test"
+```
+
+預期結果：`doctor.py` 會列出 provider readiness；demo worker 會在 stdout 印出單一 JSON object，在 `reports/` 寫入 report，並 append 一行 ledger。範例產物請見 [examples/quickstart](examples/quickstart)。
+
 ## Worker 依賴
 
 安裝共用依賴：
 
 ```bash
-pip install requests python-dotenv
+pip install -r requirements.txt
 ```
 
 Gemini 支援另外需要：
@@ -181,6 +198,8 @@ PY=python3
 直接執行 worker：
 
 ```bash
+python scripts/doctor.py
+"$PY" scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
 "$PY" scripts/deep_research.py --provider sonar "quick question"
 "$PY" scripts/deep_research.py --provider cascade "scout this research question"
 "$PY" scripts/deep_research.py --provider scholar "dynamic factor model nowcasting"

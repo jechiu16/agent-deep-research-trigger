@@ -6,7 +6,7 @@ Read this when the Organizer needs to choose, invoke, debug, or resume workers. 
 
 The bundled worker CLI is `scripts/deep_research.py`.
 
-- Dependencies: `requests`, `python-dotenv`; `google-genai` for Gemini.
+- Dependencies: stdlib only for `demo`; `requests` for network workers; `python-dotenv` for `.env` loading; `google-genai` for Gemini.
 - One call is one action.
 - Stdout is always one JSON object.
 - Exit code signals success or failure.
@@ -23,6 +23,7 @@ Example commands use bare `python` for clarity. Host bindings decide the actual 
 
 | Worker | Invocation core | Cost / latency | Output | Index family | Notes |
 |---|---|---|---|---|---|
+| `demo` | `--provider demo` | free / instant | local smoke-test report | none | validates JSON/report/ledger contract; never evidence |
 | `cascade` | `--provider cascade` | about $0.10-0.15 / about 30 s | four merged probes: direct, counter, landscape, falsifier | Perplexity | strong orientation move; raises if all probes fail |
 | `sonar` | `--provider sonar` | about $0.01 / about 3 s | one grounded cited answer | Perplexity | targeted lookup, dispute adjudication, verification floor |
 | `scholar` | `--provider scholar --effort minimal..high` | free / about 5 s | 5-50 papers with TLDRs, citation counts, PDFs | Semantic Scholar | keyword queries, not questions; 1 req/s; never parallel |
@@ -77,6 +78,8 @@ Do not parallelize:
 ## Command Examples
 
 ```bash
+python scripts/doctor.py
+python scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
 python scripts/deep_research.py --provider sonar "quick question"
 python scripts/deep_research.py --provider cascade "scout this research question"
 python scripts/deep_research.py --provider scholar "dynamic factor model nowcasting"
