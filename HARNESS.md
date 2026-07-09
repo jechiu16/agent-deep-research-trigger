@@ -42,11 +42,20 @@ The bundled worker CLI is `scripts/deep_research.py` (deps `requests` + `python-
 | host-search | host's native web search | usually free | search results | host-dependent | spot-checks; hosts without one use `sonar` instead |
 | host-fetch | host's native URL fetch | usually free | page content | — | read a specific source when a claim hinges on it |
 
+**Privacy pause**: `deepseek --files` and any external worker that receives local files sends file contents outside the host. Before using it on user/local files, confirm the files are safe to send, or redact/summarize them first. If privacy is unclear, use host-side reading and Organizer extraction instead.
+
 **Failure / recovery playbook**:
-- a failed worker never re-runs paid work without a decision; poll died or timed out -> `--resume "provider:id"` -- never re-pay for a lost job
-- a worker that fails *before submission* (transport / proxy / auth errors -- common in sandboxed hosts) is not resumable: record it in the ledger, then fall back to a host-native equivalent or another worker. Write the fallback result as a report the pool can absorb: `reports/host_fallback_<slug>.md` carrying the retrieved URLs, extracted claims, and source policy, plus a `$0.00` ledger line -- so it folds into the pool exactly like a worker artifact
-- **evidence quality beats tool loyalty**: if host-native retrieval alone satisfies the *inferred contract* (any depth, not just shallow) when workers are unavailable, that's a valid session -- note the substitution in the log
-- example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins
+
+| Situation | Organizer move |
+|---|---|
+| Missing key | Name the missing env var, use available workers or host search/fetch, and note the substitution in the state/log. |
+| Worker fails before submission | Record the failure, then fall back to a host-native equivalent or another worker. Write `reports/host_fallback_<slug>.md` with retrieved URLs, extracted claims, source policy, and a `$0.00` ledger line. |
+| Paid async job times out or poll dies | Resume with `--resume "provider:id"`; never re-submit paid work while a resume token exists. |
+| Citations are missing or weak | Mark the claim `single-source` or `unverified`; do not treat model prose as grounded evidence. |
+| Sources conflict | Promote the item to `disputed`, write what evidence would settle it, and spend only on that dispute if it is load-bearing. |
+| Host-native retrieval satisfies the contract | Use it; evidence quality beats tool loyalty. Note the substitution in the log. |
+
+Example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins.
 
 ## Responsibility boundaries
 

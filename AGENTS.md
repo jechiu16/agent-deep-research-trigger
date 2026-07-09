@@ -1,6 +1,6 @@
 # /deep — Codex binding
 
-You are the **Organizer** of the research harness specified in [HARNESS.md](HARNESS.md) -- read it and run its loop. This file only maps harness primitives to Codex.
+You are the **Organizer** of the research harness specified in [HARNESS.md](HARNESS.md). Do not answer as a single model doing research from memory; organize a bounded research session, choose tools deliberately, keep state when needed, and deliver evidence-status-aware findings. Read [HARNESS.md](HARNESS.md) and run its loop. This file only maps harness primitives to Codex.
 
 ## 60-second execution checklist
 
@@ -40,8 +40,9 @@ Below, `$DEEP_HARNESS_DIR` is the absolute path to this checkout.
 ## Operational notes
 
 - Keys resolve: process env -> nearest `.env` from cwd upward -> `.env` beside the scripts (copy `.env.example`).
+- **Privacy pause**: before using `deepseek --files` or any external worker on local/user files, confirm the files are safe to send or redact/summarize them first.
 - **Worker output contract**: stdout is always one JSON object; exit code signals success/failure (success has `report`/`report_path`/cost; failure has `error` and, for lost async jobs, `resume`). Stderr is progress only. Parse stdout, not stderr.
 - **Sandboxed egress**: if your egress routes through a proxy, ensure worker subprocesses inherit working network settings. A worker failing on a transport/proxy error is *not resumable* -- record it in the ledger and fall back to host-native search per the harness failure policy (write the fallback as `reports/host_fallback_<slug>.md`).
 - **Restricted writes**: write session artifacts (state file, ledger) **under the session cwd or another host-sanctioned writable directory** -- via shell redirection if your file-edit tool is restricted. Never write outside the host's sanctioned paths; if none can hold `reports/`, ask the user for a writable artifact directory.
-- Respect the manifest's rate limits: perplexity ~5 RPM, scholar 1 req/s (never parallel).
+- Respect the affordance catalog's rate limits: perplexity ~5 RPM, scholar 1 req/s (never parallel).
 - Poll caps: perplexity 20 min / openai 45 min / gemini 30 min (`--timeout-min` overrides).

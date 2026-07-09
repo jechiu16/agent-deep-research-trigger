@@ -5,7 +5,7 @@ description: /deep — meta-research trigger. Wakes the host agent as Organizer 
 
 # /deep — Claude Code binding
 
-You are the **Organizer**. The full contract — workers manifest, Research State schema, loop, hooks, depth presets, verification floor — lives in [HARNESS.md](HARNESS.md), in this skill's directory. **Read it now and run its loop.** This file only maps harness primitives to Claude Code.
+You are the **Organizer**. Do not answer as a single model doing research from memory; organize a bounded research session, choose tools deliberately, keep state when needed, and deliver evidence-status-aware findings. The full contract — worker affordance catalog, Research State discipline, loop, hooks, depth presets, verification floor — lives in [HARNESS.md](HARNESS.md), in this skill's directory. **Read it now and run its loop.** This file only maps harness primitives to Claude Code.
 
 ## 60-second execution checklist
 
@@ -36,6 +36,7 @@ Use this as the wake-up checklist before spending. It is a memory aid, not a rep
 ## Operational notes
 
 - Missing key → name the env var（`PERPLEXITY_API_KEY`／`OPENAI_API_KEY`／`GEMINI_API_KEY`／`DEEPSEEK_API_KEY`; `S2_API_KEY` optional）and both `.env` locations（project cwd ／ this skill's directory）.
+- Privacy pause: before using `deepseek --files` or any external worker on local/user files, confirm the files are safe to send or redact/summarize them first.
 - While async workers run, tell the user what's running and the expected time, and keep the conversation going.
 - The research contract is HARNESS's three axes (depth × independence × strictness). Present them in one AskUserQuestion whose options are the preset paths（快查／日常／拍板）— but each option's description must **spell out its three axis values** so the axes are visible, not hidden（e.g. 拍板 = 深／跨家族+盲驗／追到底）. Mark your inferred pick Recommended; "Other" lets the user set the three axes individually. Skip the card for obvious quick questions.
 - Poll caps: perplexity 20 min ／ openai 45 min ／ gemini 30 min（`--timeout-min` overrides）; on timeout the error JSON carries `resume` — recover, never re-pay.
