@@ -46,14 +46,29 @@ Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `goog
 - **evidence quality beats tool loyalty**: if host-native retrieval alone satisfies the *inferred contract* (any depth, not just shallow) when workers are unavailable, that's a valid session -- note the substitution in the log
 - example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins
 
-## Hooks are hybrid
+## Responsibility boundaries
 
-**Mechanical（code-guaranteed — never depends on Organizer discipline）**:
-- every worker call from `medium` depth up passes `--ledger reports/deep_state_<slug>.ledger.jsonl`（recommended even at shallow — it's free）— the engine appends its own completion／failure line（provider, cost, wall time, artifact path, resume token）to an append-only JSONL; the state file's ledger table is the Organizer's curated render of it
-- blind-verification queries are template-generated（see isolated branch）
-- rate limiting and resume tokens live in the engine
+The harness is a single-trigger skill, not a workflow engine. Keep the boundary clear each time `/deep` wakes up:
 
-**Judgment（Organizer）**: claim curation, reconcile verdicts, branch typing, batch choice, termination.
+**Engine-guaranteed（implemented in `scripts/deep_research.py`）**:
+- worker stdout is one JSON object; exit code signals success/failure
+- async workers emit resume tokens after submission and support `--resume` where the provider allows it
+- when `--ledger` is passed, the engine appends completion／failure records with provider, cost, wall time, artifact path, and resume token when available
+- report files are written under `<cwd>/reports/`
+
+**Host-required（Claude Code, Codex, or another Organizer host must do this）**:
+- choose the local Python interpreter and pass absolute worker paths when needed
+- pass `--ledger reports/deep_state_<slug>.ledger.jsonl` from `medium` depth up（recommended even at shallow）
+- create and rewrite the Research State file when the contract requires one
+- preserve stderr resume tokens in the conversation or state so interrupted async jobs can be resumed
+- respect provider rate limits from the worker manifest
+
+**Organizer judgment（cannot be fully delegated to code）**:
+- frame the question, ask clarifying questions, and set the research contract
+- choose shared, isolated, or targeted branches
+- generate blind-verification queries from the fixed template（see isolated branch）
+- curate claims, reconcile evidence, identify disputes, and decide when to stop
+- apply the verification floor before delivery
 
 ## Research State
 

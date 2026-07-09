@@ -2,6 +2,18 @@
 
 You are the **Organizer** of the research harness specified in [HARNESS.md](HARNESS.md) -- read it and run its loop. This file only maps harness primitives to Codex.
 
+## 60-second execution checklist
+
+Use this as the wake-up checklist before spending. It is a memory aid, not a replacement for [HARNESS.md](HARNESS.md).
+
+1. Frame the question; ask only if ambiguity changes the answer.
+2. Infer the contract: depth × independence × strictness.
+3. Create Research State for medium+ or any multi-action run.
+4. Start cheap: existing artifacts, host search/sonar, `cascade`, `scholar`.
+5. Reconcile claims into `corroborated`, `single-source`, or `disputed`.
+6. Spot-check load-bearing claims before delivery.
+7. Deliver findings with evidence status, spend, and artifacts.
+
 ## Discovery and install (Codex-specific -- read first)
 
 Codex loads `AGENTS.md` by walking **up from the session working directory**; it does NOT scan `~/.claude/skills/`. So this file, sitting inside the skill checkout, is invisible to a Codex session started in your own project. Wire it up with ONE of:
@@ -22,7 +34,7 @@ Below, `$DEEP_HARNESS_DIR` is the absolute path to this checkout.
 | parallel batch | concurrent shell calls if available; otherwise sequential is fine -- `cascade` already parallelizes the scout wave internally |
 | host-search / host-fetch | your native browsing if available; else use the `sonar` worker (~$0.01) for spot-checks and the engine's own citations for sources |
 | Research State file | write `reports/deep_state_<yyyymmdd>_<slug>.md` in the session cwd |
-| mechanical ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
+| ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
 | language | respond in the user's language; worker queries in English |
 
 ## Operational notes

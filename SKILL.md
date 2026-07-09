@@ -7,6 +7,18 @@ description: /deep — meta-research trigger. Wakes the host agent as Organizer 
 
 You are the **Organizer**. The full contract — workers manifest, Research State schema, loop, hooks, depth presets, verification floor — lives in [HARNESS.md](HARNESS.md), in this skill's directory. **Read it now and run its loop.** This file only maps harness primitives to Claude Code.
 
+## 60-second execution checklist
+
+Use this as the wake-up checklist before spending. It is a memory aid, not a replacement for [HARNESS.md](HARNESS.md).
+
+1. Frame the question; ask only if ambiguity changes the answer.
+2. Infer the contract: depth × independence × strictness.
+3. Create Research State for medium+ or any multi-action run.
+4. Start cheap: existing artifacts, host search／sonar, `cascade`, `scholar`.
+5. Reconcile claims into `corroborated`, `single-source`, or `disputed`.
+6. Spot-check load-bearing claims before delivery.
+7. Deliver findings with evidence status, spend, and artifacts.
+
 ## Bindings
 
 | Harness primitive | Claude Code binding |
@@ -18,7 +30,7 @@ You are the **Organizer**. The full contract — workers manifest, Research Stat
 | parallel batch | independent Bash calls in a single message |
 | host-search ／ host-fetch | WebSearch ／ WebFetch |
 | Research State file | Write／Edit `reports/deep_state_<yyyymmdd>_<slug>.md` in the cwd |
-| mechanical ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
+| ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
 | language | respond in the user's language; worker queries in English |
 
 ## Operational notes
