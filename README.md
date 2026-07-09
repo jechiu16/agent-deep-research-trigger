@@ -32,7 +32,7 @@ flowchart TD
 
 ## Why this shape
 
-1. **Depth, not plans** — the user picks a depth（quick／standard／deep／exhaustive）; the Organizer decides each next dollar from the live evidence state. The most expensive failure of deep research — a $4 run aimed at a badly-specified question — is prevented by cheap heterogeneous probing（`cascade`）before any expensive call.
+1. **A contract, not a plan** — the user sets three axes（depth × independence bar × strictness, or one preset pick）; the Organizer decides each next dollar from the live evidence state. The most expensive failure of deep research — a $4 run aimed at a badly-specified question — is prevented by cheap heterogeneous probing（`cascade`）before any expensive call. Dollar figures are indicative at list prices, never enforced in code.
 2. **Role separation** — engines do what they're good at: search engines research, Semantic Scholar grounds claims in papers, DeepSeek（no retrieval, hallucination-prone ungrounded）only ever processes already-fetched material.
 3. **Claim-level state** — evidence lives in an on-disk pool with provenance and independence tags; conflicts become `disputed` items and **only unresolved disagreements get more spend**. The spend ledger makes every dollar auditable.
 4. **A verification floor** — load-bearing claims get an independent spot-check before delivery. Research reports are hypotheses, not facts.

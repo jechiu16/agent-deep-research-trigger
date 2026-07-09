@@ -11,7 +11,7 @@ Providers:
   deepseek    DeepSeek v4 processor             — merge/extract/rewrite over --files (~free)
 
 Usage:
-  python deep_research.py [--provider P] [--effort E] [--model M] [--timeout-min N] "question"
+  python deep_research.py [--provider P] [--effort E] [--model M] [--timeout-min N] [--ledger FILE] "question"
   python deep_research.py --provider deepseek --files r1.md --files r2.md "merge these into a claims table"
   python deep_research.py --resume "openai:resp_abc123"
 
@@ -502,6 +502,16 @@ def _finish(provider: str, query: str, result: dict, wall_time_s: float) -> dict
     }
 
 
+def _append_ledger(path: str, record: dict):
+    """機械 hook：append-only JSONL 帳本 — 記帳不靠 Organizer 自覺；寫入失敗不影響主流程。"""
+    try:
+        record["ts"] = datetime.now().isoformat(timespec="seconds")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        _log(f"ledger 寫入失敗（不影響結果）：{e}")
+
+
 def run(provider: str, query: str, effort: str, model, timeout_min, files=None) -> dict:
     t0 = time.monotonic()
     result = PROVIDERS[provider](query, effort, model, timeout_min, files=files)
@@ -541,6 +551,8 @@ if __name__ == "__main__":
     parser.add_argument("--resume", default=None, metavar="PROVIDER:ID", help="接手先前的 async job")
     parser.add_argument("--files", action="append", default=None, metavar="FILE",
                         help="deepseek 加工層的檔案輸入（一面旗一個檔，可重複）")
+    parser.add_argument("--ledger", default=None, metavar="FILE",
+                        help="append-only JSONL 帳本（harness 機械 hook）")
     parser.add_argument("query", nargs="*", help="研究問題")
     args = parser.parse_args()
 
@@ -555,10 +567,19 @@ if __name__ == "__main__":
             out = run_resume(args.resume, args.timeout_min)
         else:
             out = run(args.provider, " ".join(args.query), args.effort, args.model, args.timeout_min, files=args.files)
+        if args.ledger:
+            _append_ledger(args.ledger, {"provider": out["provider"], "model": out["model"],
+                                         "effort": out.get("effort"), "cost_usd": out.get("cost_estimate_usd"),
+                                         "wall_s": out.get("wall_time_s"), "artifact": out.get("report_path"),
+                                         "query": out["query"][:200]})
         print(json.dumps(out, ensure_ascii=False, indent=2))
     except JobError as e:
+        if args.ledger:
+            _append_ledger(args.ledger, {"provider": args.provider, "error": str(e)[:300], "resume": e.resume})
         print(json.dumps({"error": str(e), "resume": e.resume}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
     except Exception as e:
+        if args.ledger:
+            _append_ledger(args.ledger, {"provider": args.provider, "error": str(e)[:300]})
         print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)

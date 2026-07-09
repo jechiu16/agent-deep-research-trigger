@@ -12,6 +12,7 @@ You are the **Organizer** of the research harness specified in [HARNESS.md](HARN
 | parallel batch | concurrent shell calls if available; otherwise sequential is acceptable — `cascade` already parallelizes the scout wave internally |
 | host-search ／ host-fetch | your native browsing if available; otherwise use the `sonar` worker（~$0.01）for spot-checks and the engine's own citations for sources |
 | Research State file | write `reports/deep_state_<yyyymmdd>_<slug>.md` in the working directory |
+| mechanical ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
 | language | respond in the user's language; worker queries in English |
 
 ## Operational notes

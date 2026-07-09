@@ -18,11 +18,12 @@ You are the **Organizer**. The full contract — workers manifest, Research Stat
 | parallel batch | independent Bash calls in a single message |
 | host-search ／ host-fetch | WebSearch ／ WebFetch |
 | Research State file | Write／Edit `reports/deep_state_<yyyymmdd>_<slug>.md` in the cwd |
+| mechanical ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
 | language | respond in the user's language; worker queries in English |
 
 ## Operational notes
 
 - Missing key → name the env var（`PERPLEXITY_API_KEY`／`OPENAI_API_KEY`／`GEMINI_API_KEY`／`DEEPSEEK_API_KEY`; `S2_API_KEY` optional）and both `.env` locations（project cwd ／ this skill's directory）.
 - While async workers run, tell the user what's running and the expected time, and keep the conversation going.
-- Depth selection: infer when obvious from the question's stakes; otherwise one AskUserQuestion with the four presets and their typical bands.
+- The research contract: one AskUserQuestion presenting the preset paths（快查／日常／拍板）with your inferred pick marked Recommended; "Other" covers per-axis customization（depth／independence／strictness）. Skip the card for obvious quick questions.
 - Poll caps: perplexity 20 min ／ openai 45 min ／ gemini 30 min（`--timeout-min` overrides）; on timeout the error JSON carries `resume` — recover, never re-pay.
