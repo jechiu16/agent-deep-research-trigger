@@ -26,7 +26,7 @@ The objective: **maximum information gain per dollar across the whole worker por
 
 ## Workers manifest
 
-Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `google-genai` for gemini). One call = one action. Stdout = one JSON object (`report`, `report_path`, `usage`, `cost_estimate_usd`, `wall_time_s`); async workers print a **resume token** (`provider:id`) to stderr and carry a `resume` field in error JSON. Reports land in `<cwd>/reports/`. Keys resolve: process env → nearest `.env` from cwd upward → `.env` beside this file.
+Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `google-genai` for gemini). One call = one action. **Stdout is always one JSON object** and the exit code signals success/failure: success carries `report`／`report_path`／`usage`／`cost_estimate_usd`／`wall_time_s`; failure (non-zero exit) carries `error` and, for submitted-then-lost async jobs, `resume` (`provider:id`). Stderr is progress only (`[deep] …` lines). Reports land in `<cwd>/reports/`. Keys resolve: process env -> nearest `.env` from cwd upward -> `.env` beside this file.
 
 | Worker | Invocation core | Cost / latency | Output | Index family | Notes |
 |---|---|---|---|---|---|
@@ -41,9 +41,9 @@ Engine CLI: `scripts/deep_research.py` (deps `requests` + `python-dotenv`; `goog
 | host-fetch | host's native URL fetch | usually free | page content | — | read a specific source when a claim hinges on it |
 
 **Failure policy**:
-- a failed worker never re-runs paid work without a decision; poll died or timed out → `--resume "provider:id"` — never re-pay for a lost job
-- a worker that fails **before submission**（transport／proxy／auth errors — common in sandboxed hosts）is not resumable: record it in the ledger, then fall back to a host-native equivalent or another worker
-- **evidence quality beats tool loyalty**: if host-native search alone satisfies a shallow contract when workers are unavailable, that's a valid session — note the substitution in the log
+- a failed worker never re-runs paid work without a decision; poll died or timed out -> `--resume "provider:id"` -- never re-pay for a lost job
+- a worker that fails *before submission* (transport / proxy / auth errors -- common in sandboxed hosts) is not resumable: record it in the ledger, then fall back to a host-native equivalent or another worker. Write the fallback result as a report the pool can absorb: `reports/host_fallback_<slug>.md` carrying the retrieved URLs, extracted claims, and source policy, plus a `$0.00` ledger line -- so it folds into the pool exactly like a worker artifact
+- **evidence quality beats tool loyalty**: if host-native retrieval alone satisfies the *inferred contract* (any depth, not just shallow) when workers are unavailable, that's a valid session -- note the substitution in the log
 - example commands in this spec use bare `python` for illustration; the host binding's interpreter policy always wins
 
 ## Hooks are hybrid
@@ -94,13 +94,13 @@ disputes: <claim ids + what evidence would settle each>
 
 **Cost ordering（the shared-trunk economy）**: exhaust free moves first — reasoning over the existing pool（Organizer or deepseek）costs nothing and comes before any retrieval; then $0.01 targeted lookups; paid retrieval last, only for what the pool provably can't answer. The counterweight: savings come from sharing, trust comes from *not* sharing — the independence bar decides how much must be re-derived in isolation, and that is never traded away for cost.
 
-Typical opening: `cascade ∥ scholar` (cheap heterogeneous retrieval). **If the opening fully answers the question, stop and deliver** — don't spend the band because it exists.
+Typical opening: `cascade ∥ scholar` (cheap heterogeneous retrieval). **If the opening fully answers the question AND the load-bearing claims already meet the contract's independence bar, strictness level, and verification floor, stop and deliver** — don't spend because the budget exists. But a cheap opening rarely clears a `拍板` bar (which demands ≥2 index families + a blind pass), so "looks answered" is not "contract-settled".
 
 **3 EXECUTE** — Launch the batch (async workers in the background; keep the conversation alive). Respect rate limits from the manifest. **Answer-first**: when the opening wave lands, give the user the provisional read（marked as provisional）while deeper actions run — their reaction is live steering input for the remaining spend.
 
 **4 NORMALIZE（hook）** — Per artifact: extract the claims that bear on the question, with provenance（worker, report path）. Long reports（>~3k tokens）: delegate the draft extraction to `deepseek`（free）and curate the result; short outputs: extract directly. The pool is **two-layer**: a compact layer（the claims table in the state file — what the Organizer re-reads every iteration, verdict-relevance weighted but not hard-capped）and a full layer（the report files — what deepseek reads when processing; its 1M-token window minus 20% headroom is the size bound, which in practice never binds）. Merge into the pool; tag independence by index family.
 
-**5 RECONCILE（hook）** — Compare claims across sources: agreements → `corroborated`; conflicts → `disputed` plus a note on what would settle each. **Only chase unresolved disagreements** — settled ground gets no more spend. Update gaps, append one log line, rewrite the state file.
+**5 RECONCILE（hook）** — Compare claims across sources. A claim is `corroborated` only when its agreeing sources actually meet the contract's independence bar — two same-family outputs agreeing is **not** settled under a bar that requires ≥2 index families; mark it `single-source` (or `corroborated-same-family`) and keep it on the spend list until an independent source clears the bar. Conflicts → `disputed` plus a note on what would settle each. **Only chase unresolved disagreements and claims below the independence bar** — genuinely settled ground gets no more spend. Update gaps, append one log line, rewrite the state file.
 
 **6 TERMINATE?** — Stop when: load-bearing claims meet the contract's independence bar at its strictness level, OR marginal gain is clearly below marginal cost, OR spend has clearly outgrown the contract's depth without an obvious reason to continue. Depth is a spending spirit, not a ceiling — when further spend is clearly justified, say so to the user（check in if the overshoot would be large）and continue. Otherwise loop to 1.
 

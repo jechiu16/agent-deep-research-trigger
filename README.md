@@ -15,7 +15,7 @@ Not another Deep Research. A harness that treats Deep Research APIs, search APIs
 
 ```mermaid
 flowchart TD
-    A["/deep &lt;question&gt; (+depth)"] --> B["Organizer: framing + depth<br/>(≤3 clarifying Qs when needed)"]
+    A["/deep &lt;question&gt;"] --> B["Organizer: framing + research contract<br/>(depth × independence × strictness;<br/>≤3 clarifying Qs when needed)"]
     B --> S["Research State (on disk)<br/>evidence pool · spend ledger · open disputes"]
     S --> L{"loop: inspect state →<br/>choose highest info-gain/$ batch"}
     L -- "shared branch" --> W["workers: cascade / scholar /<br/>perplexity / openai / gemini / deepseek"]
@@ -24,7 +24,7 @@ flowchart TD
     W --> N["hooks: normalize claims →<br/>reconcile: corroborated / disputed"]
     P --> N
     N --> S
-    N --> T{"settled at depth's bar<br/>or diminishing returns?"}
+    N --> T{"settled at contract bar<br/>(independence + strictness)<br/>or diminishing returns?"}
     T -- no --> L
     T -- yes --> V["verification floor:<br/>spot-check load-bearing claims"]
     V --> D["verdict in user's language<br/>+ spend vs band + state file"]
@@ -40,28 +40,44 @@ flowchart TD
 
 ## Workers
 
-| Worker | Engine | Typical cost | Typical time |
+| Worker (`--provider`) | Engine / role | Typical cost | Typical time |
 |---|---|---|---|
-| scout | `cascade` — 4 parallel sonar-pro probes（direct／counter／landscape／falsifier）, merged | ~$0.10–0.15 | ~30 s |
-| quick | Perplexity `sonar-pro` | ~$0.01 | seconds |
-| scholar | Semantic Scholar Graph API | free | seconds |
-| standard | Perplexity `sonar-deep-research`（medium） | $0.5–1 | 2–5 min |
-| deep | OpenAI `o3`／`o4-mini-deep-research`, Perplexity high, or Gemini | $0.4–8 | 5–25 min |
-| processor | DeepSeek v4 over `--files` | ~free | 1–5 min |
+| `cascade` | scout: 4 parallel sonar-pro probes (direct/counter/landscape/falsifier), merged | ~$0.10–0.15 | ~30 s |
+| `sonar` | quick single grounded answer | ~$0.01 | seconds |
+| `scholar` | Semantic Scholar Graph API (literature) | free | seconds |
+| `perplexity` | sonar-deep-research | $0.5–1 | 2–5 min |
+| `openai` | o3 / o4-mini-deep-research | $0.4–8 | 5–25 min |
+| `gemini` | Deep Research | varies | 3–10 min |
+| `deepseek` | processor over `--files` (merge/extract, no retrieval) | ~free | 1–5 min |
+
+(Worker names match the [HARNESS.md](HARNESS.md) manifest exactly; the depth axis is `shallow/medium/deep`, a separate concept from any worker.)
 
 ## Install
 
+The harness is host-neutral, but each host discovers it differently:
+
+**Claude Code** — clone into the skill directory; `/deep` registers automatically:
 ```bash
-# 1. Clone to your agent's skill directory, e.g. for Claude Code:
 git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/deep
-# 2. Install worker deps into whatever python will run them:
-pip install requests python-dotenv          # + google-genai for the gemini provider
-# 3. Keys:
-cp .env.example .env                        # fill in the keys for the providers you'll use
-                                            # (scholar even works keyless, at stricter shared-pool limits)
 ```
 
-Key resolution order: process env → nearest `.env` from your working directory upward → `.env` beside the scripts. Project-local keys win; the skill-local `.env` makes `/deep` work from any directory.
+**Codex** — clone anywhere, then make it discoverable. Codex reads `AGENTS.md` from the working directory upward, *not* `~/.claude/skills/`, so the checkout alone is invisible:
+```bash
+git clone https://github.com/jechiu16/claude-research-cascade ~/tools/research-cascade
+export DEEP_HARNESS_DIR=~/tools/research-cascade   # workers: python "$DEEP_HARNESS_DIR/scripts/deep_research.py" ...
+# add a one-line AGENTS.md stub in your project root pointing at $DEEP_HARNESS_DIR/HARNESS.md
+# (see AGENTS.md "Discovery and install" for the exact wording)
+```
+
+**Any other host** — clone anywhere; the Organizer reads `HARNESS.md` and invokes workers by absolute path. That is the entire contract.
+
+Then, for every host — install worker deps and keys:
+```bash
+pip install requests python-dotenv          # + google-genai for the gemini provider
+cp .env.example .env                        # fill in the keys you'll use (scholar works keyless too)
+```
+
+Key resolution order: process env -> nearest `.env` from your working directory upward -> `.env` beside the scripts. Project-local keys win; a checkout-local `.env` makes workers runnable from any directory.
 
 ## Workers CLI
 

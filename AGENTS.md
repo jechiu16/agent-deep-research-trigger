@@ -1,24 +1,35 @@
 # /deep — Codex binding
 
-You are the **Organizer** of the research harness specified in [HARNESS.md](HARNESS.md) — read it and run its loop. This file only maps harness primitives to Codex.
+You are the **Organizer** of the research harness specified in [HARNESS.md](HARNESS.md) -- read it and run its loop. This file only maps harness primitives to Codex.
+
+## Discovery and install (Codex-specific -- read first)
+
+Codex loads `AGENTS.md` by walking **up from the session working directory**; it does NOT scan `~/.claude/skills/`. So this file, sitting inside the skill checkout, is invisible to a Codex session started in your own project. Wire it up with ONE of:
+
+- **Project stub (recommended)**: drop a short `AGENTS.md` in your project root: "For `/deep` research, read `<checkout>/HARNESS.md` + `<checkout>/AGENTS.md`; workers at `<checkout>/scripts/deep_research.py`" -- `<checkout>` an absolute path.
+- **Env var**: `export DEEP_HARNESS_DIR=<absolute path to this checkout>`; invoke workers as `python "$DEEP_HARNESS_DIR/scripts/deep_research.py" ...`.
+- **Symlink**: symlink this `AGENTS.md` into the project root.
+
+Below, `$DEEP_HARNESS_DIR` is the absolute path to this checkout.
 
 ## Bindings
 
 | Harness primitive | Codex binding |
 |---|---|
-| ask the user（depth ／ clarifying ／ over-band check-in） | a plain chat question listing the options with their cost/tradeoff deltas |
-| run a worker | shell, **absolute path**: `python <skill-dir>/scripts/deep_research.py --provider … "QUERY"` — the session cwd is wherever `reports/` should land, not the skill directory. Your local interpreter policy wins over the bare `python` in examples. Deps: `pip install requests python-dotenv`（+ `google-genai` for gemini） |
-| async worker | run with a generous timeout, or in the background via your shell facility; the resume token prints to stderr right after submission — on any interruption recover with `--resume "provider:id"`, never re-pay |
-| parallel batch | concurrent shell calls if available; otherwise sequential is acceptable — `cascade` already parallelizes the scout wave internally |
-| host-search ／ host-fetch | your native browsing if available; otherwise use the `sonar` worker（~$0.01）for spot-checks and the engine's own citations for sources |
-| Research State file | write `reports/deep_state_<yyyymmdd>_<slug>.md` in the working directory |
+| ask the user (depth / clarifying / over-budget check-in) | a plain chat question listing the options with their cost/tradeoff deltas |
+| run a worker | shell, **absolute path**: `python "$DEEP_HARNESS_DIR/scripts/deep_research.py" --provider <p> "QUERY"`. The session cwd is wherever `reports/` should land, not the checkout. Your local interpreter policy wins over the bare `python` in examples. Deps: `pip install requests python-dotenv` (+ `google-genai` for gemini) |
+| async worker | run with a generous timeout, or backgrounded via your shell facility; the resume token prints to stderr right after submission -- on any interruption recover with `--resume "provider:id"`, never re-pay |
+| parallel batch | concurrent shell calls if available; otherwise sequential is fine -- `cascade` already parallelizes the scout wave internally |
+| host-search / host-fetch | your native browsing if available; else use the `sonar` worker (~$0.01) for spot-checks and the engine's own citations for sources |
+| Research State file | write `reports/deep_state_<yyyymmdd>_<slug>.md` in the session cwd |
 | mechanical ledger | pass `--ledger reports/deep_state_<slug>.ledger.jsonl` on every worker call from medium depth up; fold into the state file at reconcile |
 | language | respond in the user's language; worker queries in English |
 
 ## Operational notes
 
-- Keys resolve: process env → nearest `.env` from cwd upward → `.env` beside this file（copy `.env.example`）.
-- Sandboxed hosts: if your egress routes through a proxy, ensure worker subprocesses inherit working network settings — a worker failing on transport errors is not resumable; record it in the ledger and fall back to host-native search per the harness failure policy.
-- If your file-edit tool is restricted to configured writable roots, write session artifacts（state file, ledger）via shell redirection instead.
-- Respect the manifest's rate limits: perplexity ~5 RPM, scholar 1 req/s（never parallel）.
-- Poll caps: perplexity 20 min ／ openai 45 min ／ gemini 30 min（`--timeout-min` overrides）.
+- Keys resolve: process env -> nearest `.env` from cwd upward -> `.env` beside the scripts (copy `.env.example`).
+- **Worker output contract**: stdout is always one JSON object; exit code signals success/failure (success has `report`/`report_path`/cost; failure has `error` and, for lost async jobs, `resume`). Stderr is progress only. Parse stdout, not stderr.
+- **Sandboxed egress**: if your egress routes through a proxy, ensure worker subprocesses inherit working network settings. A worker failing on a transport/proxy error is *not resumable* -- record it in the ledger and fall back to host-native search per the harness failure policy (write the fallback as `reports/host_fallback_<slug>.md`).
+- **Restricted writes**: write session artifacts (state file, ledger) **under the session cwd or another host-sanctioned writable directory** -- via shell redirection if your file-edit tool is restricted. Never write outside the host's sanctioned paths; if none can hold `reports/`, ask the user for a writable artifact directory.
+- Respect the manifest's rate limits: perplexity ~5 RPM, scholar 1 req/s (never parallel).
+- Poll caps: perplexity 20 min / openai 45 min / gemini 30 min (`--timeout-min` overrides).

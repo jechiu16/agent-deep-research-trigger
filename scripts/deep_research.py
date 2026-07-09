@@ -509,8 +509,11 @@ def _finish(provider: str, query: str, result: dict, wall_time_s: float) -> dict
 
 
 def _append_ledger(path: str, record: dict):
-    """機械 hook：append-only JSONL 帳本 — 記帳不靠 Organizer 自覺；寫入失敗不影響主流程。"""
+    """機械 hook：append-only JSONL 帳本 — 記帳不靠 Organizer 自覺。
+    Best-effort：並行 worker 各寫一行；單行 append 實務上夠原子（單次 write），但不做
+    跨程序鎖 — 讀取端應逐行解析、容忍極少數崩潰殘行。寫入失敗不影響主流程。"""
     try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)  # fresh session 首個動作即失敗時 reports/ 尚未建
         record["ts"] = datetime.now().isoformat(timespec="seconds")
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -580,12 +583,16 @@ if __name__ == "__main__":
                                          "query": out["query"][:200]})
         print(json.dumps(out, ensure_ascii=False, indent=2))
     except JobError as e:
+        # provider 從 resume token 前綴取（--resume 未帶 --provider 時 args.provider 是 default）
+        led_prov = (e.resume or args.resume or "").split(":")[0] or args.provider
         if args.ledger:
-            _append_ledger(args.ledger, {"provider": args.provider, "error": str(e)[:300], "resume": e.resume})
-        print(json.dumps({"error": str(e), "resume": e.resume}, ensure_ascii=False), file=sys.stderr)
+            _append_ledger(args.ledger, {"provider": led_prov, "error": str(e)[:300], "resume": e.resume})
+        # 失敗也印 stdout（成功/失敗一致走 stdout；host 讀 stdout 拿 JSON，exit code 非零標示失敗）
+        print(json.dumps({"error": str(e), "resume": e.resume}, ensure_ascii=False))
         sys.exit(1)
     except Exception as e:
+        led_prov = (args.resume or "").split(":")[0] or args.provider
         if args.ledger:
-            _append_ledger(args.ledger, {"provider": args.provider, "error": str(e)[:300]})
-        print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
+            _append_ledger(args.ledger, {"provider": led_prov, "error": str(e)[:300]})
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
         sys.exit(1)

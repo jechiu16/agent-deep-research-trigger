@@ -25,5 +25,5 @@ You are the **Organizer**. The full contract — workers manifest, Research Stat
 
 - Missing key → name the env var（`PERPLEXITY_API_KEY`／`OPENAI_API_KEY`／`GEMINI_API_KEY`／`DEEPSEEK_API_KEY`; `S2_API_KEY` optional）and both `.env` locations（project cwd ／ this skill's directory）.
 - While async workers run, tell the user what's running and the expected time, and keep the conversation going.
-- The research contract: one AskUserQuestion presenting the preset paths（快查／日常／拍板）with your inferred pick marked Recommended; "Other" covers per-axis customization（depth／independence／strictness）. Skip the card for obvious quick questions.
+- The research contract is HARNESS's three axes (depth × independence × strictness). Present them in one AskUserQuestion whose options are the preset paths（快查／日常／拍板）— but each option's description must **spell out its three axis values** so the axes are visible, not hidden（e.g. 拍板 = 深／跨家族+盲驗／追到底）. Mark your inferred pick Recommended; "Other" lets the user set the three axes individually. Skip the card for obvious quick questions.
 - Poll caps: perplexity 20 min ／ openai 45 min ／ gemini 30 min（`--timeout-min` overrides）; on timeout the error JSON carries `resume` — recover, never re-pay.
