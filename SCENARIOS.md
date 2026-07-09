@@ -50,6 +50,12 @@ disputes: C2 needs official DPA or support statement
 
 Use these to forward-test whether the skill activates the right behavior without leaking expected answers.
 
+For complete expected-session examples, see [examples/transcripts](examples/transcripts). Validate them with:
+
+```bash
+python scripts/validate_transcripts.py
+```
+
 ```text
 /deep Compare whether SQLite or DuckDB is the better default for local analytics in a Python desktop app.
 ```

@@ -38,7 +38,9 @@
 | [AGENTS.md](AGENTS.md) | Codex binding。說明 discovery、安裝接線方式與 Codex 的操作規則。 |
 | [scripts/deep_research.py](scripts/deep_research.py) | 內建 worker CLI。一次呼叫就是一次 action；支援可恢復任務；stdout 輸出 JSON。 |
 | [scripts/doctor.py](scripts/doctor.py) | 本機 readiness check：Python、套件、API keys、provider availability、reports 可寫性。 |
+| [scripts/validate_transcripts.py](scripts/validate_transcripts.py) | Golden `/deep` transcripts 的結構驗證器。 |
 | [examples/quickstart](examples/quickstart) | no-network demo path 產生的 sample state、ledger、report。 |
+| [examples/transcripts](examples/transcripts) | quick fact、literature review、decision-critical 三種 `/deep` golden transcripts。 |
 | [requirements.txt](requirements.txt) | Network workers 與 `.env` 載入所需的常用 Python dependencies。 |
 | [.env.example](.env.example) | Worker provider 的 API key 範本。 |
 
@@ -144,6 +146,14 @@ python scripts/deep_research.py --provider demo \
 
 預期結果：`doctor.py` 會列出 provider readiness；demo worker 會在 stdout 印出單一 JSON object，在 `reports/` 寫入 report，並 append 一行 ledger。範例產物請見 [examples/quickstart](examples/quickstart)。
 
+## Golden Transcript 驗證
+
+Golden transcripts 展示 quick fact、literature review、decision-critical 三種 `/deep` session 應該長什麼樣子。用下面指令檢查結構：
+
+```bash
+python scripts/validate_transcripts.py
+```
+
 ## Worker 依賴
 
 安裝共用依賴：
@@ -199,6 +209,7 @@ PY=python3
 
 ```bash
 python scripts/doctor.py
+python scripts/validate_transcripts.py
 "$PY" scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
 "$PY" scripts/deep_research.py --provider sonar "quick question"
 "$PY" scripts/deep_research.py --provider cascade "scout this research question"

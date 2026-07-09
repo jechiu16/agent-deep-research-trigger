@@ -38,7 +38,9 @@ Most deep-research workflows are single-engine, one-shot, and hard to audit. Thi
 | [AGENTS.md](AGENTS.md) | Codex binding. Explains discovery, install wiring, and Codex-native operating rules. |
 | [scripts/deep_research.py](scripts/deep_research.py) | Bundled worker CLI. One call, one action, resumable where supported, JSON on stdout. |
 | [scripts/doctor.py](scripts/doctor.py) | Local readiness check for Python, packages, keys, provider availability, and writable reports. |
+| [scripts/validate_transcripts.py](scripts/validate_transcripts.py) | Structural validator for golden `/deep` transcripts. |
 | [examples/quickstart](examples/quickstart) | Sample state, ledger, and report artifacts from the no-network demo path. |
+| [examples/transcripts](examples/transcripts) | Golden transcripts for quick fact, literature review, and decision-critical runs. |
 | [requirements.txt](requirements.txt) | Common Python dependencies for network workers and `.env` loading. |
 | [.env.example](.env.example) | API key template for worker providers. |
 
@@ -144,6 +146,14 @@ python scripts/deep_research.py --provider demo \
 
 Expected result: `doctor.py` prints provider readiness, the demo worker prints one JSON object on stdout, writes a report under `reports/`, and appends one ledger line. See [examples/quickstart](examples/quickstart) for sample artifacts.
 
+## Golden Transcript Validation
+
+Golden transcripts show the expected `/deep` session shape for quick fact, literature review, and decision-critical research. Validate their structure with:
+
+```bash
+python scripts/validate_transcripts.py
+```
+
 ## Worker Dependencies
 
 Install the common dependencies:
@@ -199,6 +209,7 @@ Run workers directly:
 
 ```bash
 python scripts/doctor.py
+python scripts/validate_transcripts.py
 "$PY" scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
 "$PY" scripts/deep_research.py --provider sonar "quick question"
 "$PY" scripts/deep_research.py --provider cascade "scout this research question"
