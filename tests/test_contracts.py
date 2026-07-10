@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import copy
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from research_harness.contracts import normalize_contract, validate_contract
+from research_harness.providers import (
+    ProviderRegistryError,
+    load_provider_registry,
+    preflight_contract_routes,
+    provider_registry_sha256,
+    validate_provider_registry,
+)
+from tests.helpers import confirmed_medium_contract, draft_medium_contract, write_overlay
+
+
+class ContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = load_provider_registry()
+        self.contract = confirmed_medium_contract(self.registry)
+
+    def test_confirmed_contract_normalizes_all_physical_ceilings(self) -> None:
+        contract = normalize_contract(self.contract)
+        self.assertEqual(contract["resource_envelope"]["physical_ceiling"]["host_retrieval"], 3)
+        self.assertEqual(contract["resource_envelope"]["physical_ceiling"]["local"], 1)
+        self.assertEqual(contract["resource_envelope"]["physical_ceiling"]["organizer_pass"], 1)
+        self.assertEqual(validate_contract(contract, self.registry), [])
+
+    def test_unconfirmed_contract_is_rejected(self) -> None:
+        contract = draft_medium_contract()
+        self.assertIn("contract is not user-confirmed", validate_contract(contract, self.registry))
+
+    def test_malformed_contract_returns_errors_instead_of_raising(self) -> None:
+        malformed = {"resource_envelope": "not-an-object"}
+        errors = validate_contract(malformed, self.registry)
+        self.assertIn("contract is not user-confirmed", errors)
+        self.assertIn("resource envelope is required", errors)
+
+    def test_explicit_empty_registry_is_not_replaced_by_default(self) -> None:
+        errors = validate_contract(self.contract, {})
+        self.assertIn("provider registry schema_version must be 1.0", errors)
+
+    def test_confirmation_binds_card_and_resolved_registry_hashes(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["resource_envelope"]["physical_ceiling"]["host_retrieval"] += 1
+        self.assertIn(
+            "confirmed card hash does not match contract",
+            validate_contract(contract, self.registry),
+        )
+
+    def test_confirmed_contract_rejects_different_registry_overlay(self) -> None:
+        host = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "host-web"))
+        host["roles"] = ["scout", "fetch"]
+        with tempfile.TemporaryDirectory() as tempdir:
+            overlay = write_overlay(Path(tempdir) / "overlay.json", [host])
+            overlaid = load_provider_registry(overlay=overlay)
+        errors = validate_contract(self.contract, overlaid)
+        self.assertIn("confirmed registry hash does not match resolved registry", errors)
+
+    def test_preflight_records_presence_without_secret_values(self) -> None:
+        records, errors = preflight_contract_routes(
+            self.contract,
+            self.registry,
+            {"TOKEN": "secret-value"},
+        )
+        self.assertEqual(errors, [])
+        self.assertNotIn("secret-value", json.dumps(records))
+
+    def test_negative_or_boolean_ceiling_is_rejected(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["resource_envelope"]["physical_ceiling"]["deep"] = True
+        self.assertIn(
+            "physical ceiling deep must be a non-negative integer",
+            validate_contract(contract, self.registry),
+        )
+
+    def test_contract_requires_exactly_one_primary_scout(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["stage_permit_map"].append(copy.deepcopy(contract["stage_permit_map"][0]))
+        self.assertIn(
+            "exactly one primary_scout mapping with one invocation is required",
+            validate_contract(contract, self.registry),
+        )
+
+    def test_host_external_and_local_envelopes_are_distinct(self) -> None:
+        contract = normalize_contract(self.contract)
+        self.assertEqual(contract["resource_envelope"]["host"]["context_class"], "standard")
+        self.assertEqual(contract["resource_envelope"]["external"]["metered_ceiling"]["probe"], 0)
+        self.assertEqual(contract["resource_envelope"]["external"]["metered_ceiling"]["transport"], 0)
+        self.assertEqual(contract["resource_envelope"]["local"]["admitted_output_characters"], 12000)
+        self.assertEqual(contract["resource_envelope"]["local"]["max_wall_time_seconds"], 900)
+
+    def test_metered_subceiling_cannot_exceed_physical_ceiling(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["resource_envelope"]["external"]["metered_ceiling"]["deep"] = 2
+        self.assertIn("metered ceiling deep exceeds physical ceiling", validate_contract(contract, self.registry))
+
+    def test_network_experiment_requires_endpoint_policy(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["resource_envelope"]["physical_ceiling"]["network_experiment"] = 1
+        contract["resource_envelope"]["external"]["metered_ceiling"]["network_experiment"] = 1
+        self.assertIn("network experiment endpoint policy is required", validate_contract(contract, self.registry))
+
+    def test_route_must_exist_and_support_stage_category(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["stage_permit_map"][0]["route"] = "unknown-search"
+        self.assertIn(
+            "route unknown-search is not enabled in capability registry",
+            validate_contract(contract, self.registry),
+        )
+        contract["stage_permit_map"][0]["route"] = "deepseek"
+        self.assertIn(
+            "route deepseek is not enabled in capability registry",
+            validate_contract(contract, self.registry),
+        )
+
+    def test_physical_count_must_match_route_multiplicity(self) -> None:
+        contract = copy.deepcopy(self.contract)
+        contract["stage_permit_map"][0]["count"] = 2
+        self.assertIn(
+            "route host-web invocation/count must be 1/1 for host_retrieval",
+            validate_contract(contract, self.registry),
+        )
+
+    def test_registry_overlay_can_add_disabled_candidate(self) -> None:
+        candidate = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "brave"))
+        candidate["docs_verified_at"] = "2026-07-11"
+        with tempfile.TemporaryDirectory() as tempdir:
+            overlay = write_overlay(Path(tempdir) / "overlay.json", [candidate])
+            registry = load_provider_registry(overlay=overlay)
+        self.assertEqual(validate_provider_registry(registry), [])
+        brave = next(p for p in registry["providers"] if p["id"] == "brave")
+        self.assertFalse(brave["enabled"])
+
+    def test_registry_overlay_cannot_enable_unbound_candidate(self) -> None:
+        candidate = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "brave"))
+        candidate["enabled"] = True
+        with tempfile.TemporaryDirectory() as tempdir:
+            overlay = write_overlay(Path(tempdir) / "overlay.json", [candidate])
+            with self.assertRaises(ProviderRegistryError):
+                load_provider_registry(overlay=overlay)
+
+    def test_registry_overlay_rejects_duplicate_provider_records(self) -> None:
+        candidate = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "brave"))
+        with tempfile.TemporaryDirectory() as tempdir:
+            overlay = write_overlay(Path(tempdir) / "overlay.json", [candidate, candidate])
+            with self.assertRaises(ProviderRegistryError):
+                load_provider_registry(overlay=overlay)
+
+    def test_registry_overlay_cannot_change_binding_or_multiplicity(self) -> None:
+        host = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "host-web"))
+        variants = []
+        changed_binding = copy.deepcopy(host)
+        changed_binding["execution_binding"] = "v2_request_boundary"
+        variants.append(changed_binding)
+        changed_count = copy.deepcopy(host)
+        changed_count["request_multiplicity"]["host_retrieval"] = 2
+        variants.append(changed_count)
+        broader_storage = copy.deepcopy(host)
+        broader_storage["storage_rights"]["payload_retention"] = "persistent"
+        broader_storage["storage_rights"]["html_allowed"] = True
+        variants.append(broader_storage)
+        with tempfile.TemporaryDirectory() as tempdir:
+            for index, variant in enumerate(variants):
+                with self.subTest(index=index):
+                    overlay = write_overlay(Path(tempdir) / f"overlay-{index}.json", [variant])
+                    with self.assertRaises(ProviderRegistryError):
+                        load_provider_registry(overlay=overlay)
+
+    def test_enabled_external_route_requires_bound_interceptor_and_adoption(self) -> None:
+        registry = copy.deepcopy(self.registry)
+        sonar = next(p for p in registry["providers"] if p["id"] == "sonar")
+        sonar["enabled"] = True
+        errors = validate_provider_registry(registry)
+        self.assertIn("enabled external route sonar is not v2-bound", errors)
+        sonar["execution_binding"] = "v2_request_boundary"
+        errors = validate_provider_registry(registry)
+        self.assertIn("enabled external route sonar lacks adoption evidence", errors)
+
+    def test_enabled_external_adoption_evidence_must_be_nonempty(self) -> None:
+        registry = copy.deepcopy(self.registry)
+        sonar = next(p for p in registry["providers"] if p["id"] == "sonar")
+        sonar["enabled"] = True
+        sonar["execution_binding"] = "v2_request_boundary"
+        sonar["adoption_status"] = "validated"
+        sonar["adoption_evidence"] = []
+        sonar["storage_rights"]["payload_retention"] = "session"
+        errors = validate_provider_registry(registry)
+        self.assertIn("enabled external route sonar lacks adoption evidence", errors)
+
+    def test_enabled_route_rejects_sunset_or_unknown_storage_policy(self) -> None:
+        registry = copy.deepcopy(self.registry)
+        host = next(p for p in registry["providers"] if p["id"] == "host-web")
+        host["lifecycle"]["status"] = "sunset"
+        host["storage_rights"]["payload_retention"] = "unknown"
+        errors = validate_provider_registry(registry)
+        self.assertIn("enabled route host-web is sunset", errors)
+        self.assertIn("enabled route host-web has unknown storage rights", errors)
+
+    def test_registry_hash_does_not_depend_on_record_order(self) -> None:
+        reversed_registry = copy.deepcopy(self.registry)
+        reversed_registry["providers"].reverse()
+        self.assertEqual(
+            provider_registry_sha256(self.registry),
+            provider_registry_sha256(reversed_registry),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
