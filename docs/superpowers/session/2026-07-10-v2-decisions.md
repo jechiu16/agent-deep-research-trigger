@@ -1,0 +1,90 @@
+# V2 Research Harness Session Decisions
+
+This file is the alignment ledger for the design session that produced the v2 harness specification. It summarizes user-confirmed decisions, rejected alternatives, unresolved proof obligations, and the current implementation boundary. It is not a substitute for the normative design spec.
+
+## North Star
+
+Build one explicit-trigger research skill that supports architecture and other difficult development decisions inside the current session. It must offer user-controlled cost, sufficient depth, fail-closed reliability, scientific handling of ambiguous problems, efficient use of frontier model reasoning, and a simple host-neutral implementation suitable for a high-quality public repository.
+
+## Confirmed Product Decisions
+
+| Decision | Session conclusion | Alignment check |
+|---|---|---|
+| Trigger | Only explicit `/deep` activates the harness. Ordinary research requests do not. | Host bindings and examples must preserve explicit trigger semantics. |
+| Spend authority | Every run presents a contract card and waits for user confirmation before research spend or external execution. The user pulls the trigger. | Runtime refuses physical permits without `confirmed_by=user` and `confirmed_at`. |
+| Cost control | Control physical request counts, not nominal Deep Research dollar price. Price remains an estimate because one call has variable provider-side work. | Contract and ledger expose exact call ceilings and measured cost separately. |
+| User-facing axes | Use `epistemic posture x cost tier`, not `depth x independence x strictness`. | Canonical contract and runtime docs use only the v2 axes. |
+| Cost tiers | Preserve Low, Medium, and High. A tier limits stage capacity rather than granting unrelated maxima that invite every tool to run. | Stage permit map expands to exact route-specific ceilings. |
+| Organizer | The current selected host model is the Organizer. Do not hardcode Sonnet, Luna, or another model. | Core runtime contains no Organizer model identifier requirement. |
+| Scientific behavior | Ambiguous scientific and decision problems use hypotheses, falsifiers, discriminating checks, surprise-driven reframing, and inference-joint verification. Narrow lookup problems avoid artificial hypothesis theater. | Posture-specific gates and fixtures distinguish lookup from scientific/decision work. |
+| Reinforcement | Medium and High both retain adaptive post-result reinforcement. Medium reserves one challenge; High adds another challenge/adjudication capacity and context-separated verification. | Tier gates and permit map prevent discovery from consuming reserved capacity. |
+| Anti-lock-in | A provisional conclusion in Medium/High scientific or decision posture triggers an explicit disconfirming checkpoint. | `PASS` validation requires the checkpoint record when applicable. |
+| Coverage audit | Medium/High scientific or decision work checks omitted premises and boundary conditions. This reduces omission risk but does not prove unknown-unknown completeness. | Delivery and report keep the limitation visible. |
+| Tool palette | Compose only the APIs already present: host WebSearch/fetch, local inspection, Sonar, Scholar, Perplexity, OpenAI, Gemini, DeepSeek, and demo. | Router and docs do not invent an unavailable provider. |
+| Scout choice | Choose exactly one primary scout route. Host retrieval is best for known primary/source-of-record targets; Sonar is valuable for broad orientation and context compression; Scholar handles paper discovery; local handles project truth. | Contract records the chosen scout; runtime rejects hidden multi-scout expansion. |
+| Deep Research | Deep Research is an optional investigation action, not the default scout and not a required call in every tier. | Unused deep capacity remains unspent. |
+| DeepSeek | Optional cheap supplied-material processor or blind analyst audit. It adds analyst diversity, not source-origin independence, and is not default Medium retrieval. | Processor cannot write canonical state or clear empirical corroboration alone. |
+| Branch output | Do not trust providers to emit canonical conclusions. Preserve raw output, build deterministic branch manifests, and accept only validated minimal evidence deltas. | Worker integration must validate IDs, excerpts, and lineage before promotion. |
+| Canonical artifacts | Use canonical JSON plus deterministic human-readable HTML. Do not persist a second full Markdown report. A compact Markdown/JSON projection may be emitted to stdout for host consumption. | `state.json` is semantic truth; HTML contains its hash. |
+| Information preservation | Load-bearing evidence keeps exact excerpts and raw offsets. Normalized excerpts are allowed only for non-load-bearing convenience. | Validator rejects invented or missing load-bearing excerpts. |
+| Independence | Multiple models or retrieval tools do not create source independence when they cite one upstream origin. | Promotion rules use source-origin IDs, not model votes. |
+| High verifier | High cannot return `PASS` without a context-separated verifier that did not produce the candidate conclusion. | Hard validation gate. |
+| Host context | Host search may be zero marginal API dollars but still costs tokens, latency, and attention. Track admitted context and acknowledge host-native observability limits. | Contract shows host context class and admitted-evidence ceiling. |
+| Local experiments | Local project evidence is a first-class differentiator. Pure local actions have no network egress; live integration requests use explicit network-experiment permits. | Runtime accounting cannot hide external requests under `local`. |
+| Async safety | Accepted-but-unconfirmed submissions consume permits and become `uncertain`; they are never automatically resubmitted. Poll/resume/download requests consume bounded transport slots. | Event state machine and tests cover uncertainty and transport ceilings. |
+| Raw retention | Artifacts carry hash, size, media type, sensitivity, retention, availability, and HTML policy. Purging load-bearing evidence invalidates `PASS` and triggers revalidation. | Purge is a semantic transition, not filesystem-only deletion. |
+| Delivery | Final research output is optimized for continuing development: safe invariants, reversible assumptions, disputes, experiments, acceptance tests, flip conditions, and research debt. | HTML and machine view expose engineering handoff fields. |
+
+## Evaluation Decisions
+
+| Decision | Session conclusion | Alignment check |
+|---|---|---|
+| Fixed suite | Do not hardcode a 16-task suite or `12/16` gate without variance or power evidence. | Evaluation uses a coverage matrix and predeclared sequential stopping. |
+| Paired baseline | Compare direct Deep Research against `/deep` Medium and applicable High tasks under comparable inputs. | Baseline stays blind to v2 state and local results. |
+| Statistical unit | Independent task is the paired unit; repeated runs estimate within-task variance and are not independent samples. | Evaluation code must avoid pseudoreplication. |
+| Utility | Score factual reliability together with useful safe action, false `PASS`, and avoidable abstention. | Primary utility and secondary diagnostics are both retained. |
+| Tier claims | Medium superiority and High release have separate ledgers and stopping rules. Medium evidence cannot validate High. | Release labels are tier-specific. |
+| Prospective evidence | Keep a small prospective lane for unresolved predictions or hidden local outcomes. Only resolved outcomes may update reusable guidance. | Self-improvement never trains on unresolved self-judgment. |
+| Paid tests | No paid paired run occurs without an explicit evaluation call budget. | Current deterministic implementation slice makes zero paid calls. |
+
+## Discoverative Intelligence Comparison
+
+The Apodex/FutureFlow comparison contributed five ideas worth retaining: explicit anti-lock-in after a provisional candidate, trajectory evidence rather than model voting, structural verifier separation, prospective/live evaluation, and realized information gain. The design intentionally rejects 150-agent scale, automatic self-evolution from unresolved outcomes, generic numeric confidence theater, and literal verification of every step.
+
+## Rejected Architectures
+
+- Fixed provider pipelines per tier.
+- Always using Host WebSearch before Sonar or always using both.
+- Independent Host/probe/deep maxima that encourage spending every allowance.
+- Routine `cascade` first wave.
+- Default DeepSeek processing in Medium or two standard DeepSeek calls in High.
+- Worker/model agreement as empirical corroboration.
+- Mandatory competing hypotheses for source-of-record lookup.
+- Provider-generated canonical branch conclusions.
+- Full persisted Markdown plus HTML plus JSON duplicates.
+- Dollar estimates presented as enforceable hard caps.
+- Fixed 16-task release proof.
+
+## Credential and Runtime Readiness
+
+- Global Codex and Claude skill installations share the same user-protected credential file.
+- Current doctor preflight reports demo, Scholar/S2, Sonar, cascade, Perplexity, OpenAI, Gemini, and DeepSeek ready.
+- The credential itself must never appear in state, reports, tests, diffs, or command output.
+- One unrelated pre-existing OpenAI async job exists in the `parallax` reports ledger; v2 work must not resume or resubmit it accidentally.
+
+## Current Implementation Boundary
+
+At the start of the v2 runtime-foundation branch, the repository runtime is still v1: Markdown state, `depth x independence x strictness`, advisory rather than mechanical quota, and Markdown worker reports. The v2 design spec is committed, but implementation proof does not yet exist.
+
+The first implementation slice covers confirmed contracts, canonical JSON, atomic state/events, physical permit enforcement, fail-closed lineage validation, deterministic HTML, host-neutral CLI, and runtime documentation. Worker transport enforcement, full Organizer adaptive protocol, comparative evaluation, installer polish, CI, and public release remain named follow-on plans and must not be claimed complete after the first slice.
+
+## Alignment Checkpoint
+
+At every task boundary:
+
+1. Compare the diff against this ledger and the normative design spec.
+2. Identify any confirmed decision the code contradicts.
+3. Identify any behavior the current tests do not prove.
+4. Mark scope outside the current slice as deferred by name, not silently omitted.
+5. Re-run the relevant deterministic tests before committing.
+6. Ask a blind reviewer for concrete Critical/High bypass, data-loss, privacy, and contract-drift findings before slice completion.
