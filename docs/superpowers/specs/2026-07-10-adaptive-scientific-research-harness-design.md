@@ -6,6 +6,8 @@ Date: 2026-07-10
 
 Scope: Redesign `/deep` as a bounded, evidence-gated research harness for development decisions.
 
+Provider portfolio: [Adaptive Provider Portfolio Design](2026-07-10-provider-portfolio-design.md). Installed APIs are the verified baseline, not a permanent boundary; provider enablement is capability- and benchmark-gated.
+
 ## 1. Executive Decision
 
 `/deep` v2 will optimize for decision quality under a user-approved call budget, not for report volume or model consensus.
@@ -51,7 +53,8 @@ The v2 harness must:
 - generate a readable static HTML report without another model call;
 - deliver engineering constraints, reversible assumptions, tests, and resume triggers;
 - fail honestly when evidence cannot satisfy the selected tier;
-- demonstrate improvement through paired baseline evaluations.
+- demonstrate improvement through paired baseline evaluations;
+- add, retire, or reclassify providers through a versioned capability registry and adapter contract without changing canonical evidence, quota, or delivery semantics.
 
 ## 4. Non-Goals
 
@@ -149,12 +152,13 @@ Quotas are ceilings, not spending targets. A tier limits stage capacity; it does
 | `medium` | 1 | at most 1 | 1 reserved challenge | independent pass; fresh context preferred | 0 by default |
 | `high` | 1 | at most 2 | 2 challenge or adjudication actions | context-separated verifier required | optional 1 |
 
-A primary scout route is one bounded orientation path selected from host WebSearch/fetch, Sonar, Scholar, or local inspection. The run does not execute several scout routes merely because they are individually cheap. Local inspection may accompany another scout only when it tests project applicability rather than duplicating web discovery.
+A primary scout route is one bounded orientation path selected from the confirmed capability registry. Typical classes are direct host retrieval, an independent general index, a scholarly index or registry, a compressed retrieval service, or local inspection. The run does not execute several scout routes merely because they are individually cheap. Local inspection may accompany another scout only when it tests project applicability rather than duplicating web discovery.
 
-The contract card records two separate resource envelopes:
+The contract card records three separate resource envelopes:
 
 - **external envelope**: exact physical ceilings for all provider probes, Deep Research submissions, and processor calls, with the metered subset identified separately;
-- **host envelope**: `lean`, `standard`, or `extended` context class plus an explicit admitted-evidence ceiling in characters and estimated tokens. The numeric ceiling is selected for the current host and shown on the card; class names alone are not enforcement.
+- **host envelope**: `lean`, `standard`, or `extended` context class plus explicit admitted-evidence ceilings in characters and estimated tokens. The numeric ceilings are selected for the current host and shown on the card; class names alone are not enforcement;
+- **local envelope**: exact local action count, wall time, admitted command-output characters, and a default-deny network-egress declaration.
 
 All external requests are logged, including free or keyless retrieval, but only metered requests consume the user-approved spend envelope. Host actions do not consume external-call quota; they still record search count, fetch count, admitted characters or estimated tokens, wall time, target claims, and realized state change. Harness-managed views and extracted evidence must refuse to exceed the admitted-evidence ceiling. Host-native tool output that bypasses this mechanism is recorded as an observability limitation, so the harness does not claim a hard bound on total platform context usage.
 
@@ -173,6 +177,8 @@ A **logical stage** is a required epistemic function. A **physical action** is o
 - `transport`: one poll, resume, stream reconnect, or artifact-download request that harvests an already authorized job without initiating or expanding research;
 - `organizer_pass`: an in-context transformation or review with no external request.
 
+The stage map separates logical `invocations` from physical request `count`. A normal route is `1/1`; a composite route such as the legacy `cascade` may be one scout invocation whose registry-declared expansion consumes four probe requests. Exactly one primary-scout mapping with `invocations=1` is required, while its physical `count` must equal the route's declared multiplicity. Quota acquisition and spend reporting always use physical request count, never the logical route count.
+
 One physical action may contribute evidence to several later stages, but it has exactly one primary stage in the ledger. If a Deep Research submission is shaped as a challenge, for example, it consumes both one logical challenge slot and one physical `deep` permit; the logical label never hides the provider call. Separation requirements override reuse: an action that produced or materially shaped the provisional conclusion cannot also satisfy anti-lock-in or independent-verifier requirements.
 
 The preset stage map is:
@@ -190,7 +196,7 @@ The preset stage map is:
 
 For Medium, verification and coverage audit may share one fresh pass, but anti-lock-in remains a prior separate action. For High, the context-separated verifier may also perform the blind premise-coverage audit, but it cannot have participated in scouting, investigation, candidate production, or anti-lock-in. An external verifier or auditor consumes a `processor` permit; a host-native fresh-context agent consumes the declared host-action and context envelopes instead.
 
-The contract card contains a `stage_permit_map` that expands every planned stage into exact physical ceilings. Presets constrain this map; they do not infer hidden free actions. Runtime validation rejects a route whose expanded probe, deep, processor, network-experiment, transport, local-output, or requested host-action count exceeds the confirmed card.
+The contract card contains a `stage_permit_map` that expands every planned stage into exact logical invocations and physical request ceilings. Presets constrain this map; they do not infer hidden free actions. Every route must be enabled in the registry and compatible with the requested stage, category, multiplicity, privacy, retention, and lifecycle policy. Runtime validation rejects a map whose expanded probe, deep, processor, network-experiment, transport, local, organizer-pass, or requested host-action count exceeds the confirmed card.
 
 ### 7.2 Low
 
@@ -247,14 +253,15 @@ Reason: <why this posture fits>
 
 Tier: <low|medium|high|custom>
 Adaptive cycles: <n>
-Primary scout route: <host-web|sonar|scholar|local|custom>
+Primary scout route: <enabled registry route id and index family>
+Provider registry: <version/hash>; referenced route records=<ids>
 Host context class: <lean|standard|extended>
 Admitted evidence ceiling: <=<characters and estimated tokens>
 Expected total context footprint: <estimate plus observability limits>
 External quota: provider probes<=<n> (metered<=<n>), deep<=<n>, processor<=<n>
 Transport and network experiments: transport requests<=<n> (metered<=<n>), external experiment requests<=<n>, max wall time=<duration>
 Other external retrieval: <tracked but unmetered actions>
-Stage permit map: <stage -> physical action type and ceiling>
+Stage permit map: <stage -> route, logical invocations, physical action type and request ceiling>
 Raw storage ceiling: <=<size>; sensitive retention=<policy>
 Reserved capacity: <what cannot be consumed by discovery>
 Local experiment: <required|planned|not feasible, with reason>
@@ -264,7 +271,10 @@ Estimated latency: <range>
 Estimated spend: <historical or list-price range; not a hard ceiling>
 Stop behavior: PASS, PARTIAL, or BLOCKED; no unapproved extra calls
 Privacy: <external egress summary>
+Confirmation binding: card_sha256=<hash>; registry_sha256=<hash>; referenced_records_sha256=<hash>
 ```
+
+The user confirms bytes, not a mutable route name. `card_sha256` covers the normalized contract card excluding the confirmation object; the other hashes cover the exact resolved registry and referenced route records shown before confirmation. Initialization and every permit acquisition reject a mismatch. Applying a different overlay, changing route multiplicity/privacy/retention, or editing any confirmed ceiling requires a new card and confirmation.
 
 The current `depth x independence x strictness` user-facing contract is replaced by `epistemic posture x cost tier`. Independence and strictness remain internal quality-gate requirements derived from claim type, posture, and tier.
 
@@ -329,12 +339,15 @@ The ordinal inputs remain Organizer judgment. Deterministic code enforces rankin
 
 The Scout Router selects exactly one primary route:
 
-- host WebSearch/fetch for known primary sources, narrow verification, or low-page-count questions;
-- Sonar for broad orientation, terminology discovery, alternate-index retrieval, or compressing many candidate pages into a bounded scout artifact;
-- Scholar for paper discovery and citation trails;
+- direct host fetch or a source-of-record adapter for known official sources, registries, repositories, standards, package metadata, vulnerabilities, or a bounded low-page-count target;
+- an enabled independent general index for open-web discovery when freshness, regional coverage, or raw ranked candidates are load-bearing;
+- an enabled semantic or compressed retrieval route when terminology is weak, long-tail discovery matters, or host-context efficiency dominates raw ranking;
+- an enabled scholarly index or registry for papers, identifiers, citation trails, and field-specific corpora;
 - local inspection for project-specific facts that the web cannot establish.
 
-Routing first applies decisive shape rules: project-local truth selects local inspection; explicit paper or citation-trail discovery selects Scholar; a known source of record or a bounded set of at most three target pages selects host retrieval; broad terminology discovery or many unknown candidate sources selects Sonar. When more than one rule applies, use the action tuple and stable tie-break above rather than a fixed provider preference.
+Routing first applies decisive shape rules: project-local truth selects local inspection; a recognized source-of-record domain selects its direct adapter or host fetch; explicit paper or citation-trail discovery selects a scholarly route; a known official target or bounded page set selects host retrieval; broad current discovery selects an independent index; poorly named or semantic long-tail discovery selects a semantic/compressed route. When more than one rule applies, use the action tuple and stable tie-break above rather than registry order or a fixed provider preference.
+
+The registry describes what a route can do; retained benchmark evidence estimates where it performs well. Neither registry order, list price, free-tier availability, nor a provider's marketing label can select a route by itself. A route whose index family or upstream provenance is unknown may still discover candidates, but it cannot satisfy an independent-index requirement.
 
 Deep Research is an investigation action, not a scout default. A processor is an exception for context offload or analyst diversity, not another routine stage.
 
@@ -404,7 +417,7 @@ Return `PASS` only when every required gate passes. Return `PARTIAL` when some u
 
 ## 10. Host WebSearch and Fetch
 
-Host retrieval is the default precision instrument when available.
+Host retrieval is the default precision instrument for direct reading and known targets when available; it is not a mandatory first scout for every problem.
 
 Discovery and verification are separate passes:
 
@@ -417,15 +430,17 @@ Host search may share an index family with an external worker. Independence is j
 
 If host retrieval is unavailable, the contract card discloses the substitution and may recommend more external probe permits.
 
-Host retrieval and Sonar are routing alternatives, not a fixed sequence:
+Host retrieval, independent indexes, semantic/compressed routes, scholarly routes, and source-of-record adapters are routing alternatives, not a fixed sequence:
 
 | Problem shape | Preferred scout | Typical verification |
 |---|---|---|
 | known official or source-of-record target | host search/fetch | direct primary read; no Sonar by default |
-| broad or poorly named landscape | Sonar | host fetch of the strongest T1/T2 candidates |
-| academic literature | Scholar or Sonar | host fetch of primary papers |
+| recognized repository, package, standards, or vulnerability fact | direct source-of-record adapter | inspect the canonical record and version/date |
+| broad current open-web landscape | enabled independent index | direct fetch of the strongest primary candidates |
+| poorly named or semantic long-tail landscape | enabled semantic/compressed route | direct fetch plus alternate-family challenge when justified |
+| academic literature | enabled scholarly index or registry | host fetch of primary papers and identifier metadata |
 | high-risk decision | route with best scope fit | host primary fetch plus local experiment |
-| host retrieval misses terminology or regional sources | Sonar | host inspection of returned sources |
+| host retrieval misses terminology or regional sources | enabled alternate index or semantic route | host inspection of returned sources |
 | alternate retrieval index needed | whichever route ran first | the other route as a targeted challenge |
 
 Search and fetch output admitted to Organizer context is a resource. The harness records returned characters or tokens when available, content actually admitted to state, primary-source hit rate, and realized state change. Raw pages remain artifacts and are not automatically copied into the working context.
@@ -455,6 +470,10 @@ When a relevant local experiment is feasible but omitted, Medium and High runs m
 |---|---|---|
 | host reasoning | framing, hypotheses, synthesis, inference audit, engineering translation | judgment, not external evidence |
 | host WebSearch/fetch | primary-source discovery and direct verification | evidence from fetched source origin |
+| direct source-of-record adapters | official repository, package, standards, vulnerability, product, or registry facts | canonical record evidence after direct inspection |
+| enabled independent-index route | current open-web discovery and alternate-family challenge | discovery occurrences; fetched source origin supplies evidence |
+| enabled semantic-search route | long-tail or weak-terminology discovery | discovery occurrences; fetched source origin supplies evidence |
+| enabled scholarly route | paper, identifier, corpus, and citation-graph discovery | metadata and candidate papers; paper claims require primary inspection |
 | `sonar` | narrow gap, alternate retrieval index, dispute adjudication | cited candidate evidence |
 | `cascade` | custom broad orientation when the problem is too vague for targeted probes | four physical probe calls; candidate evidence only |
 | `scholar` | paper discovery, terminology, citation trail | paper metadata; paper claims require primary inspection |
@@ -462,9 +481,18 @@ When a relevant local experiment is feasible but omitted, Medium and High runs m
 | `openai` | optional long retrieval/synthesis branch | candidate evidence from its cited sources |
 | `gemini` | optional long retrieval/synthesis branch | candidate evidence from its cited sources |
 | `deepseek` | optional supplied-material processor or blind analyst audit | derived analysis only; no retrieval evidence |
+| enabled fetch/extract fallback | recover a selected source after a classified direct-fetch failure | fetched bytes only; no discovery or independence credit |
 | `demo` | local contract test | never evidence |
 
-Provider selection uses task fit, available keys, source or index diversity, historical completion rate, latency, actual ledger cost, and the current weakest load-bearing uncertainty. No provider has a permanently privileged order.
+Provider selection uses task fit, available keys, source or index diversity, historical completion rate, latency, actual ledger cost, storage rights, privacy, lifecycle, and the current weakest load-bearing uncertainty. No provider has a permanently privileged order.
+
+### 12.1 Provider Portfolio Boundary
+
+The companion [provider portfolio design](2026-07-10-provider-portfolio-design.md) is normative for registry fields, index-family attribution, adoption benchmarks, deterministic result fusion, and current candidate recommendations. It may change faster than the epistemic core. A provider update cannot weaken quota, lineage, source-origin, retention, or `PASS` rules.
+
+Search services discover documents; they do not become evidence merely by returning a URL or synthesis. Direct source-of-record adapters outrank generic search when the question maps to a canonical registry or official API. A second search route is conditional on a recorded gap or pre-authorized High parallel challenge, and multiple brands backed by the same upstream index count as one retrieval family.
+
+`enabled=true` means executable through a v2-bound request boundary, not merely documented, credentialed, or available through a legacy CLI. An enabled external route requires a matching adapter/version, successful keyless-or-key preflight, active lifecycle, compatible privacy and storage policy, and named adoption evidence for its declared query classes. An overlay may add or restrict disabled metadata but cannot promote an unbound candidate. Until worker transport enforcement is integrated, existing external network providers remain disabled in the v2 runtime registry; host-native, local, and deterministic no-network demo routes are labeled separately and cannot be mistaken for mechanically intercepted external adapters or evidence sources.
 
 ## 13. DeepSeek Boundary
 
@@ -496,6 +524,7 @@ This mechanism bounds call-count exposure, not exact dollars. Provider-side sear
 
 Rules:
 
+- a network route cannot be enabled or acquire a v2 permit unless every outbound path in its adapter is bound to the common request interceptor; a legacy CLI or valid credential is insufficient;
 - acquire the matching physical permit before every harness-managed outbound request that can initiate or expand work, including `GET`, `POST`, streaming, SDK, and external experiment calls;
 - a Sonar retry consumes another probe permit;
 - `cascade` atomically reserves four probe permits before launching;
@@ -627,6 +656,9 @@ Promotion rules are explicit:
 
 Before `PASS`:
 
+- the bounded answer or decision is non-empty;
+- `summary.load_bearing_claim_ids` is non-empty and exactly matches claims marked load-bearing;
+- the confirmed contract's declared evidence floor is satisfied, so an empty claim set cannot pass vacuously;
 - every load-bearing claim has a recognized status;
 - every load-bearing claim traces to evidence and raw artifacts;
 - exact excerpts or direct local observations support each load-bearing claim;
@@ -738,11 +770,13 @@ The only canonical semantic state. Top-level sections are:
 schema_version
 session
 contract
+capabilities
 framing
 summary
 hypotheses
 planned_checks
 observations
+retrieval_occurrences
 claims
 evidence
 sources
@@ -757,21 +791,27 @@ verification
 artifact_index
 ```
 
-State updates use validated patches and atomic replacement. The Organizer never regenerates the entire file from prose when a small patch is sufficient.
+`capabilities` snapshots the full resolved provider-registry hash, exact route records referenced by the confirmed contract, and a separately recomputable referenced-records hash. Historical validation uses the immutable records and their own hash; it does not require a later live registry to match. `retrieval_occurrences` keeps provider result occurrence, document identity, index family, query/request provenance, and raw-payload references separate from claim support. Search snippets and provider rankings remain discovery metadata.
+
+State updates use transition-kind allowlisted, revision-checked validated patches and atomic replacement. Each accepted patch emits a state-revision event with previous and next hashes. `schema_version`, the user-confirmed `contract`, the capability snapshot, and session identity are immutable; changing cost, route meaning, or confirmation creates a newly confirmed session in v2. Organizer patches cannot modify the artifact index, and artifact transitions cannot upgrade claims or verdicts. The Organizer never regenerates the entire file from prose when a small patch is sufficient.
 
 ### 20.2 events.jsonl
 
-Append-only operational history only: contract confirmation, quota permits, worker attempts, submit IDs, resume tokens, completion, failure, cost, wall time, state revision, and report generation. It must not hold a competing prose summary.
+Append-only operational history only: contract confirmation, quota permits, worker attempts, submit IDs, resume tokens, completion, failure, cost, wall time, state revision, and report generation. It must not hold a competing prose summary. Storage exposes no generic arbitrary-event append: only typed domain operations may emit reserved quota, attempt, revision, recovery, purge, or render events while holding the session lock. A state transaction records the prior event-file byte boundary; recovery may truncate only a malformed trailing fragment proven to belong to that transaction, then append the hash-bound missing event. Unowned malformed bytes fail closed and are never silently discarded.
 
 Each completed action records expected and realized information gain: target claims, expected state delta, actual claims changed, hypotheses rejected or reframed, decision change, admitted context size, and a `zero_gain` marker. These measurements support later routing calibration but never rewrite policy automatically.
 
 ### 20.3 raw/
 
-Immutable provider responses, fetched-source snapshots when permitted, local experiment outputs, and processor outputs. Every artifact has a SHA-256, size, media type, sensitivity class, retention policy, and `include_in_html` flag recorded in `state.json`.
+Immutable provider responses when plan terms permit retention, fetched-source snapshots when permitted, local experiment outputs, and processor outputs. Every artifact has a SHA-256, size, media type, sensitivity class, retention policy, availability, origin kind, provenance IDs, and `include_in_html` flag recorded in `state.json`.
+
+Ingestion never accepts an origin-free file. A `provider_payload` or `processor_output` must name a provider and occurrence/attempt present in the immutable capability and provenance snapshot; its requested retention and HTML policy must fit that record's `storage_rights`. A `fetched_source` names its source and fetch occurrence, while `local_output` and `user_file` carry explicit local provenance and sensitivity review. Unknown or incompatible rights fail closed.
+
+When provider-result storage is forbidden or uncertain, the response remains ephemeral discovery data. The session may retain only explicitly permitted operational metadata and separately fetched source artifacts. Managed adapter spool files cannot enter the generic local/user ingestion path; they require the typed provider operation. This boundary protects against workflow mistakes and provider content, not a malicious filesystem owner who manually copies bytes and lies about origin. A URL or snippet that cannot be retained and directly resolved cannot support a canonical claim.
 
 Public web artifacts default to session retention. Local command output and user files default to `local-sensitive`, require redaction review before persistence, and are excluded from HTML. The contract records a raw-storage ceiling; artifacts above it remain external references or require explicit approval.
 
-A purge is a semantic state transition, not a filesystem-only deletion. Before removing bytes, the purge command atomically marks affected artifacts `purge_pending`, invalidates any `PASS` whose load-bearing lineage depends on them, and makes the current HTML stale. It then removes the content, verifies absence, writes `availability=purged` tombstones with hashes, timestamp, and reason, reruns all affected quality gates, and regenerates the report. A purged load-bearing artifact cannot satisfy the universal traceability gate: the run becomes `PARTIAL` only when a safe reversible action remains independent of that evidence; otherwise it becomes `BLOCKED`. Interruption at any purge phase leaves the run non-`PASS` until recovery completes.
+A purge is a semantic state transition, not a filesystem-only deletion. Before removing bytes, the purge command atomically marks affected artifacts `purge_pending`, persists target status/reason/former path, invalidates any `PASS` whose load-bearing lineage depends on them, and makes the current HTML stale. It then removes the content, verifies absence, writes `availability=purged` tombstones with hashes, timestamp, and reason, reruns all affected quality gates, and regenerates the report. A purged load-bearing artifact cannot satisfy the universal traceability gate: the run becomes `PARTIAL` only when a safe reversible action remains independent of that evidence; otherwise it becomes `BLOCKED`. The explicit recovery operation resumes a matching pending purge whether bytes remain or are already absent, completes the tombstone, validates the resulting snapshot, and regenerates HTML. Interruption at any purge phase leaves the run non-`PASS` until that recovery completes.
 
 ### 20.4 report.html
 
@@ -801,6 +841,7 @@ There is no persisted full Markdown report and no persisted handoff duplicate. F
 - processors run without tools and cannot write canonical state;
 - raw artifacts are escaped before HTML rendering;
 - raw artifacts carry sensitivity, retention, size, and HTML-inclusion metadata;
+- provider and processor artifacts carry immutable occurrence/attempt provenance and are rejected when snapshotted storage rights do not authorize the requested retention;
 - local-sensitive raw content is redacted or excluded rather than copied into the report;
 - secrets, API keys, and `.env` contents never enter state or reports;
 - local experiments avoid production systems and destructive actions.
@@ -833,6 +874,7 @@ scripts/
 ├── validate_state.py
 ├── quota.py
 ├── ledger.py
+├── provider_registry.json
 └── providers/
     ├── sonar.py
     ├── scholar.py
@@ -842,7 +884,7 @@ scripts/
     └── deepseek.py
 ```
 
-`deep_research.py` remains a thin provider CLI. Provider adapters own submit, poll, resume, extract, and raw-payload preservation. The host model owns the Organizer loop; Python enforces state, quota, provenance, validation, rendering, and recovery.
+`deep_research.py` remains a thin provider CLI. Provider adapters own submit, poll, resume, extract, raw-payload preservation, and a declared translation into the common occurrence/attempt schema. The versioned registry owns route capabilities and constraints; registry order is semantically meaningless. The host model owns the Organizer loop; Python enforces state, quota, provenance, validation, rendering, and recovery.
 
 The split is justified by independent testability, not abstraction for its own sake. Shared code is extracted only where quota, ledger, or provider contracts require it.
 
@@ -864,6 +906,10 @@ The split is justified by independent testability, not abstraction for its own s
 - branch manifests are deterministic and evidence deltas cannot reference missing IDs;
 - invalid or invented excerpts cannot update canonical state;
 - one selected scout route cannot silently expand into several routes;
+- unknown, disabled, sunset, privacy-incompatible, retention-incompatible, or stage-incompatible registry routes cannot acquire permits;
+- adding a registry record and compatible adapter does not require a change to canonical state, quota, validation, or rendering code;
+- result fusion preserves occurrences while clustering duplicate identifiers, URLs, redirects, content, publishers, and index families deterministically;
+- retrieval agreement cannot satisfy source-origin corroboration;
 - host-context accounting excludes raw artifacts that were not admitted;
 - artifact hashes detect mutation;
 - purging a load-bearing raw artifact invalidates `PASS`, revalidates affected claims, and makes stale HTML fail validation;
@@ -872,7 +918,7 @@ The split is justified by independent testability, not abstraction for its own s
 
 ### 24.2 Provider Contract Tests
 
-Use fixtures for success, timeout, terminal failure, schema drift, empty output, truncated output, missing citation lists, and raw-payload recovery. CI does not call paid providers.
+Use one shared adapter contract with fixtures for success, timeout, terminal failure, schema drift, empty output, truncated output, missing citation lists, forbidden retention, unknown index provenance, raw-payload recovery, and declared physical-request multiplicity. CI does not call paid providers.
 
 ### 24.3 Epistemic Scenario Tests
 
@@ -969,7 +1015,13 @@ Maintain a small rolling set of unresolved questions or hidden local experiments
 
 Prospective tasks supplement the regression and paired lanes; they do not block every release on calendar time.
 
-### 25.4 Baseline Protocol
+### 25.4 Provider Adoption Lane
+
+A new discovery or extraction provider remains disabled until it clears the companion portfolio's hard adoption gates and demonstrates material marginal value in its declared query strata. Evaluation compares route portfolios, not isolated marketing answers: primary/source-of-record yield, unique origin and publisher gain, exact-support yield, freshness, admitted tokens, cost, latency, failures, privacy, retention, and lifecycle are measured together.
+
+Adoption uses predeclared coverage strata, practical effect thresholds, a maximum call budget, and sequential evidence. The benchmark may stop early for clear harm, lifecycle/privacy failure, futility, or a clear practically meaningful gain. A provider can be enabled for one query class while remaining disabled elsewhere. An upstream or pricing change reopens the affected route's evidence; historical sessions retain their snapshotted capability records.
+
+### 25.5 Baseline Protocol
 
 The baseline is a single direct Deep Research submission using the original research target, framing assumptions, exclusions, and requested output language. It receives no v2 state, hypotheses, verification plan, local experiment results, or expected-answer information. It runs in a fresh context.
 
@@ -992,6 +1044,9 @@ Record:
 - host search/fetch actions;
 - Organizer context characters or tokens admitted;
 - primary-source hit rate by scout route;
+- novel canonical documents and independent publishers by index family;
+- exact-supported claims and admitted tokens per route;
+- provider error, rate-limit, latency, privacy, retention, and lifecycle outcomes;
 - realized state changes and `zero_gain` actions;
 - wall time;
 - actual reported API spend.
@@ -1017,6 +1072,7 @@ If a hard gate fails, the harness must not claim that it is more reliable than d
 ### Phase 1: Deterministic Foundation
 
 - physical-call quota and attempt ledger;
+- versioned provider capability registry and snapshotted route records;
 - session directory and canonical JSON state;
 - raw artifact preservation and hashes;
 - state schema and universal validator gates.
@@ -1033,6 +1089,8 @@ If a hard gate fails, the harness must not claim that it is more reliable than d
 
 - provider adapter split where required;
 - `cascade` physical-call enforcement;
+- direct source-of-record adapters and a common discovery-occurrence schema;
+- benchmark-gated Brave, scholarly, alternate-index, and fetch-fallback adapters from the provider portfolio;
 - optional DeepSeek JSON audit mode and excerpt validation;
 - fresh-context capability detection and honest downgrade labels.
 
@@ -1041,7 +1099,7 @@ If a hard gate fails, the harness must not claim that it is more reliable than d
 - updated transcripts and epistemic fixtures;
 - coverage-matrix regression, paid paired, and prospective evaluation lanes;
 - predeclared sequential stopping rule and evaluation budget;
-- Scout Router comparison for Host WebSearch versus Sonar by problem shape;
+- Scout Router and provider-portfolio comparisons by query class and index family;
 - quota and routing calibration based on retained evidence;
 - forward tests on real development research prompts.
 
@@ -1066,12 +1124,16 @@ The design is implemented successfully when:
 8. Human HTML is reproducible from state and cannot become silently stale.
 9. Medium and High fail closed when load-bearing gates do not pass.
 10. The comparative evaluation release gates are satisfied without a fixed-count or aggregate-only shortcut.
+11. A compatible provider can be added, disabled, retired, or restricted to one query class through a registry record, adapter, fixtures, and adoption evidence without core state, quota, validation, or rendering changes.
 
 ## 28. Superseded Design Ideas
 
 The following discussed ideas are intentionally not adopted:
 
 - fixed multi-provider pipelines for each tier;
+- treating the currently installed provider set as a permanent product boundary;
+- default concurrent Google-origin and Brave queries on every run;
+- treating provider brands, wrappers, or fetch services as independent source origins;
 - model agreement as corroboration;
 - mandatory competing hypotheses for lookup questions;
 - default DeepSeek processing in Medium;
