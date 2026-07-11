@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 import os
 import re
 import stat
 from pathlib import Path
 from typing import Any, Optional
 
+from ._canon import RETENTION_RANK, sha256_hex
 from .storage import (
     _apply_artifact_state_patch_unlocked,
     _fsync_dir,
     _load_state_unlocked,
     _read_events_unlocked,
     _recover_session_unlocked,
+    _write_all,
     session_lock,
 )
 
@@ -33,7 +34,6 @@ MEDIA_EXTENSIONS = {
 }
 SENSITIVITIES = frozenset({"public", "internal", "local-sensitive", "secret"})
 RETENTIONS = frozenset({"session", "persistent"})
-RETENTION_RANK = {"forbidden": 0, "ephemeral": 1, "session": 2, "persistent": 3}
 SCANNER_VERSION = "deterministic-secret-floor-v1"
 _SECRET_ASSIGNMENT_RE = re.compile(
     rb"(?im)^\s*(?:export\s+)?[A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)\s*[:=]"
@@ -54,19 +54,6 @@ class ArtifactExists(ArtifactPolicyError):
 
 class SecretDetected(ArtifactPolicyError):
     """The source is secret-classified or matches the deterministic rejection floor."""
-
-
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-
-def _policy_hash(policy_snapshot: dict[str, Any]) -> str:
-    return hashlib.sha256(_canonical_json(policy_snapshot)).hexdigest()
 
 
 def _require_nonempty(value: Any, label: str) -> str:
@@ -196,15 +183,6 @@ def _raw_bytes_used(raw_dir: Path) -> int:
     return total
 
 
-def _write_all(fd: int, payload: bytes) -> None:
-    view = memoryview(payload)
-    while view:
-        written = os.write(fd, view)
-        if written <= 0:
-            raise OSError("short artifact write")
-        view = view[written:]
-
-
 def _copy_fd_to_temp(fd: int, temp_path: Path, byte_limit: int) -> tuple[int, str]:
     try:
         out_fd = os.open(temp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -302,7 +280,7 @@ def _ingest_unlocked(
         "ingested_at": now,
         "provenance": copy.deepcopy(provenance),
         "policy_snapshot": policy_snapshot,
-        "policy_sha256": _policy_hash(policy_snapshot),
+        "policy_sha256": sha256_hex(policy_snapshot),
         "scanner_version": SCANNER_VERSION,
     }
     if review is not None:

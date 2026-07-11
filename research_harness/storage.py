@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from ._canon import canonical_json as _canonical_json, sha256_hex
 from .state import state_sha256, validate_state_document
 
 
@@ -68,15 +69,6 @@ class RecoveryError(StorageError):
 
 class SessionLockTimeout(StorageError):
     """The session lock could not be acquired within the deadline."""
-
-
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
 
 
 def _fsync_dir(path: Path) -> None:
@@ -253,7 +245,7 @@ def read_events(session_dir: Path) -> tuple[list[dict[str, Any]], list[str]]:
 
 
 def _event_hash(event_without_hash: dict[str, Any]) -> str:
-    return hashlib.sha256(_canonical_json(event_without_hash)).hexdigest()
+    return sha256_hex(event_without_hash)
 
 
 def _event_chain_errors(events: list[dict[str, Any]]) -> list[str]:
@@ -561,7 +553,7 @@ def _commit_patch_unlocked(
 
     previous_hash = state_sha256(current)
     next_hash = state_sha256(candidate)
-    patch_hash = hashlib.sha256(_canonical_json(operations)).hexdigest()
+    patch_hash = sha256_hex(operations)
     prepared, line, boundary, prefix_hash = _prepare_event_unlocked(
         session_dir,
         {

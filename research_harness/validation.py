@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import html
-import json
 import re
 import stat
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .artifacts import MEDIA_EXTENSIONS, RETENTION_RANK, SCANNER_VERSION
+from ._canon import RETENTION_RANK, indexed, sha256_hex
+from .artifacts import MEDIA_EXTENSIONS, SCANNER_VERSION
 from .state import state_sha256, validate_state_document
 from .storage import (
     _event_chain_errors,
@@ -62,15 +62,6 @@ class ValidationReport:
         }
 
 
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-
 def _add(
     issues: list[Issue],
     code: str,
@@ -88,11 +79,12 @@ def _validate_event_lineage(
     current_hash: str,
     issues: list[Issue],
 ) -> None:
+    chain_errors = [] if event_errors else _event_chain_errors(events)
     for message in event_errors:
         _add(issues, "event.parse", message, "/events")
-    for message in _event_chain_errors(events) if not event_errors else []:
+    for message in chain_errors:
         _add(issues, "event.chain", message, "/events")
-    if event_errors or _event_chain_errors(events):
+    if event_errors or chain_errors:
         return
 
     genesis = [event for event in events if event.get("event") == "session_created"]
@@ -198,26 +190,10 @@ def _validate_artifacts(
     events: list[dict[str, Any]],
     issues: list[Issue],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, bytes]]:
-    artifacts = {
-        artifact.get("id"): artifact
-        for artifact in state.get("artifact_index", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("id"), str)
-    }
-    sources = {
-        source.get("id"): source
-        for source in state.get("sources", [])
-        if isinstance(source, dict) and isinstance(source.get("id"), str)
-    }
-    occurrences = {
-        occurrence.get("id"): occurrence
-        for occurrence in state.get("retrieval_occurrences", [])
-        if isinstance(occurrence, dict) and isinstance(occurrence.get("id"), str)
-    }
-    providers = {
-        provider.get("id"): provider
-        for provider in state.get("capabilities", {}).get("providers", [])
-        if isinstance(provider, dict) and isinstance(provider.get("id"), str)
-    }
+    artifacts = indexed(state.get("artifact_index"))
+    sources = indexed(state.get("sources"))
+    occurrences = indexed(state.get("retrieval_occurrences"))
+    providers = indexed(state.get("capabilities", {}).get("providers"))
     permits = [event for event in events if event.get("event") == "permit_acquired"]
     indexed_paths: set[str] = set()
     raw_payloads: dict[str, bytes] = {}
@@ -239,9 +215,7 @@ def _validate_artifacts(
             if extension is None or raw_path.name != f"{artifact_id}{extension}":
                 _add(issues, "artifact.path", "artifact path does not match its ID and media type", path_root)
         policy = artifact.get("policy_snapshot")
-        expected_policy_hash = (
-            hashlib.sha256(_canonical_json(policy)).hexdigest() if isinstance(policy, dict) else None
-        )
+        expected_policy_hash = sha256_hex(policy) if isinstance(policy, dict) else None
         if artifact.get("policy_sha256") != expected_policy_hash:
             _add(issues, "artifact.policy_hash", "artifact policy snapshot hash is invalid", path_root)
         if artifact.get("scanner_version") != SCANNER_VERSION:
@@ -332,26 +306,10 @@ def _validate_evidence(
     raw_payloads: dict[str, bytes],
     issues: list[Issue],
 ) -> dict[str, dict[str, Any]]:
-    evidence_map = {
-        evidence.get("id"): evidence
-        for evidence in state.get("evidence", [])
-        if isinstance(evidence, dict) and isinstance(evidence.get("id"), str)
-    }
-    sources = {
-        source.get("id"): source
-        for source in state.get("sources", [])
-        if isinstance(source, dict) and isinstance(source.get("id"), str)
-    }
-    origins = {
-        origin.get("id"): origin
-        for origin in state.get("source_origins", [])
-        if isinstance(origin, dict) and isinstance(origin.get("id"), str)
-    }
-    providers = {
-        provider.get("id"): provider
-        for provider in state.get("capabilities", {}).get("providers", [])
-        if isinstance(provider, dict) and isinstance(provider.get("id"), str)
-    }
+    evidence_map = indexed(state.get("evidence"))
+    sources = indexed(state.get("sources"))
+    origins = indexed(state.get("source_origins"))
+    providers = indexed(state.get("capabilities", {}).get("providers"))
     occurrences = state.get("retrieval_occurrences", [])
 
     for evidence_id, evidence in evidence_map.items():
@@ -416,6 +374,20 @@ def _validate_evidence(
     return evidence_map
 
 
+def _has_direct_t1_evidence(
+    evidence_ids: Any,
+    evidence_map: dict[str, dict[str, Any]],
+    sources: dict[str, dict[str, Any]],
+) -> bool:
+    """True when any supporting evidence is a directly fetched T1 source."""
+
+    return any(
+        evidence_map.get(evidence_id, {}).get("source_tier") == "T1"
+        and sources.get(evidence_map.get(evidence_id, {}).get("source_id"), {}).get("direct_fetch") is True
+        for evidence_id in (evidence_ids if isinstance(evidence_ids, list) else [])
+    )
+
+
 def _claim_has_available_evidence(
     claim: dict[str, Any],
     evidence_map: dict[str, dict[str, Any]],
@@ -456,11 +428,7 @@ def _validate_pass(
     if not isinstance(load_ids, list) or not load_ids:
         _add(issues, "status.pass_claim_set_empty", "PASS requires load-bearing claims", "/summary")
         load_ids = []
-    claims = {
-        claim.get("id"): claim
-        for claim in state.get("claims", [])
-        if isinstance(claim, dict) and isinstance(claim.get("id"), str)
-    }
+    claims = indexed(state.get("claims"))
     marked = {claim_id for claim_id, claim in claims.items() if claim.get("load_bearing") is True}
     if set(load_ids) != marked:
         _add(issues, "status.pass_claim_set_mismatch", "summary and claim load-bearing markers differ", "/summary")
@@ -468,16 +436,8 @@ def _validate_pass(
     if not isinstance(floor, int) or isinstance(floor, bool) or len(load_ids) < floor:
         _add(issues, "status.evidence_floor", "confirmed evidence floor is not satisfied", "/summary")
 
-    sources = {
-        source.get("id"): source
-        for source in state.get("sources", [])
-        if isinstance(source, dict) and isinstance(source.get("id"), str)
-    }
-    origins = {
-        origin.get("id"): origin
-        for origin in state.get("source_origins", [])
-        if isinstance(origin, dict) and isinstance(origin.get("id"), str)
-    }
+    sources = indexed(state.get("sources"))
+    origins = indexed(state.get("source_origins"))
     for claim_id in load_ids:
         claim = claims.get(claim_id)
         path = f"/claims/{claim_id}"
@@ -527,20 +487,13 @@ def _validate_pass(
                 _add(issues, "claim.entailment", "load-bearing evidence is not marked entailing", path)
             if evidence.get("applicability") != "checked":
                 _add(issues, "claim.applicability", "load-bearing evidence applicability is not checked", path)
-        if claim_type == "source-of-record":
-            direct_primary = any(
-                evidence_map.get(evidence_id, {}).get("source_tier") == "T1"
-                and sources.get(evidence_map.get(evidence_id, {}).get("source_id"), {}).get("direct_fetch")
-                is True
-                for evidence_id in supporting
+        if claim_type == "source-of-record" and not _has_direct_t1_evidence(supporting, evidence_map, sources):
+            _add(
+                issues,
+                "claim.source_of_record_missing",
+                "source-of-record claim requires a directly fetched T1 source",
+                path,
             )
-            if not direct_primary:
-                _add(
-                    issues,
-                    "claim.source_of_record_missing",
-                    "source-of-record claim requires a directly fetched T1 source",
-                    path,
-                )
 
     contract = state.get("contract", {})
     posture = contract.get("posture")
@@ -549,13 +502,7 @@ def _validate_pass(
     if posture == "lookup":
         for claim_id in load_ids:
             claim = claims.get(claim_id, {})
-            direct_primary = any(
-                evidence_map.get(evidence_id, {}).get("source_tier") == "T1"
-                and sources.get(evidence_map.get(evidence_id, {}).get("source_id"), {}).get("direct_fetch")
-                is True
-                for evidence_id in claim.get("supporting_evidence_ids", [])
-            )
-            if not direct_primary:
+            if not _has_direct_t1_evidence(claim.get("supporting_evidence_ids"), evidence_map, sources):
                 _add(issues, "posture.lookup_primary_missing", "lookup PASS requires a directly fetched T1 source", f"/claims/{claim_id}")
     if posture in {"scientific", "decision"} and tier in {"medium", "high"}:
         if not any(item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification):
@@ -618,11 +565,7 @@ def _validate_partial(
     issues: list[Issue],
 ) -> None:
     load_ids = set(state.get("summary", {}).get("load_bearing_claim_ids", []))
-    claims = {
-        claim.get("id"): claim
-        for claim in state.get("claims", [])
-        if isinstance(claim, dict) and isinstance(claim.get("id"), str)
-    }
+    claims = indexed(state.get("claims"))
     unresolved = {
         claim_id
         for claim_id in load_ids

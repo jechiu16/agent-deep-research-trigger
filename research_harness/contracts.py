@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 from typing import Any, Optional
 
+from ._canon import is_count as _is_count, is_positive_count as _is_positive_count, sha256_hex
 from .providers import (
     ProviderRegistryError,
     load_provider_registry,
@@ -38,23 +37,6 @@ METERED_CATEGORIES = (
 )
 
 
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-
-def _is_count(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
-def _is_positive_count(value: Any) -> bool:
-    return _is_count(value) and value > 0
-
-
 def normalize_contract(data: dict[str, Any]) -> dict[str, Any]:
     """Copy a contract and fill only explicit zero-valued quota categories."""
 
@@ -84,48 +66,42 @@ def normalize_contract(data: dict[str, Any]) -> dict[str, Any]:
 def contract_card_sha256(contract: dict[str, Any]) -> str:
     normalized = normalize_contract(contract)
     normalized.pop("confirmation", None)
-    return hashlib.sha256(_canonical_json(normalized)).hexdigest()
+    return sha256_hex(normalized)
 
 
-def _validate_contract_core(
+def _confirmation_errors(
     contract: dict[str, Any],
     registry: dict[str, Any],
     resolved_registry_sha256: str,
-) -> list[str]:
-    errors: list[str] = []
-    if contract.get("posture") not in POSTURES:
-        errors.append("contract posture is invalid")
-    if contract.get("tier") not in TIERS:
-        errors.append("contract tier is invalid")
-
+    errors: list[str],
+) -> None:
     confirmation = contract.get("confirmation")
     if not isinstance(confirmation, dict) or confirmation.get("confirmed_by") != "user" or not confirmation.get(
         "confirmed_at"
     ):
         errors.append("contract is not user-confirmed")
-    else:
-        if confirmation.get("card_sha256") != contract_card_sha256(contract):
-            errors.append("confirmed card hash does not match contract")
-        if confirmation.get("registry_sha256") != resolved_registry_sha256:
-            errors.append("confirmed registry hash does not match resolved registry")
-        try:
-            records = referenced_provider_records(contract, registry)
-        except ProviderRegistryError:
-            records = []
-        if confirmation.get("referenced_records_sha256") != provider_records_sha256(records):
-            errors.append("confirmed referenced-records hash does not match routes")
+        return
+    if confirmation.get("card_sha256") != contract_card_sha256(contract):
+        errors.append("confirmed card hash does not match contract")
+    if confirmation.get("registry_sha256") != resolved_registry_sha256:
+        errors.append("confirmed registry hash does not match resolved registry")
+    try:
+        records = referenced_provider_records(contract, registry)
+    except ProviderRegistryError:
+        records = []
+    if confirmation.get("referenced_records_sha256") != provider_records_sha256(records):
+        errors.append("confirmed referenced-records hash does not match routes")
 
-    resource = contract.get("resource_envelope")
-    if not isinstance(resource, dict):
-        errors.append("resource envelope is required")
-        return errors
+
+def _envelope_errors(resource: dict[str, Any], errors: list[str]) -> dict[str, Any]:
+    """Validate the physical/external/host/local envelopes; return the physical ceiling map."""
+
     physical = resource.get("physical_ceiling")
     if not isinstance(physical, dict):
         errors.append("physical ceiling is required")
         physical = {}
     for category in ACTION_CATEGORIES:
-        value = physical.get(category)
-        if not _is_count(value):
+        if not _is_count(physical.get(category)):
             errors.append(f"physical ceiling {category} must be a non-negative integer")
 
     external = resource.get("external")
@@ -176,6 +152,16 @@ def _validate_contract_core(
             errors.append("local max wall time must be a positive integer")
         if local.get("network_egress") is not False:
             errors.append("local network egress must be false")
+    return physical
+
+
+def _mapping_errors(
+    contract: dict[str, Any],
+    registry: dict[str, Any],
+    physical: dict[str, Any],
+    errors: list[str],
+) -> list[Any]:
+    """Validate the stage permit map against routes and ceilings; return the mappings."""
 
     providers = {provider["id"]: provider for provider in registry.get("providers", []) if isinstance(provider, dict)}
     mappings = contract.get("stage_permit_map")
@@ -229,8 +215,10 @@ def _validate_contract_core(
         ceiling = physical.get(category)
         if _is_count(ceiling) and total > ceiling:
             errors.append(f"stage mappings exceed physical ceiling {category}")
+    return mappings
 
-    tier = contract.get("tier")
+
+def _reinforcement_errors(tier: Any, mappings: list[Any], errors: list[str]) -> None:
     reserved_reinforcement = [
         mapping
         for mapping in mappings
@@ -250,6 +238,27 @@ def _validate_contract_core(
     ]
     if tier == "high" and len(context_verifiers) != 1:
         errors.append("high tier requires reserved context-separated verifier capacity")
+
+
+def _validate_contract_core(
+    contract: dict[str, Any],
+    registry: dict[str, Any],
+    resolved_registry_sha256: str,
+) -> list[str]:
+    errors: list[str] = []
+    if contract.get("posture") not in POSTURES:
+        errors.append("contract posture is invalid")
+    if contract.get("tier") not in TIERS:
+        errors.append("contract tier is invalid")
+    _confirmation_errors(contract, registry, resolved_registry_sha256, errors)
+
+    resource = contract.get("resource_envelope")
+    if not isinstance(resource, dict):
+        errors.append("resource envelope is required")
+        return errors
+    physical = _envelope_errors(resource, errors)
+    mappings = _mapping_errors(contract, registry, physical, errors)
+    _reinforcement_errors(contract.get("tier"), mappings, errors)
 
     evidence_floor = contract.get("evidence_floor")
     if not isinstance(evidence_floor, dict) or not _is_positive_count(

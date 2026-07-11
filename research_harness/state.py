@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 import os
 import uuid
 from typing import Any, Mapping, Optional
 
+from ._canon import sha256_hex
 from .contracts import normalize_contract, validate_contract
 from .providers import (
     load_provider_registry,
@@ -64,17 +63,8 @@ ID_SECTIONS = (
 )
 
 
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-
 def state_sha256(state: dict[str, Any]) -> str:
-    return hashlib.sha256(_canonical_json(state)).hexdigest()
+    return sha256_hex(state)
 
 
 def _session_id() -> str:
@@ -169,6 +159,67 @@ def _ids_for(state: dict[str, Any], section: str, errors: list[str]) -> set[str]
     return seen
 
 
+_PREFLIGHT_FIELDS = frozenset(
+    {"provider_id", "adapter", "adapter_version", "execution_binding", "required_env", "ready"}
+)
+
+
+def _preflight_errors(
+    preflight: list[Any], providers: list[dict[str, Any]], errors: list[str]
+) -> None:
+    """Check that the preflight snapshot exactly mirrors the capability providers."""
+
+    provider_map = {
+        provider.get("id"): provider
+        for provider in providers
+        if isinstance(provider, dict) and isinstance(provider.get("id"), str)
+    }
+    preflight_provider_ids: list[str] = []
+    for record in preflight:
+        if not isinstance(record, dict):
+            errors.append("capability preflight record must be an object")
+            continue
+        if not set(record) <= _PREFLIGHT_FIELDS:
+            errors.append("capability preflight record contains forbidden fields")
+        if set(record) != _PREFLIGHT_FIELDS:
+            errors.append("capability preflight record is incomplete")
+        provider_id = record.get("provider_id")
+        if isinstance(provider_id, str):
+            preflight_provider_ids.append(provider_id)
+        provider = provider_map.get(provider_id)
+        if provider is None:
+            errors.append(f"capability preflight references missing provider {provider_id}")
+        else:
+            for field in ("adapter", "adapter_version", "execution_binding"):
+                if record.get(field) != provider.get(field):
+                    errors.append(f"capability preflight {field} mismatch for {provider_id}")
+        env_records = record.get("required_env")
+        if not isinstance(env_records, list):
+            errors.append("capability preflight required_env must be a list")
+            continue
+        for env_record in env_records:
+            if not isinstance(env_record, dict) or set(env_record) != {"name", "present"}:
+                errors.append("capability preflight environment record is invalid")
+            elif not isinstance(env_record.get("name"), str) or not isinstance(
+                env_record.get("present"), bool
+            ):
+                errors.append("capability preflight environment record is invalid")
+        if provider is not None:
+            env_names = sorted(
+                env_record.get("name")
+                for env_record in env_records
+                if isinstance(env_record, dict) and isinstance(env_record.get("name"), str)
+            )
+            if env_names != sorted(provider.get("required_env", [])):
+                errors.append(f"capability preflight required_env mismatch for {provider_id}")
+        if not isinstance(record.get("ready"), bool):
+            errors.append("capability preflight ready must be boolean")
+    if len(preflight_provider_ids) != len(set(preflight_provider_ids)):
+        errors.append("capability preflight contains duplicate providers")
+    if set(preflight_provider_ids) != set(provider_map):
+        errors.append("capability preflight provider set mismatch")
+
+
 def validate_state_document(state: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if not isinstance(state, dict):
@@ -208,63 +259,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         if not isinstance(capabilities.get("preflight"), list):
             errors.append("capability preflight must be a list")
         else:
-            provider_map = {
-                provider.get("id"): provider
-                for provider in providers
-                if isinstance(provider, dict) and isinstance(provider.get("id"), str)
-            }
-            allowed_preflight_fields = {
-                "provider_id",
-                "adapter",
-                "adapter_version",
-                "execution_binding",
-                "required_env",
-                "ready",
-            }
-            preflight_provider_ids: list[str] = []
-            for record in capabilities["preflight"]:
-                if not isinstance(record, dict):
-                    errors.append("capability preflight record must be an object")
-                    continue
-                if not set(record) <= allowed_preflight_fields:
-                    errors.append("capability preflight record contains forbidden fields")
-                if set(record) != allowed_preflight_fields:
-                    errors.append("capability preflight record is incomplete")
-                provider_id = record.get("provider_id")
-                if isinstance(provider_id, str):
-                    preflight_provider_ids.append(provider_id)
-                provider = provider_map.get(provider_id)
-                if provider is None:
-                    errors.append(f"capability preflight references missing provider {provider_id}")
-                else:
-                    for field in ("adapter", "adapter_version", "execution_binding"):
-                        if record.get(field) != provider.get(field):
-                            errors.append(f"capability preflight {field} mismatch for {provider_id}")
-                env_records = record.get("required_env")
-                if not isinstance(env_records, list):
-                    errors.append("capability preflight required_env must be a list")
-                    continue
-                for env_record in env_records:
-                    if not isinstance(env_record, dict) or set(env_record) != {"name", "present"}:
-                        errors.append("capability preflight environment record is invalid")
-                    elif not isinstance(env_record.get("name"), str) or not isinstance(
-                        env_record.get("present"), bool
-                    ):
-                        errors.append("capability preflight environment record is invalid")
-                if provider is not None and isinstance(env_records, list):
-                    env_names = sorted(
-                        env_record.get("name")
-                        for env_record in env_records
-                        if isinstance(env_record, dict) and isinstance(env_record.get("name"), str)
-                    )
-                    if env_names != sorted(provider.get("required_env", [])):
-                        errors.append(f"capability preflight required_env mismatch for {provider_id}")
-                if not isinstance(record.get("ready"), bool):
-                    errors.append("capability preflight ready must be boolean")
-            if len(preflight_provider_ids) != len(set(preflight_provider_ids)):
-                errors.append("capability preflight contains duplicate providers")
-            if set(preflight_provider_ids) != set(provider_map):
-                errors.append("capability preflight provider set mismatch")
+            _preflight_errors(capabilities["preflight"], providers, errors)
 
     contract = state.get("contract")
     if isinstance(contract, dict) and capabilities and providers:

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any, Mapping, Optional
+
+from ._canon import RETENTION_RANK, is_positive_count as _is_positive_int, sha256_hex
 
 
 REGISTRY_PATH = Path(__file__).with_name("provider_registry.json")
@@ -56,20 +57,10 @@ ALLOWED_INDEX_PROVENANCE = frozenset(
     }
 )
 LOCAL_BINDINGS = frozenset({"host_native_observed", "local", "no_network_demo"})
-RETENTION_RANK = {"forbidden": 0, "ephemeral": 1, "session": 2, "persistent": 3}
 
 
 class ProviderRegistryError(ValueError):
     """Raised when registry data or an overlay would create an unsafe route."""
-
-
-def _canonical_json(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -104,10 +95,6 @@ def _expanded_registry(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _is_string_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
-
-
-def _is_positive_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
 def validate_provider_registry(registry: dict[str, Any]) -> list[str]:
@@ -340,7 +327,7 @@ def provider_registry_sha256(registry: dict[str, Any]) -> str:
         "schema_version": registry.get("schema_version"),
         "providers": sorted(copy.deepcopy(registry.get("providers", [])), key=sort_key),
     }
-    return hashlib.sha256(_canonical_json(normalized)).hexdigest()
+    return sha256_hex(normalized)
 
 
 def provider_records_sha256(records: list[dict[str, Any]]) -> str:
@@ -348,7 +335,7 @@ def provider_records_sha256(records: list[dict[str, Any]]) -> str:
         copy.deepcopy(records),
         key=lambda provider: str(provider.get("id", "")) if isinstance(provider, dict) else repr(provider),
     )
-    return hashlib.sha256(_canonical_json(normalized)).hexdigest()
+    return sha256_hex(normalized)
 
 
 def referenced_provider_records(contract: dict[str, Any], registry: dict[str, Any]) -> list[dict[str, Any]]:
