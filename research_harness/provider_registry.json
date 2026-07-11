@@ -460,7 +460,12 @@
     },
     {
       "id": "europe-pmc",
-      "adapter": "candidate-europe-pmc",
+      "adapter": "europepmc-rest-search",
+      "adapter_version": "v1",
+      "enabled": false,
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "not_tested",
+      "adoption_evidence": [],
       "roles": ["biomedical-scout"],
       "action_categories": ["probe"],
       "stage_capabilities": ["primary_scout", "verification"],
@@ -468,9 +473,22 @@
       "index_family": "europe-pmc",
       "index_provenance": "scholarly-index",
       "upstream_provider": "europe-pmc",
-      "retrieval_shape": ["paper-metadata", "biomedical-full-text"],
+      "retrieval_shape": ["paper-listing"],
+      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "pageSize-param"},
+      "metering": {"unit": "request", "list_price": "free (keyless; EBI public service, no published rate limit)", "verified_at": "2026-07-11"},
+      "transport": {"mode": "sync", "polling": "not_applicable"},
+      "privacy": {"local_file_egress": false, "zdr": "unknown"},
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": ["query_hash", "request_count", "citation_count"],
+        "verified_at": "2026-07-11",
+        "source": "https://europepmc.org/RestfulWebService"
+      },
       "required_env": [],
-      "docs_url": "https://europepmc.org/RestfulWebService"
+      "docs_url": "https://europepmc.org/RestfulWebService",
+      "docs_verified_at": "2026-07-11"
     },
     {
       "id": "exa",
