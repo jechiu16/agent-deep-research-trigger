@@ -176,6 +176,27 @@ def confirmed_contract(
     return contract
 
 
+def enabled_registry_copy(provider_id: str) -> dict[str, Any]:
+    """Deep-copied registry with one candidate route enabled, for tests only.
+
+    Enabling a v2_request_boundary route needs three fields, not one:
+    validate_provider_registry also demands baseline/validated adoption_status
+    and non-empty adoption_evidence. This sets all three on the copy; the
+    committed registry stays disabled until the orchestrator flips it with
+    real evidence. Thread the SAME copy through both
+    confirmed_demo_contract(registry=...) and new_state(registry=...) so the
+    registry hashes agree.
+    """
+
+    registry = copy.deepcopy(load_provider_registry())
+    for provider in registry["providers"]:
+        if provider["id"] == provider_id:
+            provider["enabled"] = True
+            provider["adoption_status"] = "baseline"
+            provider["adoption_evidence"] = [f"test-override-{provider_id}"]
+    return registry
+
+
 def confirmed_demo_contract(
     route: str = "demo-probe",
     request_count: int = 1,

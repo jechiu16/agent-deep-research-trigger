@@ -436,8 +436,13 @@
       "id": "github",
       "adapter": "github-repos-record",
       "adapter_version": "v1",
-      "enabled": false,
+      "enabled": true,
       "execution_binding": "v2_request_boundary",
+      "adoption_status": "baseline",
+      "adoption_evidence": [
+        "fixture-replay-suite-tests-test_github",
+        "live-occurrence-2026-07-11-github-repo-record"
+      ],
       "roles": ["source-of-record"],
       "action_categories": ["probe"],
       "stage_capabilities": ["primary_scout", "verification"],

@@ -53,3 +53,24 @@ either needs a written reason in your report.
 - Report any friction with the adapter protocol instead of working around
   it — the schema is in DRAFT and your friction report is the input that
   locks it.
+
+## Known constraints and traps (from prior adapter builds)
+
+- **Test registry override needs three fields, not one.** A currently-disabled
+  candidate route fails `new_state()` even after you set `enabled: true` on an
+  in-memory copy — enabled v2 routes also require `adoption_status` in
+  `{baseline, validated}` and non-empty `adoption_evidence`. Use
+  `tests.helpers.enabled_registry_copy("<provider>")`, which sets all three on
+  a deep copy. The committed registry stays honestly `not_tested`/`[]` until
+  the orchestrator flips it.
+- **`parse()` never sees response headers** — only the body bytes. Header-
+  derived usage (rate limits etc.) cannot be threaded through today; leave
+  `usage` to body-derived facts and note the gap in your report if it hurts.
+- **Bodyless GET**: set `body=b""`; the transport sends `data=None` for empty
+  bodies so the request stays a true GET.
+- **`retrieval_shape` taxonomy**: use coarse shapes — `cited-synthesis`,
+  `paper-listing`, `record-fetch` — not per-endpoint lists; keep it consistent
+  with `ParsedResult.kind`.
+- **Timeouts**: sync record/listing fetches default to `30.0`; model-written
+  synthesis routes to `120.0`. State your choice in the module docstring only
+  if you deviate.

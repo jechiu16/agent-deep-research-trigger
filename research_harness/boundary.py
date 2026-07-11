@@ -84,8 +84,10 @@ Transport = Callable[[RequestSpec], tuple[int, bytes]]
 
 
 def _urllib_transport(spec: RequestSpec) -> tuple[int, bytes]:
+    # body=b"" means "no body": pass None so a GET stays truly bodyless
+    # (data=b"" would still attach Content-Length/Content-Type headers).
     request = urllib.request.Request(
-        spec.url, data=spec.body, headers=spec.headers, method=spec.method
+        spec.url, data=spec.body or None, headers=spec.headers, method=spec.method
     )
     with urllib.request.urlopen(request, timeout=spec.timeout_s) as response:
         return response.status, response.read()
