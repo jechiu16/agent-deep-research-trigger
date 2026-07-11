@@ -14,20 +14,17 @@ session with resumable multi-provider execution and a deterministic report.
 
 ## Contents
 
-[Why this exists](#why-this-exists) · [Key terms](#key-terms) ·
-[Host compatibility](#host-compatibility) · [Quickstart](#quickstart) ·
-[Install as a shared skill](#install-as-a-shared-skill) · [Use](#use) ·
-[How it works](#how-it-works) · [Provider routes](#provider-routes) ·
-[CLI](#cli) · [Credentials and security](#credentials-and-security) ·
-[Development and release quality](#development-and-release-quality) ·
-[Project map](#project-map)
+[Why this exists](#why-this-exists) · [Key terms](#key-terms) · [Host compatibility](#host-compatibility) ·
+[Quickstart](#quickstart) · [Install as a shared skill](#install-as-a-shared-skill) · [Use](#use) ·
+[How it works](#how-it-works) · [Provider routes](#provider-routes) · [CLI](#cli) ·
+[Credentials and security](#credentials-and-security) · [Development and release quality](#development-and-release-quality) · [Project map](#project-map)
 
 ## Why this exists
 
 Deep-research agents are useful, but ordinary orchestration often leaves the
 important constraints in prompt prose: who approved spend, which request was
-authorized, whether a retry paid twice, where a claim came from, and whether a
-final `PASS` actually cleared its evidence floor.
+authorized, whether a retry paid twice, where a claim came from, and whether
+a final `PASS` actually cleared its evidence floor.
 
 Agent Deep Research Trigger makes those constraints executable:
 
@@ -135,21 +132,27 @@ The Organizer first shows a contract card containing:
 - reserved challenge or verification calls;
 - storage class, latency, and cost uncertainty.
 
-No research request runs until the user confirms the exact card and its binding
-hashes. A changed registry, route record, or card requires a new confirmation.
+No research request runs until the user confirms the exact card and its binding hashes. A changed registry, route record, or card requires a new confirmation.
 
 ## How it works
 
 ```mermaid
-flowchart LR
-    T["Explicit /deep trigger"] --> C["Hash-bound contract"]
-    C --> U{"User confirms?"}
-    U -- no --> X["No spend"]
-    U -- yes --> P["Permit per physical request"]
-    P --> B["Sync or async request boundary"]
-    B --> S["Canonical state + hash-chained events"]
-    S --> V{"Fail-closed validation"}
-    V --> R["Deterministic HTML report"]
+flowchart TD
+    T(["/deep trigger"]):::trig --> C["Hash-bound contract"]:::proc
+    C --> U{"User confirms?"}:::dec
+    U -- no --> X(["No spend"]):::stop
+    U -- yes --> P["Permit per physical request"]:::proc
+    P --> B["Sync / async request boundary"]:::proc
+    B --> S["Canonical state +<br/>hash-chained events"]:::proc
+    S --> V{"Fail-closed validation"}:::dec
+    V -- pass --> R(["Deterministic HTML report"]):::done
+    V -- fail --> H(["Blocked (no report)"]):::stop
+
+    classDef trig fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
+    classDef proc fill:#f1f5f9,stroke:#475569,color:#0f172a;
+    classDef dec fill:#fef9c3,stroke:#ca8a04,color:#422006;
+    classDef stop fill:#fee2e2,stroke:#dc2626,color:#450a0a;
+    classDef done fill:#dcfce7,stroke:#16a34a,color:#052e16;
 ```
 
 Each session owns four artifacts:
@@ -217,8 +220,7 @@ Spend authority belongs to the confirmed physical request count, not to the
 presence of a key. Monetary estimates remain uncertain; provider-reported cost
 is preserved when available.
 
-For the threat model, storage rights, recovery rules, and limitations, read
-[HARNESS.md](HARNESS.md) and [research_harness/adapters/README.md](research_harness/adapters/README.md).
+For the threat model, storage rights, recovery rules, and limitations, read [HARNESS.md](HARNESS.md) and the [adapter guide](research_harness/adapters/README.md).
 
 ## Development and release quality
 
@@ -234,8 +236,7 @@ The release gate requires a clean worktree and runs:
 - wheel and source distribution builds plus Twine metadata checks;
 - dependency vulnerability audit.
 
-GitHub Actions verifies Python 3.9, 3.12, and 3.13. A version-matching tag
-publishes a prerelease only after the same gate passes on a clean hosted runner.
+GitHub Actions verifies Python 3.9, 3.12, and 3.13. A version-matching tag publishes a prerelease only after the same gate passes on a clean hosted runner.
 
 ## Project map
 

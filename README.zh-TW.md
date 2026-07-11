@@ -142,15 +142,22 @@ route record 或 card 有任何變動，都必須重新確認。
 ## 運作方式
 
 ```mermaid
-flowchart LR
-    T["明確 /deep trigger"] --> C["Hash-bound contract"]
-    C --> U{"使用者確認？"}
-    U -- 否 --> X["不產生 spend"]
-    U -- 是 --> P["每個 physical request 一份 permit"]
-    P --> B["Sync／async request boundary"]
-    B --> S["Canonical state + hash-chained events"]
-    S --> V{"Fail-closed validation"}
-    V --> R["Deterministic HTML report"]
+flowchart TD
+    T(["/deep trigger"]):::trig --> C["Hash-bound contract"]:::proc
+    C --> U{"使用者確認？"}:::dec
+    U -- 否 --> X(["不產生 spend"]):::stop
+    U -- 是 --> P["每個 physical request 一份 permit"]:::proc
+    P --> B["Sync／async request boundary"]:::proc
+    B --> S["Canonical state +<br/>hash-chained events"]:::proc
+    S --> V{"Fail-closed validation"}:::dec
+    V -- pass --> R(["Deterministic HTML report"]):::done
+    V -- fail --> H(["Blocked（不產生報告）"]):::stop
+
+    classDef trig fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
+    classDef proc fill:#f1f5f9,stroke:#475569,color:#0f172a;
+    classDef dec fill:#fef9c3,stroke:#ca8a04,color:#422006;
+    classDef stop fill:#fee2e2,stroke:#dc2626,color:#450a0a;
+    classDef done fill:#dcfce7,stroke:#16a34a,color:#052e16;
 ```
 
 每個 session 只有四類 artifact：
