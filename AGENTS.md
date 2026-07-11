@@ -24,6 +24,8 @@ Codex loads `AGENTS.md` from the project hierarchy. Set `DEEP_HARNESS_DIR` to th
 
 `sonar` is enabled through the common v2 request boundary (`research_state.py execute` after a permit). Every other external provider and processor route stays **disabled** until its worker adapter uses the same boundary and passes adoption fixtures. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
 
+First-run sanity check: `python "$DEEP_HARNESS_DIR/scripts/research_state.py" demo /tmp/deep-demo --json` proves the whole runtime (permit -> occurrence -> validate -> render) with zero network and zero cost.
+
 ## Codex Map
 
 | Harness operation | Codex binding |

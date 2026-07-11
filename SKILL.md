@@ -11,6 +11,10 @@ You are the **Organizer**. Read [HARNESS.md](HARNESS.md) and execute its v2 prot
 
 The runtime enables host-native, local, deterministic no-network routes, and **`sonar`** — the first external route bound through the v2 request boundary (`scripts/research_state.py execute`, permit-gated, raw payload spooled, occurrence written by code). Every other external worker route stays **disabled** until its adapter shares the same boundary. A credential reported by `doctor.py` is not execution readiness. Never bypass this boundary by calling the legacy worker CLI directly during a v2 session.
 
+## First-Run Sanity Check
+
+`"$PY" ~/.claude/skills/deep/scripts/research_state.py demo /tmp/deep-demo --json` exercises the entire machine — permit, boundary execution, occurrence, validation, rendered report — with zero network, zero keys, zero cost. If it prints `"validation_ok": true`, the runtime is healthy.
+
 ## Required Flow
 
 1. Infer the question and select an epistemic `posture`: `lookup`, `synthesis`, `scientific`, or `decision`.
