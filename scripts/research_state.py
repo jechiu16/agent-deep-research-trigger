@@ -49,6 +49,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _load_dotenv_if_available() -> None:
+    try:
+        from dotenv import find_dotenv, load_dotenv
+    except ImportError:
+        return
+    nearest = find_dotenv(usecwd=True)
+    if nearest:
+        load_dotenv(nearest, override=False)
+    load_dotenv(ROOT / ".env", override=False)
+
+
 def _read_json(path: str | Path) -> Any:
     source = Path(path)
     try:
@@ -647,6 +658,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv_if_available()
     args = build_parser().parse_args(argv)
     try:
         payload, code = args.handler(args)

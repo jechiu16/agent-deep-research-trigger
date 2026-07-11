@@ -262,6 +262,28 @@ class CliTests(unittest.TestCase):
         self.assertIn("required_env", payload["providers"][0])
         self.assertNotIn(secret, result.stdout)
 
+    def test_cli_loads_nearest_dotenv_without_printing_secret(self) -> None:
+        secret = "nearest-dotenv-secret-must-not-appear"
+        (self.root / ".env").write_text(f"OPENALEX_API_KEY={secret}\n", encoding="utf-8")
+        env = os.environ.copy()
+        env.pop("OPENALEX_API_KEY", None)
+        result = subprocess.run(
+            [sys.executable, str(self.cli), "providers", "--json"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        providers = json.loads(result.stdout)["providers"]
+        openalex = next(provider for provider in providers if provider["id"] == "openalex")
+        self.assertEqual(
+            openalex["required_env"],
+            [{"name": "OPENALEX_API_KEY", "present": True}],
+        )
+        self.assertNotIn(secret, result.stdout)
+
     def test_init_snapshots_validated_registry_overlay(self) -> None:
         added = copy.deepcopy(next(item for item in load_provider_registry()["providers"] if item["id"] == "brave"))
         added["id"] = "disabled-extra"
