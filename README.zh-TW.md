@@ -123,7 +123,7 @@ flowchart TD
 | `exa` | semantic-scout | exa | no | `v2_request_boundary` |
 | `firecrawl` | fetch | not_applicable | no | `legacy_unbound` |
 | `gemini` | investigation | google | no | `legacy_unbound` |
-| `ietf` | source-of-record | ietf | no | `legacy_unbound` |
+| `ietf` | source-of-record | ietf | no | `v2_request_boundary` |
 | `jina` | fetch | not_applicable | no | `legacy_unbound` |
 | `mojeek` | scout, challenge | mojeek | no | `legacy_unbound` |
 | `nvd` | source-of-record | nvd | no | `legacy_unbound` |

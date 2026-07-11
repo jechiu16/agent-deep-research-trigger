@@ -24,13 +24,14 @@ never appear in fixtures, occurrences, or fingerprints.
 
 from __future__ import annotations
 
-from . import exa, github, openalex, perplexity_deep, pypi, scholar, sonar
+from . import exa, github, ietf, openalex, perplexity_deep, pypi, scholar, sonar
 
 ADAPTERS = {
     "perplexity-chat-completions@v1": {"build": sonar.build, "parse": sonar.parse},
     "github-repos-record@v1": {"build": github.build, "parse": github.parse},
     "semantic-scholar-graph-search@v1": {"build": scholar.build, "parse": scholar.parse},
     "pypi-package-record@v1": {"build": pypi.build, "parse": pypi.parse},
+    "rfc-editor-record@v1": {"build": ietf.build, "parse": ietf.parse},
     "perplexity-async-sonar@v1": {
         "submit": perplexity_deep.submit,
         "job_token": perplexity_deep.job_token,
