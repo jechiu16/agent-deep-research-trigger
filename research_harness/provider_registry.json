@@ -456,17 +456,39 @@
     },
     {
       "id": "exa",
-      "adapter": "candidate-exa",
-      "roles": ["semantic-scout", "fetch", "investigation"],
-      "action_categories": ["probe", "deep"],
-      "stage_capabilities": ["primary_scout", "investigation", "verification", "fetch_fallback"],
-      "request_multiplicity": {"probe": 1, "deep": 1},
+      "adapter": "exa-search",
+      "adapter_version": "v1",
+      "enabled": false,
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "validated",
+      "adoption_evidence": [
+        "fixture-replay-suite-tests-test_exa",
+        "live-occurrence-2026-07-11-exa-auto-highlights (cost 0.007, 10 citations)",
+        "enablement-pending-paired-independent-index-benchmark"
+      ],
+      "roles": ["semantic-scout"],
+      "action_categories": ["probe"],
+      "stage_capabilities": ["primary_scout", "anti_lock_in", "verification"],
+      "request_multiplicity": {"probe": 1},
       "index_family": "exa",
       "index_provenance": "independent",
       "upstream_provider": "exa",
-      "retrieval_shape": ["semantic-results", "highlights", "contents"],
+      "retrieval_shape": ["result-listing", "highlights"],
+      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "controls": {"domain_filter": "available-unused", "date_filter": "available-unused", "max_results": "numResults-param"},
+      "metering": {"unit": "request", "list_price": "$0.007 base Search request; highlights may add content cost; measured via costDollars.total", "verified_at": "2026-07-11"},
+      "transport": {"mode": "sync", "polling": "not_applicable"},
+      "privacy": {"local_file_egress": false, "zdr": "unknown"},
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": ["query_hash", "request_count", "cost_usd", "citation_count"],
+        "verified_at": "2026-07-11",
+        "source": "https://exa.ai/docs/reference/security (public-plan ZDR not assumed; conservative session-only retention)"
+      },
       "required_env": ["EXA_API_KEY"],
-      "docs_url": "https://exa.ai/docs/"
+      "docs_url": "https://exa.ai/docs/reference/search",
+      "docs_verified_at": "2026-07-11"
     },
     {
       "id": "mojeek",
