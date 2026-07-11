@@ -512,7 +512,19 @@ def call_openai(query: str, effort: str, model, timeout_min, files=None) -> dict
 # ── Gemini ────────────────────────────────────────────────────────────────────
 
 def _gemini_client():
-    from google import genai
+    try:
+        from google import genai
+        from importlib.metadata import version
+    except ImportError as exc:
+        raise RuntimeError('Gemini requires: pip install -e ".[gemini]"') from exc
+
+    installed = version("google-genai")
+    major = int(installed.split(".", 1)[0])
+    if major < 2:
+        raise RuntimeError(
+            f"google-genai {installed} is too old for the current Interactions API; "
+            'install google-genai>=2 with: pip install -e ".[gemini]"'
+        )
 
     return genai.Client(api_key=_require_key("GEMINI_API_KEY"))
 

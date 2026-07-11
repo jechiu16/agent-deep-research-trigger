@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-research-cascade"
+version = "2.0.0.dev1"
+description = "Host-neutral, contract-bound research runtime for tool-using coding agents"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "jechiu16" }]
+dependencies = [
+  "requests>=2.31,<3",
+  "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+gemini = ["google-genai>=2.0,<3"]
+dev = [
+  "build>=1.2,<2",
+  "pip-audit>=2.9,<3",
+  "twine>=6,<7",
+]
+
+[project.scripts]
+deep-research-state = "scripts.research_state:main"
+deep-research-doctor = "scripts.doctor:main"
+
+[project.urls]
+Repository = "https://github.com/jechiu16/claude-research-cascade"
+
+[tool.setuptools.packages.find]
+include = ["research_harness*", "scripts*"]
+
+[tool.setuptools.package-data]
+research_harness = ["provider_registry.json"]

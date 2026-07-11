@@ -5,8 +5,11 @@ This script does not call external APIs. It checks the local runtime, imports,
 environment keys, writable reports directory, and provider readiness.
 """
 
+from __future__ import annotations
+
 import argparse
 import importlib.util
+import importlib.metadata
 import json
 import os
 import py_compile
@@ -31,6 +34,7 @@ PACKAGES = {
         "module": "google.genai",
         "required_for": ["gemini"],
         "optional": True,
+        "minimum_version": "2.0.0",
     },
 }
 
@@ -51,6 +55,31 @@ def has_module(name: str) -> bool:
         return importlib.util.find_spec(name) is not None
     except (ImportError, ModuleNotFoundError, ValueError):
         return False
+
+
+def installed_version(distribution: str) -> str | None:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def version_at_least(actual: str | None, minimum: str | None) -> bool:
+    if actual is None:
+        return False
+    if minimum is None:
+        return True
+
+    def release(value: str) -> tuple[int, ...]:
+        parts = []
+        for part in value.split("."):
+            digits = "".join(ch for ch in part if ch.isdigit())
+            if not digits:
+                break
+            parts.append(int(digits))
+        return tuple(parts)
+
+    return release(actual) >= release(minimum)
 
 
 def load_dotenv_if_available() -> bool:
@@ -118,7 +147,10 @@ def check_worker_compile() -> dict:
 def provider_status(packages: dict) -> dict:
     out = {}
     for provider, req in PROVIDERS.items():
-        missing_packages = [p for p in req.get("packages", []) if not packages[p]["installed"]]
+        missing_packages = [
+            p for p in req.get("packages", [])
+            if not packages[p]["installed"] or not packages[p]["compatible"]
+        ]
         missing_keys = [k for k in req.get("keys", []) if not os.getenv(k)]
         optional_missing = [k for k in req.get("optional_keys", []) if not os.getenv(k)]
         if missing_packages or missing_keys:
@@ -137,15 +169,19 @@ def provider_status(packages: dict) -> dict:
 
 
 def build_report() -> dict:
-    packages = {
-        name: {
-            "installed": has_module(spec["module"]),
+    packages = {}
+    for name, spec in PACKAGES.items():
+        version = installed_version(name)
+        installed = has_module(spec["module"])
+        packages[name] = {
+            "installed": installed,
+            "compatible": installed and version_at_least(version, spec.get("minimum_version")),
+            "version": version,
+            "minimum_version": spec.get("minimum_version"),
             "module": spec["module"],
             "optional": bool(spec.get("optional")),
             "required_for": spec["required_for"],
         }
-        for name, spec in PACKAGES.items()
-    }
     dotenv_loaded = load_dotenv_if_available()
     reports = check_reports_dir()
     providers = provider_status(packages)
@@ -193,8 +229,10 @@ def print_human(report: dict):
 
     print("\nPackages")
     for name, item in report["packages"].items():
-        label = "OK" if item["installed"] else ("WARN" if item["optional"] else "WARN")
-        print(f"{label} {name} ({item['module']})")
+        label = "OK" if item["compatible"] else "WARN"
+        version = f" {item['version']}" if item["version"] else ""
+        minimum = f"; requires >= {item['minimum_version']}" if item["minimum_version"] else ""
+        print(f"{label} {name}{version} ({item['module']}{minimum})")
 
     print("\nProviders")
     for name, item in report["providers"].items():

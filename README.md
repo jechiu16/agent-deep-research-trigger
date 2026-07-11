@@ -199,9 +199,14 @@ Tiers do not control a provider's internal token spend or exact price. The enfor
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/deep
+cd ~/.claude/skills/deep
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 ```
 
-Claude Code discovers [SKILL.md](SKILL.md). Use the project virtual environment or another interpreter with `requirements.txt` installed.
+Claude Code discovers [SKILL.md](SKILL.md). Install the optional Gemini worker with
+`.venv/bin/python -m pip install -e ".[gemini]"`. Run
+`.venv/bin/deep-research-doctor` to verify the local environment without calling an API.
 
 ### Codex
 
@@ -209,6 +214,9 @@ Install as a global Codex skill or clone anywhere and expose the checkout path:
 
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/tools/claude-research-cascade
+cd ~/tools/claude-research-cascade
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 export DEEP_HARNESS_DIR=~/tools/claude-research-cascade
 ```
 

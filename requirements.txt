@@ -1,3 +1,4 @@
 requests>=2.31,<3
 python-dotenv>=1.0,<2
-# Optional for --provider gemini: pip install google-genai
+# Optional for the legacy worker's Gemini provider:
+#   pip install -e ".[gemini]"
