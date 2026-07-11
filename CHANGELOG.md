@@ -13,6 +13,7 @@ Semantic Versioning once the v2 runtime leaves development status.
 - Distribution build verification, vulnerability auditing, and weekly
   dependency update checks.
 - An 80% core branch-coverage floor and one-command no-network release gate.
+- Ruff correctness and import-hygiene checks in local and hosted release gates.
 
 ### Fixed
 

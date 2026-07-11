@@ -9,7 +9,6 @@ actions, state discipline, evidence status, verification, spend, and handoff.
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 

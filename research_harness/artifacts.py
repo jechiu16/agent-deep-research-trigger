@@ -323,7 +323,7 @@ def ingest_local_artifact(
     source_path = Path(source_path)
     with session_lock(session_dir):
         _recover_session_unlocked(session_dir)
-        state = _load_state_unlocked(session_dir)
+        _load_state_unlocked(session_dir)
         events, errors = _read_events_unlocked(session_dir)
         if errors:
             raise ArtifactPolicyError("event history is malformed")
