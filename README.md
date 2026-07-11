@@ -6,71 +6,142 @@
 [![Host neutral](https://img.shields.io/badge/host-neutral-24292f?style=flat-square)](HARNESS.md)
 [![V2 foundation](https://img.shields.io/badge/runtime-v2%20foundation-21564a?style=flat-square)](research_harness)
 
-`/deep` is an explicit meta-research trigger for tool-using coding agents. It turns the current host model into the **Organizer** of one bounded research session: the user chooses the epistemic posture, tier, routes, and physical call counts before execution; the runtime then preserves claim lineage, enforces request permits, validates evidence gates, and renders a deterministic HTML handoff.
+`/deep` is an explicit-trigger research runtime for tool-using coding agents. Typing the literal `/deep` turns the current host model into the **Organizer** of one bounded session — it frames the question, chooses checks, and reconciles evidence — while a separate, mechanical layer enforces the envelope around it: a research contract the user must confirm, hash-bound to the exact card, provider registry, and route records they saw; a permit gating every physical request; an append-only, hash-chained event journal; one canonical JSON state document; fail-closed validation gates; and a deterministic HTML report rendered from that state and nothing else.
 
-This is not another model that promises a better long report. Its core guarantee is narrower and testable: unsupported `PASS` states, hidden call expansion, provenance-free artifacts, stale reports, and unsafe evidence deletion fail closed.
+## 30-Second Quickstart
 
-## Current Status
+Zero network, zero keys, zero cost — exercises the full permit → request-boundary → occurrence → validate → render loop through the no-network `demo-probe` route:
 
-The v2 foundation supports:
+```bash
+PY=/Users/jechiu/dev/parallax/.venv/bin/python   # or any interpreter with requirements.txt installed
+"$PY" scripts/research_state.py demo /tmp/deep-demo --json
+```
 
-- hash-bound user-confirmed contracts;
-- versioned provider registry and immutable route snapshots;
-- canonical JSON state plus hash-chained events;
-- exact logical-invocation and physical-request permits;
-- immutable, secret-rejecting, provenance-gated raw artifacts;
-- crash-safe state/event recovery and authorized purge recovery;
-- fail-closed `PASS`, `PARTIAL`, and `BLOCKED` validation;
-- deterministic escaped `report.html` bound to the canonical state hash;
-- one host-neutral JSON-first Organizer CLI.
+Expect `"validation_ok": true` on stdout, plus a rendered `/tmp/deep-demo/report.html`. The `demo-probe` route can never support a real claim — registry validation hard-fails if it tries — so this proves the machine, not a research finding.
 
-**`sonar` is the first external route bound through the v2 request boundary** — permit-gated execution (`research_state.py execute`), raw payload spooled before parsing, retrieval occurrence written by code, recorded-real-response fixtures. **Every other external provider and processor route remains disabled.** Their API keys may be present and the legacy credential doctor may report them ready, but credential readiness is not v2 execution readiness. A worker route stays disabled until its adapter shares the same boundary and passes provenance, recovery, policy, and adoption fixtures. Do not bypass the registry by calling the legacy worker CLI from a v2 session.
+A real session runs the same primitives, one permit-gated step at a time:
 
-## Why It Is Different
+```bash
+# 1. prepare — normalize and hash an unconfirmed card
+"$PY" scripts/research_state.py prepare --contract draft.json --json
 
-| Failure mode | V2 response |
-|---|---|
-| One long report hides weak premises | Atomic load-bearing claims must trace to evidence, source origins, and raw bytes |
-| Several models repeat one upstream source | Retrieval/model diversity stays separate from source-origin independence |
-| A tier silently expands calls | The user confirms exact stage mappings and physical multiplicity |
-| More layers create more hallucinations | Canonical JSON is the only semantic state; HTML is deterministic, not model-authored |
-| Missing evidence passes through an empty claim set | `PASS` requires a non-empty bounded answer and evidence floor |
-| A provisional answer locks the framing | Medium/High scientific and decision work reserves anti-lock-in and coverage checks |
-| High relies on its own reasoning context | High `PASS` requires a context-separated verifier that did not produce the candidate |
-| Raw evidence disappears | Purge downgrades state before deletion and leaves a recoverable authorization plus tombstone |
-| Keys imply a provider is safe to use | Registry binding, storage rights, fixtures, and adoption evidence are separate hard gates |
+# 2. confirm — user pulls the trigger on the exact displayed hashes
+"$PY" scripts/research_state.py confirm --prepared prepared.json \
+  --card-sha256 <card> --registry-sha256 <registry> --referenced-records-sha256 <routes> \
+  --confirmed-at <timestamp> --confirmed-by user --json
+
+# 3. init — canonical session directory + genesis event
+"$PY" scripts/research_state.py init "$SESSION" --question "<question>" --contract confirmed.json --json
+
+# 4. permit — reserve one exact physical request
+"$PY" scripts/research_state.py permit "$SESSION" --action-id A1 --stage primary_scout \
+  --category probe --route sonar --count 1 --fingerprint sha256:<request> --json
+
+# 5. execute — spool the raw payload, then parse it
+"$PY" scripts/research_state.py execute "$SESSION" --action-id A1 --query "<query>" --json
+
+# 6. validate, then render — fail-closed gates, deterministic report.html
+"$PY" scripts/research_state.py validate "$SESSION" --json
+"$PY" scripts/research_state.py render "$SESSION" --json
+```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    A["/deep question"] --> B["Organizer selects posture + tier"]
-    B --> C["prepare: card + registry hashes + exact physical counts"]
-    C --> D{"User pulls trigger?"}
-    D -- no --> X["No research action"]
-    D -- yes --> E["confirm + init canonical session"]
-    E --> F["Permit one marginal action"]
-    F --> G["Host/local/bound worker execution"]
-    G --> H["Provenance-gated raw artifact"]
-    H --> I["Claim/evidence/source reconciliation"]
-    I --> J["Anti-lock-in / coverage / verifier as required"]
-    J --> K{"Deterministic gates"}
-    K -- fail --> L["PARTIAL or BLOCKED"]
-    K -- pass --> M["PASS"]
-    L --> N["Hash-bound report.html + development handoff"]
-    M --> N
+    Q["/deep question"] --> CARD["Contract card: posture + tier + routes + physical ceilings"]
+    CARD --> CONFIRM{"User confirms? hash-bound to card + registry + routes"}
+    CONFIRM -- no --> STOP["No research action, no spend"]
+    CONFIRM -- yes --> INIT["confirm + init: canonical session, genesis event"]
+    INIT --> PERMIT["permit: reserve one physical request"]
+    PERMIT --> BOUNDARY{"Request boundary"}
+    BOUNDARY -- sync probe --> PROBE["execute: spool raw, then parse"]
+    BOUNDARY -- async deep --> SUBMIT["deep-submit: paid POST, never retried"]
+    SUBMIT --> POLL["deep-poll xN: polled transport, backoff to cap"]
+    POLL -- accepted/uncertain --> POLL
+    POLL -- terminal --> HARVEST["spool raw, then parse"]
+    PROBE --> STATE["Canonical state.json + hash-chained events.jsonl"]
+    HARVEST --> STATE
+    STATE --> VALIDATE{"validate: fail-closed gates"}
+    VALIDATE -- fail --> PARTIAL["PARTIAL or BLOCKED"]
+    VALIDATE -- pass --> PASS["PASS"]
+    PARTIAL --> RENDER["render: deterministic report.html bound to state hash"]
+    PASS --> RENDER
 ```
 
-Each session contains four non-competing artifacts:
+Each session owns four non-competing artifacts:
 
 | Path | Purpose |
 |---|---|
 | `state.json` | The only canonical semantic state |
 | `events.jsonl` | Append-only, sequence-numbered, hash-chained operations and revisions |
-| `raw/` | Immutable source/local bytes with hash, size, sensitivity, retention, and provenance |
-| `report.html` | Deterministic human projection with the canonical state hash |
+| `raw/` | Immutable ingested bytes with hash, size, sensitivity, retention, and provenance |
+| `report.html` | Deterministic human projection bound to the canonical state hash |
 
 No second full Markdown report is generated. Agents read JSON without information loss; humans read HTML without introducing another model summarization pass.
+
+## Invariants
+
+These are guarantees the runtime enforces mechanically, not by convention:
+
+| Invariant | Enforced by |
+|---|---|
+| The user pulls the spend trigger | `confirm` requires the exact card, registry, and route-record hashes the user was shown; any drift creates a new session instead of reinterpreting the old one |
+| One permit is one physical request | `permit` reserves the exact count; a failed or uncertain attempt still consumes it — nothing here refunds |
+| Paid submissions are never auto-retried | `deep-submit` is a single paid POST; a timeout or crash moves the job to `uncertain`, never a silent resubmission |
+| Raw payloads are spooled before parsing | `execute`, `deep-submit`, and `deep-poll` write the provider byte stream to `provider_spool/` before any parse runs |
+| Occurrences are written by code, never by model prose | The request boundary constructs every `retrieval_occurrence` itself; the Organizer cannot author one |
+| Demo routes can never support claims | Registry validation hard-fails if a `no_network_demo` route claims `can_support_claims: true` |
+| Credentials never enter state, fixtures, or fingerprints | Keys resolve from `env`/`.env` only; fingerprints hash the query, not the credential; ingested bytes are checked against a deterministic secret-pattern floor |
+| `PASS` is non-vacuous | Requires a non-empty bounded answer, the contract's evidence floor, full claim→evidence→source-origin lineage, and — at High — a context-separated verifier that did not produce the candidate |
+
+## Route Status
+
+[`research_harness/provider_registry.json`](research_harness/provider_registry.json) is a capability and policy ledger, not a pipeline. A key in `.env` makes a route *eligible*; it does not make it *enabled*. Registry validation hard-fails any `enabled: true` route that lacks a real adapter binding, an active lifecycle, and — for external `v2_request_boundary` routes — non-empty adoption evidence. `sonar` crossed that gate first; `github`, `pypi`, `scholar`, and the async `perplexity` deep-engine route have since joined it. Everything else below is a disabled candidate: its record documents the intended shape, but no adapter, fixture, or live evidence backs it yet.
+
+Generated by loading the registry through `research_harness.providers.load_provider_registry()` — the same loader the runtime uses — and printing `id`, `roles`, `index_family`, `enabled`, and `execution_binding` for every record:
+
+| id | roles | index family | enabled | binding |
+|---|---|---|---|---|
+| `demo-cascade` | contract-test | demo | yes | `no_network_demo` |
+| `demo-probe` | contract-test | demo | yes | `no_network_demo` |
+| `github` | source-of-record | github | yes | `v2_request_boundary` |
+| `host` | organizer, auditor | not_applicable | yes | `host_native_observed` |
+| `host-web` | scout, verifier, fetch | host-opaque | yes | `host_native_observed` |
+| `local` | scout, verifier, experiment | local-project | yes | `local` |
+| `perplexity` | investigation | perplexity-aggregated | yes | `v2_request_boundary` |
+| `pypi` | source-of-record | pypi | yes | `v2_request_boundary` |
+| `scholar` | scholarly-scout | semantic-scholar | yes | `v2_request_boundary` |
+| `sonar` | scout, challenge | perplexity-aggregated | yes | `v2_request_boundary` |
+| `brave` | scout, challenge | brave | no | `legacy_unbound` |
+| `cascade` | composite-scout | perplexity-aggregated | no | `legacy_unbound` |
+| `crossref` | identifier-verifier, source-of-record | crossref | no | `legacy_unbound` |
+| `deepseek` | processor, blind-auditor | not_applicable | no | `legacy_unbound` |
+| `europe-pmc` | biomedical-scout | europe-pmc | no | `legacy_unbound` |
+| `exa` | semantic-scout, fetch, investigation | exa | no | `legacy_unbound` |
+| `firecrawl` | fetch | not_applicable | no | `legacy_unbound` |
+| `gemini` | investigation | google | no | `legacy_unbound` |
+| `ietf` | source-of-record | ietf | no | `legacy_unbound` |
+| `jina` | fetch | not_applicable | no | `legacy_unbound` |
+| `mojeek` | scout, challenge | mojeek | no | `legacy_unbound` |
+| `nvd` | source-of-record | nvd | no | `legacy_unbound` |
+| `openai` | investigation | openai-model-mediated | no | `legacy_unbound` |
+| `openalex` | scholarly-scout, graph-expansion | openalex | no | `legacy_unbound` |
+| `osv` | source-of-record | osv | no | `legacy_unbound` |
+
+*10 of 25 registered routes enabled, as of commit `204ecd5`.*
+
+The adoption order for the rest — direct source-of-record adapters, then Brave, then OpenAlex/Crossref/Europe PMC, then an Exa-vs-Mojeek benchmark, then Jina/Firecrawl only after measured fetch failures — is recorded in [`docs/superpowers/specs/2026-07-10-provider-portfolio-design.md`](docs/superpowers/specs/2026-07-10-provider-portfolio-design.md).
+
+## Credentials and Spend
+
+Provider keys resolve from the process environment, then the nearest `.env` — copy [`.env.example`](.env.example) to `.env` and fill in only what you have. A present key makes a route *eligible*; only the registry gate above makes it *enabled*.
+
+Spend authority sits with the user, not the key. `confirm` is the only command that can turn a contract into a session, and it only succeeds when the three supplied hashes match what `prepare` displayed byte-for-byte; changing the card, the registry, or a referenced route record forces a new session instead of silently reinterpreting the old one.
+
+Cost is disclosed as a range, never as an enforceable cap. A contract's `estimated_spend_usd` is explicitly uncertain, because one logical call can carry variable provider-side work; the enforceable unit is the physical request count, not a dollar ceiling. Once a request completes, the occurrence's `cost_usd` is the provider-reported figure when the adapter can read one (`sonar` and `perplexity` report `usage.cost.total_cost`) — free routes such as `github`, `pypi`, and `scholar` report `null` rather than a guessed figure.
+
+Credentials never enter canonical state, events, spool filenames, fixtures, or request fingerprints. Adapters fingerprint the query, not the key, and any ingested artifact whose bytes match a deterministic secret pattern — an API key assignment, a PEM private key, a known provider key prefix — is rejected before it reaches disk.
 
 ## Research Contract
 
@@ -78,19 +149,27 @@ The user chooses both research logic and cost exposure.
 
 ### Posture
 
-- `lookup`: a bounded fact defined by a source of record;
-- `synthesis`: a landscape, evidence map, or literature review;
-- `scientific`: competing mechanisms and discriminating observations;
-- `decision`: architecture or action whose premises and inference joints must be audited.
+- `lookup`: a bounded fact defined by a source of record
+- `synthesis`: a landscape, evidence map, or literature review
+- `scientific`: competing mechanisms and discriminating observations
+- `decision`: architecture or action whose premises and inference joints must be audited
 
 ### Tier
 
-- `low`: narrow, reversible, one-cycle research;
-- `medium`: development-grade evidence with reserved post-result reinforcement;
-- `high`: difficult or hard-to-reverse work with additional challenge and fresh-context verification;
-- `custom`: exact user-selected stage and count map.
+- `low`: narrow, reversible, one-cycle research
+- `medium`: development-grade evidence with reserved post-result reinforcement
+- `high`: difficult or hard-to-reverse work with additional challenge and fresh-context verification
+- `custom`: exact user-selected stage and count map
 
-Tiers do not pretend to control a provider's internal token spend or exact price. The enforceable unit is the physical request count. The card separately discloses host context, local work, estimated spend uncertainty, raw-storage limits, and reserved calls.
+Tiers do not control a provider's internal token spend or exact price. The enforceable unit is the physical request count; the card separately discloses host context, local work, estimated spend uncertainty, raw-storage limits, and reserved calls.
+
+## Field Notes: v2
+
+**Durability.** Every state write is crash-consistent: a pending transaction file records the previous and next state hash before the swap, so `recover` rolls a killed write forward or back deterministically instead of guessing, and refuses to touch anything but its own owned, malformed tail. `events.jsonl` is append-only and hash-chained — each event names the hash of the one before it. Provider bytes are spooled to `provider_spool/` before any parsing runs, so a parse failure on a paid response never loses what was paid for. An interrupted async deep-research job is never resubmitted: its provider job token is journaled at acceptance time, and a later `deep-poll` resumes that token (backoff 15s → 30s → 60s → 120s cap) instead of paying again.
+
+**The demo doubles as a test.** `research_state.py demo` is not a canned transcript — `tests/test_demo_flow.py` calls the same `main(["demo", ...])` entry point and asserts on its JSON output, its spool file, and its occurrence fields. Running it by hand and running it in CI exercise the identical code path.
+
+**Building an adapter?** Start at [`research_harness/adapters/README.md`](research_harness/adapters/README.md). It states the two-function adapter contract, the fixture requirements (a recorded real response plus at least two recorded failures), and the constraints prior adapter work already ran into.
 
 ## Repository Map
 
@@ -99,7 +178,8 @@ Tiers do not pretend to control a provider's internal token spend or exact price
 | [HARNESS.md](HARNESS.md) | Host-neutral v2 Organizer protocol |
 | [SKILL.md](SKILL.md) | Claude Code `/deep` binding |
 | [AGENTS.md](AGENTS.md) | Codex `/deep` binding |
-| [research_harness](research_harness) | Contract, state, storage, quota, artifact, validation, rendering, and operation primitives |
+| [research_harness](research_harness) | Contract, state, storage, quota, artifact, boundary, validation, and rendering primitives |
+| [research_harness/adapters](research_harness/adapters) | One module per provider; [README.md](research_harness/adapters/README.md) is the development guide |
 | [scripts/research_state.py](scripts/research_state.py) | Main v2 JSON-first CLI |
 | [scripts/validate_state.py](scripts/validate_state.py) | V2 session gate plus retained legacy Markdown validator |
 | [scripts/render_report.py](scripts/render_report.py) | Thin deterministic renderer CLI |
@@ -129,27 +209,6 @@ export DEEP_HARNESS_DIR=~/tools/claude-research-cascade
 
 Codex also reads [AGENTS.md](AGENTS.md) from a project hierarchy. The binding explains project stubs and absolute-path invocation.
 
-## V2 Quick Start
-
-This smoke path makes no paid provider call and performs no external worker request:
-
-```bash
-PY=/Users/jechiu/dev/parallax/.venv/bin/python
-SESSION="$(mktemp -d)/session"
-
-"$PY" scripts/research_state.py providers --json
-
-"$PY" scripts/research_state.py init "$SESSION" \
-  --question "Choose a cache" \
-  --contract examples/v2/medium-contract.json \
-  --json
-
-"$PY" scripts/research_state.py validate "$SESSION" --json
-"$PY" scripts/research_state.py render "$SESSION" --json
-```
-
-The committed contract is a deterministic fixture. For a real `/deep`, first run `prepare`, show the card and hashes to the user, wait for a choice, then run `confirm` and `init`.
-
 ## Organizer CLI
 
 ```text
@@ -159,6 +218,12 @@ confirm         bind the exact displayed card after user choice
 init            create canonical state and genesis event
 patch           apply a revision-checked Organizer patch
 permit          reserve exact physical requests
+demo            one-command no-network end-to-end session (permit -> occurrence -> report.html)
+execute         run one permitted probe through the v2 request boundary
+deep-submit     submit an async deep-research job (paid POST, never retried)
+deep-poll       one physical poll of an accepted/uncertain deep job
+deep-timeout    free wall-clock check: move a stalled deep action to uncertain
+deep-pending    free: list accepted/uncertain deep actions and their job tokens
 status          show state, quota use, and validation
 artifact-add    ingest local/user/fetched-source bytes securely
 artifact-purge  downgrade, purge, validate, and rerender
@@ -170,26 +235,14 @@ view            open the current report
 
 Every successful command emits exactly one JSON object on stdout with `--json`. Errors and progress go to stderr.
 
-## Provider Portfolio
+## Legacy v1 Workers
 
-The registry is a capability and policy ledger, not a hard-coded provider order. Current design priorities are:
-
-1. direct source-of-record APIs for canonical development facts;
-2. Brave as the first independent general-index candidate;
-3. OpenAlex, Crossref, and Europe PMC for scholarly coverage;
-4. an Exa-versus-Mojeek benchmark by query class;
-5. Jina or Firecrawl only after measured fetch failures.
-
-All are disabled until their worker adapters and adoption evidence exist. Generic Google-plus-Brave concurrency is not the default; a second route must justify its extra physical count through expected unique-origin or decision value. No new key is requested before a named adapter fixture and benchmark budget are ready.
-
-## Legacy Workers
-
-`scripts/deep_research.py`, `doctor.py`, legacy Markdown examples, and `WORKERS.md` remain for compatibility and adapter migration. They are not proof of v2 enforcement. In particular:
+`scripts/deep_research.py`, `doctor.py`, the legacy Markdown examples, and [WORKERS.md](WORKERS.md) remain for compatibility and adapter migration. They are not evidence of v2 enforcement:
 
 - a green credential check does not enable a registry route;
 - legacy calls do not acquire v2 permits;
-- legacy raw payload paths do not satisfy v2 provenance and storage-rights gates;
-- no paid legacy call is required by the foundation tests.
+- legacy raw-payload paths do not satisfy v2 provenance and storage-rights gates;
+- no paid legacy call is required by the foundation test suite.
 
 ## Verification
 
