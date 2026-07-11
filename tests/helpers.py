@@ -284,11 +284,13 @@ def append_valid_test_event_line(session_dir: Path, event: dict[str, Any]) -> di
 
 
 def _complete_action(session: Path, action_id: str) -> None:
-    from research_harness.quota import record_attempt_status
+    from research_harness.quota import _record_attempt_status_unlocked
+    from research_harness.storage import session_lock
 
-    record_attempt_status(session, action_id, "attempted", NOW)
-    record_attempt_status(session, action_id, "accepted", NOW)
-    record_attempt_status(session, action_id, "completed", NOW)
+    with session_lock(session):
+        _record_attempt_status_unlocked(session, action_id, "attempted", NOW)
+        _record_attempt_status_unlocked(session, action_id, "accepted", NOW)
+        _record_attempt_status_unlocked(session, action_id, "completed", NOW)
 
 
 def make_complete_pass_session(

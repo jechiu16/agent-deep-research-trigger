@@ -206,8 +206,7 @@ def acquire_permits(
 ATTEMPT_TRANSITIONS = {
     "acquired": {"attempted"},
     "attempted": {"accepted", "failed", "uncertain"},
-    "accepted": {"completed", "failed", "interrupted", "uncertain"},
-    "interrupted": {"completed", "failed"},
+    "accepted": {"completed", "failed", "uncertain"},
     "uncertain": {"accepted"},
 }
 
@@ -249,16 +248,3 @@ def _record_attempt_status_unlocked(
             raise InvalidAttemptTransition("attempt details must be an object")
         event["details"] = details
     return _append_event_unlocked(session_dir, event)
-
-
-def record_attempt_status(
-    session_dir: Path,
-    action_id: str,
-    status: str,
-    now: str,
-    details: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    session_dir = Path(session_dir)
-    with session_lock(session_dir):
-        _recover_session_unlocked(session_dir)
-        return _record_attempt_status_unlocked(session_dir, action_id, status, now, details)

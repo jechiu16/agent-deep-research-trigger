@@ -24,7 +24,7 @@ Codex loads `AGENTS.md` from the project hierarchy. Set
 
 ## Current Execution Boundary
 
-`sonar`, `github`, `pypi`, `scholar`, `openalex`, `exa`, and async `perplexity` are enabled through the common v2 request boundary (`research_state.py execute` after a permit). Exa is reserved for anti-lock-in or verification where its independent index adds value; Brave remains the default general scout. Every other external provider and processor route stays disabled until its worker adapter passes the same gates. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
+The external routes enabled at any time are exactly those the resolved provider registry marks enabled and v2-bound (`research_state.py execute` after a permit) — inspect them with `providers --json`. Exa is reserved for anti-lock-in or verification where its independent index adds value; Brave is the recommended general scout. Every other external provider and processor route stays disabled until its worker adapter passes the same gates. A present credential is not execution readiness. No disabled route may be exercised through any side channel.
 
 First-run sanity check: `"$PY" "$AGENT_DEEP_RESEARCH_DIR/scripts/research_state.py" demo /tmp/deep-demo --json` proves the whole runtime (permit -> occurrence -> validate -> render) with zero network and zero cost.
 

@@ -48,7 +48,6 @@ def main(argv: list[str] | None = None) -> int:
         checks.append(run("unit tests", [python, "-m", "coverage", "run", "-m", "unittest", "discover", "-s", "tests", "-q"]))
         checks.append(run("coverage threshold", [python, "-m", "coverage", "report"]))
         checks.append(run("static checks", [python, "-m", "ruff", "check", "research_harness", "scripts", "tests"]))
-        checks.append(run("golden transcripts", [python, "scripts/validate_transcripts.py"]))
 
         with tempfile.TemporaryDirectory(prefix="deep-release-") as td:
             session = str(Path(td) / "session")

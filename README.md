@@ -83,8 +83,6 @@ The demo proves the permit → request boundary → occurrence → validation �
 report path. Its no-network route is structurally forbidden from supporting a
 real claim.
 
-See a [sample report](examples/quickstart/sample_report.md) for the shape of real rendered output.
-
 ## Install as a shared skill
 
 Keep one checkout and expose it to either or both hosts:
@@ -104,12 +102,6 @@ ln -s "$PWD" "$HOME/.claude/skills/deep"
 # Codex personal skill
 mkdir -p "$HOME/.agents/skills"
 ln -s "$PWD" "$HOME/.agents/skills/deep"
-```
-
-For Gemini worker compatibility, install the optional SDK:
-
-```bash
-.venv/bin/python -m pip install -e ".[gemini]"
 ```
 
 Project-local discovery wrappers are already included under `.claude/skills`
@@ -184,31 +176,38 @@ Enabled route classes include:
 | Deterministic no-network test | — |
 
 Exa is enabled for anti-lock-in and verification after a bounded paired-index
-benchmark; Brave remains the default general scout. Listing results cannot
-support claims until the decisive source is fetched directly. Disabled worker
-metadata is never treated as execution readiness merely because a credential
-exists.
+benchmark; Brave is the recommended general scout. Listing results cannot
+support claims until the decisive source is fetched directly. Every other
+external worker route stays disabled until the registry marks it enabled and
+v2-bound; a present credential is never execution readiness by itself.
 
 ## CLI
 
 ```text
-providers       inspect secret-free route capabilities
-prepare         normalize and hash an unconfirmed contract
-confirm         bind the exact user-approved contract
-init            create canonical state and genesis event
-permit          reserve exact physical requests
-execute         run one permitted synchronous request
-deep-submit     submit one paid async job, never auto-retried
-deep-poll       perform one permitted poll
-deep-pending    list harvestable async jobs without network access
-patch           apply a revision-checked Organizer update
-recover         recover WAL and authorized pending operations
-validate        run structure, lineage, quota, artifact, and verdict gates
-render          atomically create the deterministic HTML report
+providers         inspect secret-free route capabilities
+demo              one-command no-network end-to-end session (permit -> occurrence -> report.html)
+prepare           normalize and hash an unconfirmed contract
+confirm           bind the exact user-approved contract
+init              create canonical state and genesis event
+permit            reserve exact physical requests
+execute           run one permitted synchronous request
+deep-submit       submit one paid async job, never auto-retried
+deep-poll         perform one permitted poll
+deep-timeout      move an accepted deep action to uncertain past its contract cap (free)
+deep-pending      list harvestable async jobs without network access
+status            show canonical status and quota use
+patch             apply a revision-checked Organizer update
+artifact-add      securely ingest local or fetched bytes
+artifact-purge    purge, revalidate, and rerender
+recover           recover WAL and authorized pending operations
+validate          run structure, lineage, quota, artifact, and verdict gates
+render            atomically create the deterministic HTML report
+view              open report.html in the default browser
 ```
 
-Use `.venv/bin/deep-research-state --help` for the complete interface and
-`.venv/bin/deep-research-doctor` for a secret-free local readiness check.
+Use `.venv/bin/deep-research-state --help` for the complete interface.
+`.venv/bin/deep-research-state providers --json` gives a secret-free local
+readiness check.
 
 ## Credentials and security
 
@@ -249,7 +248,7 @@ GitHub Actions verifies Python 3.9, 3.12, and 3.13. A version-matching tag publi
 | [research_harness/adapters](research_harness/adapters) | Permit-bound provider adapters |
 | [scripts/research_state.py](scripts/research_state.py) | Main JSON-first CLI |
 | [docs/benchmarks](docs/benchmarks) | Provider adoption evidence |
-| [examples](examples) | Demo artifacts and retained legacy behavior fixtures |
+| [examples](examples) | Demo artifacts and v2 fixtures |
 
 Contributions should start with [CONTRIBUTING.md](CONTRIBUTING.md). Report
 security issues through the private process in [SECURITY.md](SECURITY.md).

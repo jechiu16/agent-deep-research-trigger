@@ -11,9 +11,9 @@ mappings (not "deep_investigation"/"deep_transport"), matching
 docs/superpowers/specs/2026-07-10-adaptive-scientific-research-harness-design.md
 section 7.1 ("investigation ... each accepted submission=`deep`", with
 `transport` explicitly a same-route harvest of an already-authorized
-`investigation` job) and the pre-existing openai/gemini candidate registry
-records, which already encode stage_capabilities=["investigation",
-"anti_lock_in"] with request_multiplicity {"deep": 1, "transport": 1}.
+`investigation` job) and the enabled `perplexity` registry record, which
+encodes stage_capabilities=["investigation", "anti_lock_in"] with
+request_multiplicity {"deep": 1, "transport": 1}.
 """
 
 from __future__ import annotations

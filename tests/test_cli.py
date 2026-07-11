@@ -14,7 +14,7 @@ from unittest import mock
 from research_harness.artifacts import purge_raw_artifact
 from research_harness.operations import purge_artifact, recover_operation
 from research_harness.providers import load_provider_registry, provider_registry_sha256
-from research_harness.rendering import render_session
+from research_harness.rendering import render_session_result
 from research_harness.state import state_sha256
 from research_harness.storage import load_state
 from tests.helpers import (
@@ -36,7 +36,6 @@ class CliTests(unittest.TestCase):
         self.root = Path(self.tempdir.name)
         self.repo = Path(__file__).resolve().parents[1]
         self.cli = self.repo / "scripts" / "research_state.py"
-        self.validator_cli = self.repo / "scripts" / "validate_state.py"
         self.session = self.root / "session"
         self.source = self.root / "source.txt"
         self.source.write_text("local bounded output\n", encoding="utf-8")
@@ -434,7 +433,7 @@ class CliTests(unittest.TestCase):
         session = make_complete_pass_session(
             self.root, tier="medium", posture="lookup", safe_action=True
         )
-        render_session(session)
+        render_session_result(session)
         result = purge_artifact(
             session, "A1", "retention expired", "PARTIAL", ("SA1",), NOW
         )
@@ -465,19 +464,6 @@ class CliTests(unittest.TestCase):
         self.assertIn(
             state_sha256(state), Path(result["report_path"]).read_text(encoding="utf-8")
         )
-
-    def test_validate_state_script_accepts_v2_session_directory(self) -> None:
-        self._init_session()
-        result = subprocess.run(
-            [sys.executable, str(self.validator_cli), str(self.session), "--json"],
-            cwd=self.repo,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["schema_version"], "2.0")
-
 
 if __name__ == "__main__":
     unittest.main()

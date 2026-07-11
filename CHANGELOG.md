@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## 2.0.0b3
+
+### Removed
+
+- The legacy worker CLI (`scripts/deep_research.py`, `WORKERS.md`) and its
+  `gemini` optional dependency.
+- The credential doctor (`scripts/doctor.py`, `deep-research-doctor`).
+- The pre-v2 state validator (`scripts/validate_state.py`).
+- Golden transcript validation (`scripts/validate_transcripts.py`,
+  `examples/transcripts/`) and the legacy-worker quickstart samples
+  (`examples/quickstart/`).
+- Seven unbound registry candidates with no adapter binding: `cascade`,
+  `openai`, `gemini`, `deepseek`, `mojeek`, `jina`, `firecrawl`.
+- Unused harness code: the `ingest_provider_artifact` ingestion path, the
+  session-locked `record_attempt_status` wrapper, the `render_session` thin
+  wrapper, the unreachable `"interrupted"` attempt status, and the dead
+  `evidence_capabilities.requires_direct_fetch` registry field.
+
+### Changed
+
+- Documentation (`SKILL.md`, `HARNESS.md`, `AGENTS.md`, `SCENARIOS.md`, both
+  READMEs) now states the resolved provider registry as the sole source of
+  truth for route readiness, replacing references to the credential doctor
+  and the legacy worker CLI.
+- The README CLI section lists all 19 `deep-research-state` subcommands.
+- `.env.example` drops keys with no consuming code (`OPENAI_API_KEY`,
+  `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`) and describes Exa as enabled rather
+  than pending benchmark.
+
+### Fixed
+
+- The b2 entry below describing the release gate as "one-command
+  no-network" is inaccurate: the gate's dependency-audit step (`pip_audit`)
+  requires network access. Left as originally written since changelog
+  history is not rewritten; noted here instead.
+
 ## [Unreleased]
 
 The current package version is the `2.0.0b2` release candidate. A matching

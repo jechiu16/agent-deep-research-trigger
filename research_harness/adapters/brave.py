@@ -3,9 +3,8 @@
 GET /res/v1/web/search on api.search.brave.com; results live under
 ``web.results[]``. Unlike sonar's model-written search_synthesis, this is a
 ranked listing with no synthesis step, so
-``evidence_capabilities.can_support_claims`` stays false and
-``requires_direct_fetch`` stays true — callers must fetch a result's url
-directly before it can support a claim.
+``evidence_capabilities.can_support_claims`` stays false — callers must
+fetch a result's url directly before it can support a claim.
 
 Brave's ``description`` field embeds literal ``<strong>``/``</strong>`` tags
 around matched query terms (confirmed via live call 2026-07-11: present in

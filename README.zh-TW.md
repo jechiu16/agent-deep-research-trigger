@@ -88,8 +88,6 @@ python3 -m venv .venv
 Demo 會走完 permit → request boundary → occurrence → validation → report；它的
 no-network route 在結構上不能支持真實 claim。
 
-實際 render 出來的樣子可以參考這份[範例報告](examples/quickstart/sample_report.md)。
-
 ## 安裝成共用 skill
 
 保留一份 checkout，再提供給任一或兩個 host：
@@ -109,12 +107,6 @@ ln -s "$PWD" "$HOME/.claude/skills/deep"
 # Codex personal skill
 mkdir -p "$HOME/.agents/skills"
 ln -s "$PWD" "$HOME/.agents/skills/deep"
-```
-
-Gemini worker compatibility 需要 optional SDK：
-
-```bash
-.venv/bin/python -m pip install -e ".[gemini]"
 ```
 
 Repo 已包含 `.claude/skills` 與 `.agents/skills` 的 project-local discovery
@@ -189,30 +181,36 @@ Enabled route 類型包括：
 | Deterministic no-network test | — |
 
 Exa 經 bounded paired-index benchmark 後，作為 anti-lock-in／verification route
-啟用；Brave 仍是預設 general scout。Result listing 必須直接 fetch decisive source
-後才能支持 claim。其他 external worker route 維持 disabled；只有 credential、不代表
-worker 已具 execution readiness。
+啟用；Brave 是建議的 general scout。Result listing 必須直接 fetch decisive source
+後才能支持 claim。其他 external worker route 維持 disabled，直到 registry 標記
+enabled 且 v2-bound；只有 credential 存在，不代表 execution readiness。
 
 ## CLI
 
 ```text
-providers       查看不含 secret 的 route capability
-prepare         normalize 並 hash 未確認 contract
-confirm         綁定使用者確認的精確 contract
-init            建立 canonical state 與 genesis event
-permit          預留精確 physical requests
-execute         執行一個已 permit 的 sync request
-deep-submit     提交一次付費 async job，永不自動重送
-deep-poll       執行一次已 permit poll
-deep-pending    不打網路列出可收割 async jobs
-patch           套用 revision-checked Organizer update
-recover         恢復 WAL 與已授權 pending operation
-validate        執行 structure、lineage、quota、artifact、verdict gates
-render          atomic 產生 deterministic HTML report
+providers         查看不含 secret 的 route capability
+demo              零成本跑完一次 permit → occurrence → report.html 的 no-network session
+prepare           normalize 並 hash 未確認 contract
+confirm           綁定使用者確認的精確 contract
+init              建立 canonical state 與 genesis event
+permit            預留精確 physical requests
+execute           執行一個已 permit 的 sync request
+deep-submit       提交一次付費 async job，永不自動重送
+deep-poll         執行一次已 permit poll
+deep-timeout      免費 wall-clock 檢查：把過期的 accepted deep action 轉為 uncertain
+deep-pending      不打網路列出可收割 async jobs
+status            顯示 canonical status 與 quota 使用量
+patch             套用 revision-checked Organizer update
+artifact-add      安全 ingest local 或 fetched bytes
+artifact-purge    purge、revalidate 並 rerender
+recover           恢復 WAL 與已授權 pending operation
+validate          執行 structure、lineage、quota、artifact、verdict gates
+render            atomic 產生 deterministic HTML report
+view              用預設瀏覽器開啟 report.html
 ```
 
 完整介面用 `.venv/bin/deep-research-state --help`；本機 secret-free readiness 用
-`.venv/bin/deep-research-doctor`。
+`.venv/bin/deep-research-state providers --json`。
 
 ## Credential 與安全
 
@@ -254,7 +252,7 @@ hosted runner 通過相同 gate 後，才會發布 prerelease。
 | [research_harness/adapters](research_harness/adapters) | Permit-bound provider adapters |
 | [scripts/research_state.py](scripts/research_state.py) | Main JSON-first CLI |
 | [docs/benchmarks](docs/benchmarks) | Provider adoption evidence |
-| [examples](examples) | Demo artifacts 與保留的 legacy behavior fixtures |
+| [examples](examples) | Demo artifacts 與 v2 fixtures |
 
 參與開發請先讀 [CONTRIBUTING.md](CONTRIBUTING.md)；安全問題請依
 [SECURITY.md](SECURITY.md) 使用 private reporting。

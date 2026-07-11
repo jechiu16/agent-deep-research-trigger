@@ -64,7 +64,7 @@ context-separated verifier before `PASS`.
 
 - Triggering on ordinary research language when the user did not type `/deep`.
 - Executing any external or paid action before exact contract confirmation.
-- Treating a key or legacy CLI as execution readiness.
+- Treating a present credential as execution readiness.
 - Using more than one primary scout without a confirmed High/custom envelope.
 - Refunding a failed or uncertain physical request.
 - Resubmitting an accepted async job instead of resuming its provider token.
@@ -72,7 +72,3 @@ context-separated verifier before `PASS`.
 - Letting the Organizer write retrieval occurrences as prose.
 - Maintaining a second full Markdown state beside canonical `state.json`.
 - Delivering `PASS` when validation is false or lineage is incomplete.
-
-The files under `examples/transcripts/` are retained legacy compatibility
-fixtures. Current V2 acceptance evidence lives in the unit tests and the
-no-network demo path.

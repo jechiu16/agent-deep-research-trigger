@@ -154,9 +154,9 @@ class ContractTests(unittest.TestCase):
             "route unknown-search is not enabled in capability registry",
             validate_contract(contract, self.registry),
         )
-        contract["stage_permit_map"][0]["route"] = "deepseek"
+        contract["stage_permit_map"][0]["route"] = "test-only-unbound-candidate"
         self.assertIn(
-            "route deepseek is not enabled in capability registry",
+            "route test-only-unbound-candidate is not enabled in capability registry",
             validate_contract(contract, self.registry),
         )
 

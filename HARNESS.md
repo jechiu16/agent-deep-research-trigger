@@ -10,13 +10,13 @@ The runtime improves reliability by making unsupported success mechanically diff
 
 ## Current Boundary
 
-The runtime enables host-native retrieval, local inspection, Organizer passes, deterministic no-network test routes, and the v2-bound external routes `sonar`, `github`, `pypi`, `scholar`, `openalex`, `exa`, and async `perplexity` (permits, spooled raw payloads, code-written occurrences). Exa is an independent-index anti-lock-in or verification route; Brave remains the default general scout. Every other external network worker and processor route is **disabled** in `provider_registry.json` until its adapter:
+The runtime enables host-native retrieval, local inspection, Organizer passes, deterministic no-network test routes, and the external routes the resolved provider registry marks enabled and v2-bound. The registry is the sole source of truth; inspect it with `providers --json`. Exa is an independent-index anti-lock-in or verification route; Brave is the recommended general scout. Every other external network worker and processor route is **disabled** in `provider_registry.json` until its adapter:
 
 1. uses the common v2 request boundary for every outbound request;
 2. has deterministic request, error, recovery, provenance, and storage-rights fixtures;
 3. has a named adoption status and evidence budget.
 
-Credential doctor readiness is not v2 execution readiness. Do not call the legacy worker CLI to bypass a disabled route. No new provider key should be requested before its adapter fixtures and benchmark budget exist.
+A present credential is not execution readiness. No disabled route may be exercised through any side channel. No new provider key should be requested before its adapter fixtures and benchmark budget exist.
 
 ## Non-Negotiables
 
@@ -155,7 +155,7 @@ Use exact excerpts and byte offsets. Distinguish:
 - analyst-model diversity;
 - context independence.
 
-Only source origins establish empirical corroboration. One directly fetched T1 source may settle a source-of-record fact; one empirical study remains single-source.
+Only source origins establish empirical corroboration. One directly fetched T1 source (evidence with `source_tier: T1` whose source record has `direct_fetch: true`) may settle a source-of-record fact; one empirical study remains single-source.
 
 ### 6. Reinforce After a Candidate Appears
 

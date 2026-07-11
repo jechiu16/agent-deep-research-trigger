@@ -13,7 +13,6 @@ from research_harness.artifacts import (
     SecretDetected,
     ingest_fetched_source,
     ingest_local_artifact,
-    ingest_provider_artifact,
     purge_raw_artifact,
     recover_pending_purges,
 )
@@ -53,20 +52,11 @@ class ArtifactTests(unittest.TestCase):
             NOW,
         )
 
-    def _make_session(
-        self,
-        name: str,
-        registry: dict | None = None,
-        raw_storage_bytes: int | None = None,
-        allow_provider_payloads: bool | None = None,
-    ) -> Path:
-        resolved = copy.deepcopy(self.registry if registry is None else registry)
+    def _make_session(self, name: str, raw_storage_bytes: int | None = None) -> Path:
+        resolved = copy.deepcopy(self.registry)
         contract = confirmed_medium_contract(resolved)
         if raw_storage_bytes is not None:
             contract["resource_envelope"]["external"]["raw_storage_bytes"] = raw_storage_bytes
-        if allow_provider_payloads is not None:
-            contract["artifact_policy"]["allow_provider_payloads"] = allow_provider_payloads
-        if raw_storage_bytes is not None or allow_provider_payloads is not None:
             records = referenced_provider_records(contract, resolved)
             contract["confirmation"] = {
                 "confirmed_by": "user",
@@ -136,29 +126,6 @@ class ArtifactTests(unittest.TestCase):
                 }
             )
         apply_state_patch(self.session, operations, state["session"]["revision"], NOW)
-
-    def _make_provider_session(self, name: str, payload_retention: str, html_allowed: bool) -> Path:
-        registry = copy.deepcopy(self.registry)
-        provider = next(item for item in registry["providers"] if item["id"] == "host-web")
-        provider["storage_rights"].update(
-            {
-                "payload_retention": payload_retention,
-                "html_allowed": html_allowed,
-                "allowed_operational_fields": ["action_id"],
-            }
-        )
-        session = self._make_session(name, registry, allow_provider_payloads=True)
-        acquire_permits(
-            session,
-            "ATT1",
-            "primary_scout",
-            "host_retrieval",
-            "host-web",
-            1,
-            "sha256:provider",
-            NOW,
-        )
-        return session
 
     def test_ingest_confines_bytes_under_raw_and_records_integrity(self) -> None:
         artifact = self._ingest_local()
@@ -358,73 +325,6 @@ class ArtifactTests(unittest.TestCase):
             NOW,
         )
         self.assertEqual(artifact["provenance"]["origin_kind"], "fetched_source")
-
-    def test_provider_payload_requires_snapshotted_provider_and_attempt(self) -> None:
-        with self.assertRaises(ArtifactPolicyError):
-            ingest_provider_artifact(
-                self.session,
-                self.source,
-                "A1",
-                "application/json",
-                "brave",
-                "ATT-unknown",
-                "public",
-                "session",
-                False,
-                NOW,
-            )
-
-    def test_provider_storage_rights_fail_closed_before_persistence(self) -> None:
-        session = self._make_provider_session("ephemeral", "ephemeral", False)
-        with self.assertRaises(ArtifactPolicyError):
-            ingest_provider_artifact(
-                session,
-                self.source,
-                "A1",
-                "application/json",
-                "host-web",
-                "ATT1",
-                "public",
-                "session",
-                False,
-                NOW,
-            )
-        self.assertFalse((session / "raw" / "A1.json").exists())
-
-    def test_provider_payload_cannot_exceed_html_or_retention_rights(self) -> None:
-        session = self._make_provider_session("restricted", "session", False)
-        for retention, include_in_html in (("persistent", False), ("session", True)):
-            with self.subTest(retention=retention, include_in_html=include_in_html):
-                with self.assertRaises(ArtifactPolicyError):
-                    ingest_provider_artifact(
-                        session,
-                        self.source,
-                        "A1",
-                        "application/json",
-                        "host-web",
-                        "ATT1",
-                        "public",
-                        retention,
-                        include_in_html,
-                        NOW,
-                    )
-
-    def test_provider_payload_with_bound_rights_and_attempt_is_ingested(self) -> None:
-        session = self._make_provider_session("persistent", "persistent", True)
-        artifact = ingest_provider_artifact(
-            session,
-            self.source,
-            "A1",
-            "application/json",
-            "host-web",
-            "ATT1",
-            "public",
-            "persistent",
-            True,
-            NOW,
-        )
-        self.assertEqual(artifact["provenance"]["provider_id"], "host-web")
-        self.assertEqual(artifact["provenance"]["attempt_or_occurrence_id"], "ATT1")
 
     def test_purge_blocks_by_default_before_removing_load_bearing_bytes(self) -> None:
         self._ingest_local()

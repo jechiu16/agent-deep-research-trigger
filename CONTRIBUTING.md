@@ -7,7 +7,7 @@ guarantees and host neutrality.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev,gemini]"
+.venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/deep-research-release-gate
 ```
 

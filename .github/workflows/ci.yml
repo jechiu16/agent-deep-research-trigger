@@ -39,9 +39,6 @@ jobs:
       - name: Run static checks
         run: python -m ruff check research_harness scripts tests
 
-      - name: Validate golden transcripts
-        run: python scripts/validate_transcripts.py
-
       - name: Run no-network demo end-to-end
         run: python scripts/research_state.py demo "$RUNNER_TEMP/deep-demo" --json
 

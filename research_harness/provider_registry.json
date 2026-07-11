@@ -16,8 +16,7 @@
     "upstream_provider": "not_disclosed",
     "retrieval_shape": ["unknown"],
     "evidence_capabilities": {
-      "can_support_claims": false,
-      "requires_direct_fetch": true
+      "can_support_claims": false
     },
     "controls": {
       "domain_filter": "unknown",
@@ -70,8 +69,7 @@
       "upstream_provider": "not_disclosed",
       "retrieval_shape": ["ranked-results", "direct-fetch"],
       "evidence_capabilities": {
-        "can_support_claims": true,
-        "requires_direct_fetch": true
+        "can_support_claims": true
       },
       "storage_rights": {
         "payload_retention": "ephemeral",
@@ -99,8 +97,7 @@
       "upstream_provider": "not_applicable",
       "retrieval_shape": ["direct-observation"],
       "evidence_capabilities": {
-        "can_support_claims": true,
-        "requires_direct_fetch": false
+        "can_support_claims": true
       },
       "storage_rights": {
         "payload_retention": "persistent",
@@ -128,8 +125,7 @@
       "upstream_provider": "not_applicable",
       "retrieval_shape": ["in-context-reasoning"],
       "evidence_capabilities": {
-        "can_support_claims": false,
-        "requires_direct_fetch": true
+        "can_support_claims": false
       },
       "storage_rights": {
         "payload_retention": "ephemeral",
@@ -157,8 +153,7 @@
       "upstream_provider": "not_applicable",
       "retrieval_shape": ["deterministic-fixture"],
       "evidence_capabilities": {
-        "can_support_claims": false,
-        "requires_direct_fetch": true
+        "can_support_claims": false
       },
       "storage_rights": {
         "payload_retention": "forbidden",
@@ -186,8 +181,7 @@
       "upstream_provider": "not_applicable",
       "retrieval_shape": ["deterministic-fixture"],
       "evidence_capabilities": {
-        "can_support_claims": false,
-        "requires_direct_fetch": true
+        "can_support_claims": false
       },
       "storage_rights": {
         "payload_retention": "forbidden",
@@ -217,7 +211,7 @@
       "index_provenance": "hybrid-opaque",
       "upstream_provider": "perplexity",
       "retrieval_shape": ["cited-synthesis"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "available-unused", "date_filter": "available-unused", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "provider-reported usage.cost.total_cost", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -232,20 +226,6 @@
       "required_env": ["PERPLEXITY_API_KEY"],
       "docs_url": "https://docs.perplexity.ai/",
       "docs_verified_at": "2026-07-11"
-    },
-    {
-      "id": "cascade",
-      "adapter": "legacy-cascade",
-      "roles": ["composite-scout"],
-      "action_categories": ["probe"],
-      "stage_capabilities": ["primary_scout"],
-      "request_multiplicity": {"probe": 4},
-      "index_family": "perplexity-aggregated",
-      "index_provenance": "hybrid-opaque",
-      "upstream_provider": "perplexity",
-      "retrieval_shape": ["four-query-cited-synthesis"],
-      "required_env": ["PERPLEXITY_API_KEY"],
-      "docs_url": "https://docs.perplexity.ai/"
     },
     {
       "id": "scholar",
@@ -266,7 +246,7 @@
       "index_provenance": "scholarly-index",
       "upstream_provider": "semantic-scholar",
       "retrieval_shape": ["paper-metadata", "citation-graph"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "per_page-param"},
       "metering": {"unit": "request", "list_price": "free (shared pool; optional S2_API_KEY raises limits)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -299,8 +279,7 @@
       "upstream_provider": "perplexity",
       "retrieval_shape": ["cited-synthesis"],
       "evidence_capabilities": {
-        "can_support_claims": false,
-        "requires_direct_fetch": true
+        "can_support_claims": false
       },
       "controls": {
         "domain_filter": "unknown",
@@ -334,50 +313,6 @@
       "docs_verified_at": "2026-07-11"
     },
     {
-      "id": "openai",
-      "adapter": "legacy-openai-deep-research",
-      "roles": ["investigation"],
-      "action_categories": ["deep", "transport"],
-      "stage_capabilities": ["investigation", "anti_lock_in"],
-      "request_multiplicity": {"deep": 1, "transport": 1},
-      "index_family": "openai-model-mediated",
-      "index_provenance": "grounding-wrapper",
-      "upstream_provider": "not_disclosed",
-      "retrieval_shape": ["async-long-report"],
-      "transport": {"mode": "async", "polling": "required"},
-      "required_env": ["OPENAI_API_KEY"],
-      "docs_url": "https://platform.openai.com/docs/"
-    },
-    {
-      "id": "gemini",
-      "adapter": "legacy-gemini-deep-research",
-      "roles": ["investigation"],
-      "action_categories": ["deep", "transport"],
-      "stage_capabilities": ["investigation", "anti_lock_in"],
-      "request_multiplicity": {"deep": 1, "transport": 1},
-      "index_family": "google",
-      "index_provenance": "grounding-wrapper",
-      "upstream_provider": "google",
-      "retrieval_shape": ["async-long-report"],
-      "transport": {"mode": "async", "polling": "required"},
-      "required_env": ["GEMINI_API_KEY"],
-      "docs_url": "https://ai.google.dev/gemini-api/docs/"
-    },
-    {
-      "id": "deepseek",
-      "adapter": "legacy-deepseek-processor",
-      "roles": ["processor", "blind-auditor"],
-      "action_categories": ["processor"],
-      "stage_capabilities": ["normalization", "coverage_audit", "verification"],
-      "request_multiplicity": {"processor": 1},
-      "index_family": "not_applicable",
-      "index_provenance": "not_applicable",
-      "upstream_provider": "not_applicable",
-      "retrieval_shape": ["supplied-material-analysis"],
-      "required_env": ["DEEPSEEK_API_KEY"],
-      "docs_url": "https://api-docs.deepseek.com/"
-    },
-    {
       "id": "brave",
       "adapter": "brave-web-search",
       "adapter_version": "v1",
@@ -393,7 +328,7 @@
       "index_provenance": "independent",
       "upstream_provider": "brave",
       "retrieval_shape": ["result-listing"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "count-param"},
       "metering": {"unit": "request", "list_price": "$5 per 1,000 requests (Search plan); $5 free credit/month (~1,000 free requests); free credits carry no result-storage rights", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -428,7 +363,7 @@
       "index_provenance": "scholarly-index",
       "upstream_provider": "openalex",
       "retrieval_shape": ["paper-listing"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "limit-param"},
       "metering": {"unit": "request", "list_price": "$0.001 per search request; free key includes $1/day", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -460,7 +395,7 @@
       "index_provenance": "scholarly-index",
       "upstream_provider": "crossref",
       "retrieval_shape": ["paper-listing"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "limit-param"},
       "metering": {"unit": "request", "list_price": "free (polite pool via mailto; keyless)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -492,7 +427,7 @@
       "index_provenance": "scholarly-index",
       "upstream_provider": "europe-pmc",
       "retrieval_shape": ["paper-listing"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "pageSize-param"},
       "metering": {"unit": "request", "list_price": "free (keyless; EBI public service, no published rate limit)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -528,7 +463,7 @@
       "index_provenance": "independent",
       "upstream_provider": "exa",
       "retrieval_shape": ["result-listing", "highlights"],
-      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": false},
       "controls": {"domain_filter": "available-unused", "date_filter": "available-unused", "max_results": "numResults-param"},
       "metering": {"unit": "request", "list_price": "$0.007 base Search request; highlights may add content cost; measured via costDollars.total", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -543,48 +478,6 @@
       "required_env": ["EXA_API_KEY"],
       "docs_url": "https://exa.ai/docs/reference/search",
       "docs_verified_at": "2026-07-11"
-    },
-    {
-      "id": "mojeek",
-      "adapter": "candidate-mojeek",
-      "roles": ["scout", "challenge"],
-      "action_categories": ["probe"],
-      "stage_capabilities": ["primary_scout", "anti_lock_in", "verification"],
-      "request_multiplicity": {"probe": 1},
-      "index_family": "mojeek",
-      "index_provenance": "independent",
-      "upstream_provider": "mojeek",
-      "retrieval_shape": ["ranked-results", "snippets"],
-      "required_env": ["MOJEEK_API_KEY"],
-      "docs_url": "https://www.mojeek.com/services/search/web-search-api/"
-    },
-    {
-      "id": "jina",
-      "adapter": "candidate-jina-reader",
-      "roles": ["fetch"],
-      "action_categories": ["probe"],
-      "stage_capabilities": ["fetch_fallback"],
-      "request_multiplicity": {"probe": 1},
-      "index_family": "not_applicable",
-      "index_provenance": "fetch-only",
-      "upstream_provider": "target-url",
-      "retrieval_shape": ["extracted-content"],
-      "required_env": [],
-      "docs_url": "https://jina.ai/reader/"
-    },
-    {
-      "id": "firecrawl",
-      "adapter": "candidate-firecrawl",
-      "roles": ["fetch"],
-      "action_categories": ["probe"],
-      "stage_capabilities": ["fetch_fallback"],
-      "request_multiplicity": {"probe": 1},
-      "index_family": "not_applicable",
-      "index_provenance": "fetch-only",
-      "upstream_provider": "target-url",
-      "retrieval_shape": ["javascript-content", "pdf-content"],
-      "required_env": ["FIRECRAWL_API_KEY"],
-      "docs_url": "https://docs.firecrawl.dev/"
     },
     {
       "id": "github",
@@ -605,7 +498,7 @@
       "index_provenance": "registry",
       "upstream_provider": "github",
       "retrieval_shape": ["record-fetch"],
-      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": true},
       "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "free (60/hr unauthenticated; 5000/hr with token)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -637,7 +530,7 @@
       "index_provenance": "registry",
       "upstream_provider": "pypi",
       "retrieval_shape": ["record-fetch"],
-      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": true},
       "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "free (public read-only JSON API; no published rate limit)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -669,7 +562,7 @@
       "index_provenance": "registry",
       "upstream_provider": "osv",
       "retrieval_shape": ["record-fetch"],
-      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": true},
       "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "free (docs state \"Currently there are no limits on the API\")", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -701,7 +594,7 @@
       "index_provenance": "registry",
       "upstream_provider": "nist",
       "retrieval_shape": ["record-fetch"],
-      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": true},
       "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "free (unauthenticated: ~5 requests/30s; optional NVD_API_KEY raises the limit)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},
@@ -733,7 +626,7 @@
       "index_provenance": "registry",
       "upstream_provider": "ietf",
       "retrieval_shape": ["record-fetch"],
-      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "evidence_capabilities": {"can_support_claims": true},
       "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
       "metering": {"unit": "request", "list_price": "free (public read-only JSON API; no published rate limit or authentication)", "verified_at": "2026-07-11"},
       "transport": {"mode": "sync", "polling": "not_applicable"},

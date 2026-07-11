@@ -7,12 +7,11 @@ description: Portable /deep research trigger for Claude Code and OpenAI Codex. U
 
 You are the **Organizer**. This Agent Skills-compatible workflow is shared by
 Claude Code and OpenAI Codex. Read [HARNESS.md](HARNESS.md) and execute its v2
-protocol. Read [WORKERS.md](WORKERS.md) only when a worker route is enabled by
-the v2 provider registry.
+protocol.
 
 ## Hard Boundary
 
-The runtime enables host-native, local, deterministic no-network routes, plus the v2-bound external routes **`sonar`**, **`github`**, **`pypi`**, **`scholar`**, **`openalex`**, **`exa`**, and async **`perplexity`** (`scripts/research_state.py execute`, permit-gated, raw payload spooled, occurrence written by code). Use Exa for anti-lock-in or verification where its independent index is valuable; Brave remains the default general scout. Every other external worker route stays disabled until it meets the same boundary and adoption gates. A credential reported by `doctor.py` is not execution readiness. Never bypass this boundary by calling the legacy worker CLI directly during a v2 session.
+The resolved provider registry is the sole source of truth for which routes are enabled. Inspect current capabilities with `"$PY" <skill-dir>/scripts/research_state.py providers --json`; it reports each route's enabled state, binding, adoption status, and required-key presence without reading secret values. A present credential is not execution readiness: a route is usable only when the registry marks it enabled and v2-bound. Every other route stays unusable until its adapter meets the same boundary and adoption gates. Use Exa for anti-lock-in or verification where its independent index is valuable; Brave is the recommended general scout.
 
 ## First-Run Sanity Check
 

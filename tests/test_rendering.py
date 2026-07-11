@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research_harness.rendering import render_html, render_session, render_session_result
+from research_harness.rendering import render_html, render_session_result
 from research_harness.state import state_sha256
 from research_harness.storage import apply_state_patch, load_state, read_events
 from research_harness.validation import validate_session
@@ -23,8 +23,8 @@ class RenderingTests(unittest.TestCase):
         self.report = validate_session(self.session)
 
     def test_same_state_renders_identical_bytes(self) -> None:
-        first = render_session(self.session).read_bytes()
-        second = render_session(self.session).read_bytes()
+        first = render_session_result(self.session).path.read_bytes()
+        second = render_session_result(self.session).path.read_bytes()
         self.assertEqual(first, second)
 
     def test_untrusted_content_is_escaped(self) -> None:
@@ -39,7 +39,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn(state_sha256(self.state), document)
 
     def test_state_change_makes_existing_report_stale(self) -> None:
-        render_session(self.session)
+        render_session_result(self.session)
         revision = load_state(self.session)["session"]["revision"]
         apply_state_patch(
             self.session,
@@ -52,7 +52,7 @@ class RenderingTests(unittest.TestCase):
         )
 
     def test_render_records_hash_bound_report_event(self) -> None:
-        path = render_session(self.session)
+        path = render_session_result(self.session).path
         event = read_events(self.session)[0][-1]
         self.assertEqual(event["event"], "report_generated")
         self.assertEqual(event["state_sha256"], state_sha256(load_state(self.session)))

@@ -60,8 +60,7 @@ sentinel exists so that never has to happen again.
   (the payload IS the canonical record).
 - `evidence_capabilities.can_support_claims`: `false` for search/listing
   shapes (their output guides retrieval; it is not claim evidence). `true`
-  only for direct source-of-record fetch shapes, and then
-  `requires_direct_fetch: true` stays.
+  only for direct source-of-record fetch shapes.
 - Do not touch other adapters, the boundary core, storage, quota, or docs.
 - Report any friction with the adapter protocol instead of working around
   it — the schema is LOCKED v1 (2026-07-11); friction reports are still

@@ -10,7 +10,7 @@ import stat
 from pathlib import Path
 from typing import Any, Optional
 
-from ._canon import RETENTION_RANK, sha256_hex
+from ._canon import sha256_hex
 from .storage import (
     _apply_artifact_state_patch_unlocked,
     _fsync_dir,
@@ -398,93 +398,6 @@ def ingest_fetched_source(
             provenance,
             now,
             None,
-        )
-
-
-def ingest_provider_artifact(
-    session_dir: Path,
-    source_path: Path,
-    artifact_id: str,
-    media_type: str,
-    provider_id: str,
-    attempt_or_occurrence_id: str,
-    sensitivity: str,
-    retention: str,
-    include_in_html: bool,
-    now: str,
-) -> dict[str, Any]:
-    session_dir = Path(session_dir)
-    with session_lock(session_dir):
-        _recover_session_unlocked(session_dir)
-        state = _load_state_unlocked(session_dir)
-        if state["contract"].get("artifact_policy", {}).get("allow_provider_payloads") is not True:
-            raise ArtifactPolicyError("the confirmed contract forbids provider payload persistence")
-        provider = next(
-            (item for item in state["capabilities"]["providers"] if item.get("id") == provider_id),
-            None,
-        )
-        preflight = next(
-            (item for item in state["capabilities"]["preflight"] if item.get("provider_id") == provider_id),
-            None,
-        )
-        if (
-            provider is None
-            or provider.get("enabled") is not True
-            or provider.get("adapter") == "unbound"
-            or provider.get("adapter_version") == "unbound"
-            or provider.get("execution_binding") == "legacy_unbound"
-            or preflight is None
-            or preflight.get("ready") is not True
-        ):
-            raise ArtifactPolicyError("provider is not enabled and bound in the capability snapshot")
-        events, errors = _read_events_unlocked(session_dir)
-        if errors:
-            raise ArtifactPolicyError("event history is malformed")
-        matching_attempt = any(
-            event.get("event") == "permit_acquired"
-            and event.get("action_id") == attempt_or_occurrence_id
-            and event.get("route") == provider_id
-            for event in events
-        )
-        matching_occurrence = any(
-            occurrence.get("id") == attempt_or_occurrence_id
-            and occurrence.get("provider_id") == provider_id
-            for occurrence in state["retrieval_occurrences"]
-        )
-        if not matching_attempt and not matching_occurrence:
-            raise ArtifactPolicyError("provider artifact does not match an attempt or occurrence")
-
-        rights = provider.get("storage_rights")
-        if not isinstance(rights, dict):
-            raise ArtifactPolicyError("provider storage rights are missing")
-        allowed_retention = rights.get("payload_retention")
-        if allowed_retention not in {"session", "persistent"}:
-            raise ArtifactPolicyError("provider payload retention is forbidden or non-persistable")
-        if retention not in RETENTIONS or RETENTION_RANK[retention] > RETENTION_RANK[allowed_retention]:
-            raise ArtifactPolicyError("requested retention exceeds provider storage rights")
-        if include_in_html and rights.get("html_allowed") is not True:
-            raise ArtifactPolicyError("provider storage rights forbid HTML inclusion")
-        for field in ("verified_at", "source"):
-            if not isinstance(rights.get(field), str) or not rights[field] or rights[field] == "not_disclosed":
-                raise ArtifactPolicyError("provider storage rights are incomplete")
-
-        provenance = {
-            "origin_kind": "provider_payload",
-            "provider_id": provider_id,
-            "attempt_or_occurrence_id": attempt_or_occurrence_id,
-        }
-        return _ingest_unlocked(
-            session_dir,
-            Path(source_path),
-            artifact_id,
-            media_type,
-            sensitivity,
-            retention,
-            include_in_html,
-            provenance,
-            now,
-            None,
-            {"provider_storage_rights": rights},
         )
 
 

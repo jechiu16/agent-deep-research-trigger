@@ -6,8 +6,8 @@ returns {"id", "status", ...}; GET /v1/async/sonar/{id} returns the same
 shape with "status" in {CREATED, IN_PROGRESS, COMPLETED, FAILED} and, once
 COMPLETED, a nested "response" object shaped like a normal chat-completions
 body (choices/usage/citations/search_results) — confirmed against the sync
-sonar.py adapter's real recorded fixture and the legacy scripts/deep_research.py
-prior art, both of which nest cost under response.usage.cost.total_cost.
+sonar.py adapter's real recorded fixture, which nests cost under
+response.usage.cost.total_cost.
 """
 
 from __future__ import annotations

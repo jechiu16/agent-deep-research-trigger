@@ -323,7 +323,3 @@ def render_session_result(session_dir: Path) -> RenderedReport:
             },
         )
         return RenderedReport(report_path, validation, state_hash, report_hash)
-
-
-def render_session(session_dir: Path) -> Path:
-    return render_session_result(session_dir).path

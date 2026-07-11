@@ -11,12 +11,12 @@ from research_harness.quota import (
     DuplicateAction,
     InvalidAttemptTransition,
     QuotaExceeded,
+    _record_attempt_status_unlocked,
     acquire_permits,
     permit_usage,
-    record_attempt_status,
 )
 from research_harness.state import new_state
-from research_harness.storage import create_session, read_events
+from research_harness.storage import create_session, read_events, session_lock
 from tests.helpers import NOW, confirmed_demo_contract
 
 
@@ -77,8 +77,9 @@ class QuotaTests(unittest.TestCase):
         acquire_permits(
             self.session, "A1", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
         )
-        record_attempt_status(self.session, "A1", "attempted", NOW)
-        record_attempt_status(self.session, "A1", "uncertain", NOW)
+        with session_lock(self.session):
+            _record_attempt_status_unlocked(self.session, "A1", "attempted", NOW)
+            _record_attempt_status_unlocked(self.session, "A1", "uncertain", NOW)
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_second_primary_scout_is_rejected_with_spare_category_capacity(self) -> None:
@@ -135,7 +136,8 @@ class QuotaTests(unittest.TestCase):
             self.session, "A1", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
         )
         with self.assertRaises(InvalidAttemptTransition):
-            record_attempt_status(self.session, "A1", "completed", NOW)
+            with session_lock(self.session):
+                _record_attempt_status_unlocked(self.session, "A1", "completed", NOW)
         self.assertEqual(len(read_events(self.session)[0]), 2)
 
 
