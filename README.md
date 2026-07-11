@@ -138,19 +138,19 @@ No research request runs until the user confirms the exact card and its binding 
 
 ```mermaid
 flowchart TD
-    T(["/deep trigger"]):::trig --> C["Hash-bound contract"]:::proc
-    C --> U{"User confirms?"}:::dec
-    U -- no --> X(["No spend"]):::stop
-    U -- yes --> P["Permit per physical request"]:::proc
-    P --> B["Sync / async request boundary"]:::proc
-    B --> S["Canonical state +<br/>hash-chained events"]:::proc
-    S --> V{"Fail-closed validation"}:::dec
-    V -- pass --> R(["Deterministic HTML report"]):::done
-    V -- fail --> H(["Blocked (no report)"]):::stop
+    T["/deep trigger"]:::start --> C["Hash-bound contract"]:::step
+    C --> U["User confirms?"]:::gate
+    U -- no --> X["No spend"]:::stop
+    U -- yes --> P["Permit per physical request"]:::step
+    P --> B["Sync / async request boundary"]:::step
+    B --> S["Canonical state +<br/>hash-chained events"]:::step
+    S --> V["Fail-closed validation"]:::gate
+    V -- pass --> R["Deterministic HTML report"]:::done
+    V -- fail --> H["Blocked (no report)"]:::stop
 
-    classDef trig fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
-    classDef proc fill:#f1f5f9,stroke:#475569,color:#0f172a;
-    classDef dec fill:#fef9c3,stroke:#ca8a04,color:#422006;
+    classDef start fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
+    classDef step fill:#eef2f7,stroke:#475569,color:#0f172a;
+    classDef gate fill:#fef9c3,stroke:#ca8a04,color:#422006;
     classDef stop fill:#fee2e2,stroke:#dc2626,color:#450a0a;
     classDef done fill:#dcfce7,stroke:#16a34a,color:#052e16;
 ```

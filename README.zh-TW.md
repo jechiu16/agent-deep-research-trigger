@@ -143,19 +143,19 @@ route record 或 card 有任何變動，都必須重新確認。
 
 ```mermaid
 flowchart TD
-    T(["/deep trigger"]):::trig --> C["Hash-bound contract"]:::proc
-    C --> U{"使用者確認？"}:::dec
-    U -- 否 --> X(["不產生 spend"]):::stop
-    U -- 是 --> P["每個 physical request 一份 permit"]:::proc
-    P --> B["Sync／async request boundary"]:::proc
-    B --> S["Canonical state +<br/>hash-chained events"]:::proc
-    S --> V{"Fail-closed validation"}:::dec
-    V -- pass --> R(["Deterministic HTML report"]):::done
-    V -- fail --> H(["Blocked（不產生報告）"]):::stop
+    T["/deep 觸發"]:::start --> C["雜湊綁定契約"]:::step
+    C --> U["使用者確認？"]:::gate
+    U -- 否 --> X["不產生花費"]:::stop
+    U -- 是 --> P["每個實體請求一份授權"]:::step
+    P --> B["同步／非同步邊界"]:::step
+    B --> S["正規狀態＋事件鏈"]:::step
+    S --> V["預設拒絕驗證"]:::gate
+    V -- 通過 --> R["確定性 HTML 報告"]:::done
+    V -- 失敗 --> H["擋下（不出報告）"]:::stop
 
-    classDef trig fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
-    classDef proc fill:#f1f5f9,stroke:#475569,color:#0f172a;
-    classDef dec fill:#fef9c3,stroke:#ca8a04,color:#422006;
+    classDef start fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
+    classDef step fill:#eef2f7,stroke:#475569,color:#0f172a;
+    classDef gate fill:#fef9c3,stroke:#ca8a04,color:#422006;
     classDef stop fill:#fee2e2,stroke:#dc2626,color:#450a0a;
     classDef done fill:#dcfce7,stroke:#16a34a,color:#052e16;
 ```
