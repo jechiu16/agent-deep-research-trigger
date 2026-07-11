@@ -93,11 +93,12 @@ sentinel exists so that never has to happen again.
   endpoint/shape qualifier. Keep both segments stable once shipped; it is
   read back out of committed occurrences.
 - **Drop citations that lack a resolvable url — do not keep `url: None`.**
-  This is the rule `europe_pmc.py`/`openalex.py`/`exa.py`/`brave.py` apply for
-  listing-shaped results (only append when the item resolves to a real
-  `http(s)` url). `crossref.py` and `scholar.py` predate this convention and
-  still emit `url: None` entries, each pinned by an explicit test — match the
-  drop pattern for new adapters, do not copy those two.
+  Every listing-shaped adapter (`crossref.py`, `scholar.py`, `europe_pmc.py`,
+  `openalex.py`, `exa.py`, `brave.py`) applies this rule: only append a citation
+  when the item resolves to a real `http(s)` url. A url-less row still appears
+  in the synthesis listing but does not inflate `citation_count`, which is meant
+  to measure clickable evidence, not every listed row. Match the drop pattern
+  for new adapters.
 - **Registry required fields are exactly `providers.REQUIRED_PROVIDER_FIELDS`**
   in `research_harness/providers.py` — that tuple is the source of truth for
   what `validate_provider_registry` demands. Build briefs may hand you an

@@ -92,13 +92,20 @@ def parse(payload: bytes) -> ParsedResult:
             f"\n- {display_title} ({year if year is not None else '?'}) "
             f"— cited by: {ref_count}"
         )
-        citations.append(
-            {
-                "url": f"https://doi.org/{doi}" if doi else None,
-                "title": title or doi,
-                "date": str(year) if year is not None else None,
-            }
-        )
+        # Only DOI-bearing works become citations, same rule
+        # openalex/europe_pmc/exa/brave use: a work with no DOI has no
+        # resolvable url, and citations count clickable evidence, not every
+        # listed row — the row still appears in the synthesis listing above.
+        # DOI-less works are near-nonexistent in the Crossref index (the DOI is
+        # Crossref's own primary key), so this only trims malformed edge records.
+        if doi:
+            citations.append(
+                {
+                    "url": f"https://doi.org/{doi}",
+                    "title": title or doi,
+                    "date": str(year) if year is not None else None,
+                }
+            )
 
     return ParsedResult(
         synthesis_text="".join(lines),

@@ -269,8 +269,24 @@ class ScholarParseTests(unittest.TestCase):
         ).encode("utf-8")
         result = scholar.parse(payload)
         self.assertEqual(result.kind, "paper_listing")
-        self.assertEqual(result.citations, [{"url": None, "title": "(untitled)", "date": None}])
+        # A paper with no resolvable url is dropped from citations (the
+        # drop-on-no-url convention) -- but it still appears in the synthesis
+        # listing.
+        self.assertEqual(result.citations, [])
         self.assertIn("(untitled)", result.synthesis_text)
+
+    def test_parse_lists_unresolvable_url_without_counting_citation(self) -> None:
+        # A non-http(s) url (e.g. a javascript: pseudo-url) does not resolve to
+        # clickable evidence, so it is dropped from citations, same as
+        # exa/brave -- the paper still appears in the synthesis listing.
+        from research_harness.adapters import scholar
+
+        payload = json.dumps(
+            {"total": 1, "data": [{"title": "Unsafe URL", "url": "javascript:alert(1)"}]}
+        ).encode("utf-8")
+        result = scholar.parse(payload)
+        self.assertEqual(result.citations, [])
+        self.assertIn("Unsafe URL", result.synthesis_text)
 
     def test_parse_truncates_excerpt_to_200_chars(self) -> None:
         from research_harness.adapters import scholar

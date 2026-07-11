@@ -274,7 +274,10 @@ class CrossrefParseTests(unittest.TestCase):
         ).encode("utf-8")
         result = crossref.parse(payload)
         self.assertEqual(result.kind, "paper_listing")
-        self.assertEqual(result.citations, [{"url": None, "title": None, "date": None}])
+        # A DOI-less work has no resolvable url, so it is dropped from
+        # citations (the drop-on-no-url convention) -- but it still appears in
+        # the synthesis listing.
+        self.assertEqual(result.citations, [])
         self.assertIn("(untitled)", result.synthesis_text)
 
     def test_parse_falls_back_to_doi_when_title_is_missing(self) -> None:

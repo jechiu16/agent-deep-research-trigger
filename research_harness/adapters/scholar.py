@@ -69,13 +69,21 @@ def parse(payload: bytes) -> ParsedResult:
         excerpt = _excerpt(paper)
         if excerpt:
             lines.append(f"\n  {excerpt}")
-        citations.append(
-            {
-                "url": paper.get("url") if isinstance(paper.get("url"), str) else None,
-                "title": title,
-                "date": str(year) if year is not None else None,
-            }
-        )
+        # Only papers that resolve to an http(s) url become citations, same
+        # rule europe_pmc/openalex/exa/brave use: citations count clickable
+        # evidence, not every listed row — the row still appears in the
+        # synthesis listing above. Semantic Scholar returns its own
+        # semanticscholar.org page url for essentially every paper, so this
+        # rarely trims a real record.
+        url = paper.get("url")
+        if isinstance(url, str) and urllib.parse.urlsplit(url).scheme in {"http", "https"}:
+            citations.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "date": str(year) if year is not None else None,
+                }
+            )
 
     return ParsedResult(
         synthesis_text="".join(lines),
