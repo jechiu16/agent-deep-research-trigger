@@ -20,6 +20,7 @@ dependencies = [
 gemini = ["google-genai>=2.0,<3"]
 dev = [
   "build>=1.2,<2",
+  "coverage[toml]>=7.6,<8",
   "pip-audit>=2.9,<3",
   "twine>=6,<7",
 ]
@@ -27,6 +28,7 @@ dev = [
 [project.scripts]
 deep-research-state = "scripts.research_state:main"
 deep-research-doctor = "scripts.doctor:main"
+deep-research-release-gate = "scripts.release_gate:main"
 
 [project.urls]
 Repository = "https://github.com/jechiu16/claude-research-cascade"
@@ -36,3 +38,12 @@ include = ["research_harness*", "scripts*"]
 
 [tool.setuptools.package-data]
 research_harness = ["provider_registry.json"]
+
+[tool.coverage.run]
+branch = true
+source = ["research_harness"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_empty = true

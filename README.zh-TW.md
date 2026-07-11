@@ -207,6 +207,8 @@ python3 -m venv .venv
 Claude Code 會發現 [SKILL.md](SKILL.md)。Gemini worker 需另外執行
 `.venv/bin/python -m pip install -e ".[gemini]"`。可用
 `.venv/bin/deep-research-doctor` 在不呼叫外部 API 的情況下檢查本機環境。
+維護者可在乾淨工作樹執行 `.venv/bin/deep-research-release-gate`，一次完成
+no-network 測試、coverage、build、metadata 與 dependency audit gate。
 
 ### Codex
 

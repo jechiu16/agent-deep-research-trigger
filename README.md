@@ -207,6 +207,8 @@ python3 -m venv .venv
 Claude Code discovers [SKILL.md](SKILL.md). Install the optional Gemini worker with
 `.venv/bin/python -m pip install -e ".[gemini]"`. Run
 `.venv/bin/deep-research-doctor` to verify the local environment without calling an API.
+Maintainers can run `.venv/bin/deep-research-release-gate` from a clean worktree
+to execute the complete no-network test, coverage, build, metadata, and dependency audit gate.
 
 ### Codex
 
