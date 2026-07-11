@@ -9,9 +9,18 @@
 It turns an explicit trigger into a bounded, cost-aware, evidence-gated research
 session with resumable multi-provider execution and a deterministic report.
 
-[繁體中文](README.zh-TW.md) · [Quickstart](#quickstart) ·
-[How it works](#how-it-works) · [Provider routes](#provider-routes) ·
+[繁體中文](README.zh-TW.md) ·
 [Release](https://github.com/jechiu16/agent-deep-research-trigger/releases)
+
+## Contents
+
+[Why this exists](#why-this-exists) · [Key terms](#key-terms) ·
+[Host compatibility](#host-compatibility) · [Quickstart](#quickstart) ·
+[Install as a shared skill](#install-as-a-shared-skill) · [Use](#use) ·
+[How it works](#how-it-works) · [Provider routes](#provider-routes) ·
+[CLI](#cli) · [Credentials and security](#credentials-and-security) ·
+[Development and release quality](#development-and-release-quality) ·
+[Project map](#project-map)
 
 ## Why this exists
 
@@ -29,6 +38,19 @@ Agent Deep Research Trigger makes those constraints executable:
 - state changes are revision-checked and crash-recoverable;
 - claims must trace to evidence and source origins;
 - HTML output is rendered deterministically from one canonical JSON state.
+
+## Key terms
+
+The rest of this document leans on a few precise terms instead of loose ones like "step" or "call":
+
+| Term | Meaning |
+|---|---|
+| Organizer | The agent role that proposes, confirms, and executes the research contract |
+| Contract | The exact, hash-bound research plan the user approves before any spend |
+| Posture | The research mode: `lookup`, `synthesis`, `scientific`, or `decision` |
+| Tier | The cost/depth budget: `low`, `medium`, `high`, or a custom request envelope |
+| Permit | A one-time authorization for exactly one physical request |
+| Physical request | One real network call to a provider — the unit permits and quotas track |
 
 ## Host compatibility
 
@@ -63,6 +85,8 @@ Expected result:
 The demo proves the permit → request boundary → occurrence → validation →
 report path. Its no-network route is structurally forbidden from supporting a
 real claim.
+
+See a [sample report](examples/quickstart/sample_report.md) for the shape of real rendered output.
 
 ## Install as a shared skill
 
@@ -147,12 +171,14 @@ and escalates only when the confirmed contract permits it.
 
 Enabled route classes include:
 
-- general discovery and challenge: Brave, Sonar, and Exa;
-- source of record: GitHub, PyPI, OSV, NVD, and IETF;
-- scholarly discovery: OpenAlex, Crossref, Semantic Scholar, and Europe PMC;
-- asynchronous investigation: Perplexity Deep Research;
-- host-native and local inspection routes;
-- deterministic no-network test routes.
+| Route class | Providers |
+|---|---|
+| General discovery and challenge | Brave, Sonar, Exa |
+| Source of record | GitHub, PyPI, OSV, NVD, IETF |
+| Scholarly discovery | OpenAlex, Crossref, Semantic Scholar, Europe PMC |
+| Asynchronous investigation | Perplexity Deep Research |
+| Host-native and local inspection | — |
+| Deterministic no-network test | — |
 
 Exa is enabled for anti-lock-in and verification after a bounded paired-index
 benchmark; Brave remains the default general scout. Listing results cannot

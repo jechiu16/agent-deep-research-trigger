@@ -9,9 +9,23 @@
 它把明確觸發轉成有邊界、成本可控、證據有 gate、可恢復的多 provider
 研究 session，最後從唯一 canonical state 產生 deterministic report。
 
-[English](README.md) · [快速開始](#快速開始) · [運作方式](#運作方式) ·
-[Provider routes](#provider-routes) ·
+[English](README.md) ·
 [Releases](https://github.com/jechiu16/agent-deep-research-trigger/releases)
+
+## 目錄
+
+- [為什麼需要它](#為什麼需要它)
+- [關鍵術語](#關鍵術語)
+- [Host 相容性](#host-相容性)
+- [快速開始](#快速開始)
+- [安裝成共用 skill](#安裝成共用-skill)
+- [使用方式](#使用方式)
+- [運作方式](#運作方式)
+- [Provider routes](#provider-routes)
+- [CLI](#cli)
+- [Credential 與安全](#credential-與安全)
+- [開發與 release 品質](#開發與-release-品質)
+- [專案地圖](#專案地圖)
 
 ## 為什麼需要它
 
@@ -28,6 +42,19 @@ Agent Deep Research Trigger 把這些限制做成可執行規則：
 - state update 有 revision check 並可在 crash 後恢復；
 - claim 必須連回 evidence 與 source origin；
 - HTML 只從唯一 canonical JSON state deterministic render。
+
+## 關鍵術語
+
+後面的內容會固定使用這幾個精確術語，而不是「步驟」「呼叫」這類模糊說法：
+
+| 術語 | 意義 |
+|---|---|
+| Organizer | 負責提出、確認並執行 research contract 的 agent 角色 |
+| Contract | 使用者在任何 spend 發生前確認的精確、hash-bound research 計畫 |
+| Posture | 研究模式：`lookup`、`synthesis`、`scientific` 或 `decision` |
+| Tier | 成本／深度預算：`low`、`medium`、`high` 或 custom request envelope |
+| Permit | 針對單一 physical request 的一次性授權 |
+| Physical request | 一次真實的 provider 網路呼叫——permit 與 quota 追蹤的最小單位 |
 
 ## Host 相容性
 
@@ -61,7 +88,9 @@ python3 -m venv .venv
 Demo 會走完 permit → request boundary → occurrence → validation → report；它的
 no-network route 在結構上不能支持真實 claim。
 
-## 安裝成 Claude Code／Codex 共用 skill
+實際 render 出來的樣子可以參考這份[範例報告](examples/quickstart/sample_report.md)。
+
+## 安裝成共用 skill
 
 保留一份 checkout，再提供給任一或兩個 host：
 
@@ -143,12 +172,14 @@ contract 允許時才 escalation。
 
 Enabled route 類型包括：
 
-- general discovery／challenge：Brave、Sonar、Exa；
-- source of record：GitHub、PyPI、OSV、NVD、IETF；
-- scholarly discovery：OpenAlex、Crossref、Semantic Scholar、Europe PMC；
-- async investigation：Perplexity Deep Research；
-- host-native 與 local inspection；
-- deterministic no-network test routes。
+| Route class | Providers |
+|---|---|
+| General discovery／challenge | Brave、Sonar、Exa |
+| Source of record | GitHub、PyPI、OSV、NVD、IETF |
+| Scholarly discovery | OpenAlex、Crossref、Semantic Scholar、Europe PMC |
+| Async investigation | Perplexity Deep Research |
+| Host-native 與 local inspection | — |
+| Deterministic no-network test | — |
 
 Exa 經 bounded paired-index benchmark 後，作為 anti-lock-in／verification route
 啟用；Brave 仍是預設 general scout。Result listing 必須直接 fetch decisive source
