@@ -1,0 +1,1 @@
+{"type": "ErrorResponse", "error": {"id": "3f1c9c2a-2222-4444-8888-9a9a9a9a9a9a", "status": 401, "code": "UNAUTHORIZED", "detail": "Unable to validate the subscription token", "meta": {}}}

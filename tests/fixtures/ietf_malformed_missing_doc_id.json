@@ -1,0 +1,41 @@
+{
+  "draft": "draft-ietf-httpbis-semantics-19",
+  "title": "HTTP Semantics",
+  "authors": [
+    "R. Fielding, Ed.",
+    "M. Nottingham, Ed.",
+    "J. Reschke, Ed."
+  ],
+  "format": [
+    "XML",
+    "TEXT",
+    "HTML",
+    "PDF"
+  ],
+  "page_count": "194",
+  "pub_status": "INTERNET STANDARD",
+  "status": "INTERNET STANDARD",
+  "source": "HTTP",
+  "abstract": "synthetic record with doc_id stripped to exercise the parse-failure path",
+  "pub_date": "June 2022",
+  "keywords": [],
+  "obsoletes": [
+    "RFC2818",
+    "RFC7230",
+    "RFC7231",
+    "RFC7232",
+    "RFC7233",
+    "RFC7235",
+    "RFC7538",
+    "RFC7615",
+    "RFC7694"
+  ],
+  "obsoleted_by": [],
+  "updates": [
+    "RFC3864"
+  ],
+  "updated_by": [],
+  "see_also": [],
+  "doi": "10.17487/RFC9110",
+  "errata_url": "https://www.rfc-editor.org/errata/rfc9110"
+}

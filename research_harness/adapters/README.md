@@ -1,0 +1,112 @@
+# Adapter Development Guide
+
+One provider, one module, one exact contract. `sonar.py` is the golden
+example; `tests/test_boundary.py` is the golden test pattern. Deviating from
+either needs a written reason in your report.
+
+**Reserved id — do not build this one:** `test-only-unbound-candidate` in
+`provider_registry.json` is a permanent synthetic sentinel relied on by
+`tests/test_contracts.py` (`test_enabled_external_route_requires_bound_interceptor_and_adoption`
+and `test_enabled_external_adoption_evidence_must_be_nonempty`) to exercise
+the "not v2-bound" / "lacks adoption evidence" registry-validation error
+branches. It must stay on the default `legacy_unbound` execution_binding
+forever — never give it an adapter, fill in its registry fields, or write
+`research_harness/adapters/test-only-unbound-candidate.py`. Prior versions of
+this contract test hardcoded a real candidate id instead (sonar, then brave,
+then mojeek) and broke every time that candidate got built for real; this
+sentinel exists so that never has to happen again.
+
+## Deliverables (definition of done)
+
+1. `research_harness/adapters/<provider>.py` with two pure functions:
+   - `build(query, env) -> RequestSpec` — no network, no side effects; raise
+     `BoundaryError` naming the missing env var if a credential is absent.
+   - `parse(payload: bytes) -> ParsedResult` — raise `AdapterParseError` on
+     any payload that does not match the provider contract. Never return a
+     half-parsed result.
+2. One registration line in `adapters/__init__.py`, key `<adapter>@<version>`
+   exactly matching the capability registry record.
+3. Registry record in `provider_registry.json` completed to enabled-route
+   standard (see the `sonar` block): adapter/version, `execution_binding:
+   "v2_request_boundary"`, honest `evidence_capabilities`, conservative
+   `storage_rights` with `verified_at` + `source`, `metering`, `transport`,
+   `controls`, `docs_verified_at`. Leave `enabled: false` — the orchestrator
+   flips it after verifying evidence.
+4. Fixtures under `tests/fixtures/`:
+   - `<provider>_success.json` — a RECORDED real response (run one live call;
+     keyless routes need no credentials). Synthetic success fixtures are not
+     acceptable; fixtures must reflect the real API shape.
+   - At least two failure fixtures (malformed/missing-field, provider error
+     body such as 429 or 4xx).
+5. `tests/test_<provider>.py` following `test_boundary.py`: success
+   expectations read dynamically FROM the fixture (re-recording must not break
+   tests), plus HTTP-error, parse-failure, and permit-consumption checks.
+   Build sessions with `confirmed_demo_contract(route="<provider>", ...)`.
+6. Full suite green: `python -m unittest discover -s tests -q`.
+7. A live end-to-end evidence run in a scratch directory (NOT committed):
+   contract → `init` → `permit` → `execute` → `validate` returns `ok=true`.
+   Record its cost, citation/record count, and occurrence id in your report.
+
+## Rules that are not negotiable
+
+- stdlib only. No `requests`, no third-party packages.
+- Credentials come in via `env`; they never appear in code, fixtures,
+  occurrences, fingerprints, or reports.
+- Respect provider rate limits during the live call (Semantic Scholar: one
+  request per second, never parallel).
+- `ParsedResult.kind` must be honest: `search_synthesis` (model-written
+  synthesis over search), `result_listing` (ranked search results, no
+  synthesis), `paper_listing` (scholarly metadata listing), `record_fetch`
+  (the payload IS the canonical record).
+- `evidence_capabilities.can_support_claims`: `false` for search/listing
+  shapes (their output guides retrieval; it is not claim evidence). `true`
+  only for direct source-of-record fetch shapes, and then
+  `requires_direct_fetch: true` stays.
+- Do not touch other adapters, the boundary core, storage, quota, or docs.
+- Report any friction with the adapter protocol instead of working around
+  it — the schema is LOCKED v1 (2026-07-11); friction reports are still
+  welcome, but a fix now means a versioned migration, not a silent edit.
+
+## Known constraints and traps (from prior adapter builds)
+
+- **Test registry override needs three fields, not one.** A currently-disabled
+  candidate route fails `new_state()` even after you set `enabled: true` on an
+  in-memory copy — enabled v2 routes also require `adoption_status` in
+  `{baseline, validated}` and non-empty `adoption_evidence`. Use
+  `tests.helpers.enabled_registry_copy("<provider>")`, which sets all three on
+  a deep copy. The committed registry stays honestly `not_tested`/`[]` until
+  the orchestrator flips it.
+- **`parse()` never sees response headers** — only the body bytes. Header-
+  derived usage (rate limits etc.) cannot be threaded through today; leave
+  `usage` to body-derived facts and note the gap in your report if it hurts.
+- **Bodyless GET**: set `body=b""`; the transport sends `data=None` for empty
+  bodies so the request stays a true GET.
+- **`retrieval_shape` taxonomy**: use coarse shapes — `cited-synthesis`,
+  `result-listing`, `paper-listing`, `record-fetch` — not per-endpoint lists;
+  keep it consistent with `ParsedResult.kind`.
+- **Timeouts**: sync record/listing fetches default to `30.0`; model-written
+  synthesis routes to `120.0`. State your choice in the module docstring only
+  if you deviate.
+- **`ParsedResult.model` naming convention**: `"<provider-endpoint>/<version>"`
+  (e.g. `brave-web-search/v1`, `openalex/works-search`, `nvd-cve/v2.0`) — the
+  second segment is a version when the provider has one, otherwise an
+  endpoint/shape qualifier. Keep both segments stable once shipped; it is
+  read back out of committed occurrences.
+- **Drop citations that lack a resolvable url — do not keep `url: None`.**
+  Every listing-shaped adapter (`crossref.py`, `scholar.py`, `europe_pmc.py`,
+  `openalex.py`, `exa.py`, `brave.py`) applies this rule: only append a citation
+  when the item resolves to a real `http(s)` url. A url-less row still appears
+  in the synthesis listing but does not inflate `citation_count`, which is meant
+  to measure clickable evidence, not every listed row. Match the drop pattern
+  for new adapters.
+- **Registry required fields are exactly `providers.REQUIRED_PROVIDER_FIELDS`**
+  in `research_harness/providers.py` — that tuple is the source of truth for
+  what `validate_provider_registry` demands. Build briefs may hand you an
+  abbreviated field list; treat the constant, not the brief, as authoritative.
+- **`acquire_permits` reads live `os.environ`, not an injectable dict.** The
+  confirmed-and-bound preflight it runs (`quota._assert_confirmed_and_bound`)
+  calls `preflight_contract_routes(..., os.environ)` directly, unlike
+  `new_state`/`execute_probe`, which both accept an `environ` override.
+  Standalone scripts or tests exercising `acquire_permits` must set
+  `os.environ` itself (`monkeypatch.setenv`, etc.) — passing a custom dict
+  has no effect on this path.

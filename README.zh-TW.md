@@ -4,276 +4,262 @@
 
 [![License: MIT](https://img.shields.io/github/license/jechiu16/claude-research-cascade?style=flat-square)](LICENSE)
 [![Host neutral](https://img.shields.io/badge/host-neutral-24292f?style=flat-square)](HARNESS.md)
-[![Research harness](https://img.shields.io/badge/type-research%20harness-0969da?style=flat-square)](HARNESS.md)
+[![V2 foundation](https://img.shields.io/badge/runtime-v2%20foundation-21564a?style=flat-square)](research_harness)
 
-`/deep` 是給可使用工具的 LLM Agent 使用的明確 **meta-research trigger**。
+`/deep` 是給 tool-using coding agent 使用的 explicit-trigger research runtime。輸入字面上的 `/deep` 會讓當下的宿主模型成為一次有邊界 session 的 **Organizer**——負責 frame 問題、選擇 check、reconcile evidence——同時由另一層獨立的 mechanical layer 強制這個 envelope：使用者必須確認、且與其看到的 card、provider registry、route records 完全 hash-bound 的 research contract；把關每個實體 request 的 permit；append-only、hash-chained 的 event journal；唯一一份 canonical JSON state document；fail-closed 的 validation gate；以及只從該 state 產生、不摻雜其他內容的 deterministic HTML report。
 
-只有使用者明確輸入 `/deep` 時才啟動。它不是固定流程的「深度研究」工具。它會把宿主 Agent，例如 Claude Code、Codex，或其他具備工具能力的 Agent，變成研究流程的 **Organizer**，在一次有邊界、有狀態、可稽核的研究工作中調度多種 worker：低成本查證、學術搜尋、深度研究 API，以及只處理既有檔案的整理器。
+## 30-Second Quickstart
 
-核心目標很直接：**用每一美元換到最多有用資訊**，同時讓主張可追溯、衝突可見，並把昂貴呼叫留給真正能降低不確定性的地方。
+零 network、零 key、零成本——透過 no-network 的 `demo-probe` route 跑完整個 permit → request-boundary → occurrence → validate → render 迴圈：
 
-主要宿主：**Claude Code**。Codex 是同一套 Organizer protocol 的 secondary binding。
+```bash
+PY=python3   # 任何裝好 requirements.txt 的 interpreter 都可以
+"$PY" scripts/research_state.py demo /tmp/deep-demo --json
+```
 
-## 為什麼需要它
+預期 stdout 會有 `"validation_ok": true`，並產生 `/tmp/deep-demo/report.html`。`demo-probe` route 永遠不能支持真正的 claim——registry validation 會 hard-fail——所以這只證明機器本身跑得動，不是一個研究結論。
 
-常見的 deep research 工作流多半是單一引擎、一次性輸出，而且難以稽核。這個 harness 把研究視為反覆迭代的證據循環：
+真實 session 會跑同樣的 primitive，一次一個 permit-gated 步驟：
 
-| 原則 | 意義 |
-|---|---|
-| 先定契約 | 花錢前先定義深度、獨立性門檻與嚴格程度 — 契約卡上直接看得到估價。 |
-| 狀態落盤 | 證據、花費、爭議與決策寫進 Research State 檔案 + append-only 帳本。 |
-| Worker affordances | 先選足夠便宜的工具；只有證據需要時才升級昂貴 worker。 |
-| 權威加權證據 | 來源帶 tier（T1 source of record / T2 二手 / T3 aggregator）與時點（`as-of`）；T3 堆再多也不構成佐證。 |
-| 主張層級對帳 | 逐條標記主張為已佐證、單一來源、有爭議或已淘汰。 |
-| 驗證底線 | 抽查承重主張**與它們之間的推論關節**；回報 yield（抽查 N 條 / 翻掉 M 條）。 |
-| 錢不蒸發 | Async 提交當下落帳；session 死掉靠 resume token 收割回來；抽取失敗保留原始 payload。 |
-| 宿主中立 | Runtime spine 在 `HARNESS.md`；worker 細節與 scenarios 需要時才載入。 |
+```bash
+SESSION=/tmp/deep-session
 
-## Repo 結構
+# 1. prepare —— normalize 並 hash 未確認的 card
+"$PY" scripts/research_state.py prepare --contract draft.json --json > prepared.json
 
-| 檔案 | 用途 |
-|---|---|
-| [HARNESS.md](HARNESS.md) | 短版宿主中立 Organizer spine：contract、state、loop、verification、delivery 與 boundary。 |
-| [WORKERS.md](WORKERS.md) | Worker reference：affordance catalog、CLI contract、parallelism、rate limits、privacy 與 recovery。 |
-| [SCENARIOS.md](SCENARIOS.md) | `/deep` 行為校準案例與 forward-test prompts。 |
-| [SKILL.md](SKILL.md) | Claude Code binding。註冊 `/deep` 並把 harness primitive 對應到 Claude Code 工具。 |
-| [AGENTS.md](AGENTS.md) | Codex binding。說明 discovery、安裝接線方式與 Codex 的操作規則。 |
-| [scripts/deep_research.py](scripts/deep_research.py) | 內建 worker CLI。一次呼叫就是一次 action；支援可恢復任務；stdout 輸出 JSON。 |
-| [scripts/doctor.py](scripts/doctor.py) | 本機 readiness check：Python、套件、API keys、provider availability、reports 可寫性、未收割 async jobs。 |
-| [scripts/validate_transcripts.py](scripts/validate_transcripts.py) | Golden `/deep` transcripts 的結構驗證器。 |
-| [scripts/validate_state.py](scripts/validate_state.py) | 真實 session 的產物 gate：contract 三軸、evidence status、spend 對帳、pending jobs。 |
-| [examples/quickstart](examples/quickstart) | no-network demo path 產生的 sample state、ledger、report。 |
-| [examples/transcripts](examples/transcripts) | quick fact、literature review、decision-critical 三種 `/deep` golden transcripts。 |
-| [requirements.txt](requirements.txt) | Network workers 與 `.env` 載入所需的常用 Python dependencies。 |
-| [.env.example](.env.example) | Worker provider 的 API key 範本。 |
+# 2. confirm —— 使用者對剛顯示的 hash 扣板機
+"$PY" scripts/research_state.py confirm --prepared prepared.json \
+  --card-sha256 "<card>" --registry-sha256 "<registry>" --referenced-records-sha256 "<routes>" \
+  --confirmed-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --confirmed-by user --json > confirmed.json
 
-## 運作方式
+# 3. init —— canonical session 目錄 + genesis event
+"$PY" scripts/research_state.py init "$SESSION" --question "<question>" --contract confirmed.json --json
+
+# 4. permit —— 預留一個精確的實體 request
+"$PY" scripts/research_state.py permit "$SESSION" --action-id A1 --stage primary_scout \
+  --category probe --route sonar --count 1 --fingerprint "user-approved:sonar:A1" --json
+
+# 5. execute —— 先 spool raw payload 再 parse
+"$PY" scripts/research_state.py execute "$SESSION" --action-id A1 --query "<query>" --json
+
+# 6. validate 再 render —— fail-closed gate、deterministic report.html
+"$PY" scripts/research_state.py validate "$SESSION" --json
+"$PY" scripts/research_state.py render "$SESSION" --json
+```
+
+## 架構
 
 ```mermaid
 flowchart TD
-    A["/deep &lt;question&gt;"] --> I["INSPECT<br/>重用舊報告 · 收割未完成 job<br/>（--list-pending → --resume）"]
-    I --> B["契約卡 — 使用者確認前零花費<br/>深度 × 獨立性 × 嚴格度<br/>估價來自 --cost-stats 實價史"]
-    B --> S[("Research State + 帳本<br/>假說 · 主張 · 證據 [T1–T3, as-of] · 花費")]
-    S --> L{"CHOOSE<br/>用最便宜的動作<br/>打最弱的承重不確定性"}
-    L -- "定向 / 補缺口" --> C1["cascade · sonar · scholar<br/>host search / fetch"]
-    L -- "並行深度 wave" --> C2["--submit-only: perplexity ∥ openai ∥ gemini<br/>等待期間做便宜驗證，再 --resume 收割"]
-    L -- "盲驗" --> C3["fresh-context agent<br/>只給主張原文 — 無 state、無假說"]
-    L -- "加工已抓材料" --> C4["deepseek<br/>只加工，不檢索"]
-    C1 --> R
-    C2 --> R
-    C3 --> R
-    C4 --> R
-    R["RECONCILE — 權威加權<br/>T3-only 一致不構成佐證<br/>已佐證 / 單一來源 / 有爭議"] --> S
-    R --> T{"達到契約門檻，或<br/>邊際收益 &lt; 邊際成本?"}
-    T -- "否" --> L
-    T -- "是" --> V["驗證底線<br/>抽查葉子與關節（A + B → C）<br/>記 yield：抽查 N / 翻掉 M<br/>decision run 加對抗檢驗（fresh context）"]
-    V --> G["產物 gate<br/>validate_state.py — FAIL 擋下、WARN 如實回報"]
-    G --> D["交付<br/>答案 · 證據狀態 · yield · 花費 ·<br/>產物 · 什麼證據會推翻結論"]
+    Q["/deep 問題"] --> CARD["Contract card：posture + tier + route + 實體 ceiling"]
+    CARD --> CONFIRM{"使用者確認？hash-bound 綁 card + registry + route"}
+    CONFIRM -- 否 --> STOP["不執行研究 action，不產生 spend"]
+    CONFIRM -- 是 --> INIT["confirm + init：canonical session、genesis event"]
+    INIT --> PERMIT["permit：預留一個實體 request"]
+    PERMIT --> BOUNDARY{"Request boundary"}
+    BOUNDARY -- sync probe --> PROBE["execute：先 spool raw 再 parse"]
+    BOUNDARY -- async deep --> SUBMIT["deep-submit：付費 POST，永不自動重試"]
+    SUBMIT --> POLL["deep-poll xN：polled transport，backoff 到上限"]
+    POLL -- accepted/uncertain --> POLL
+    POLL -- terminal --> HARVEST["先 spool raw 再 parse"]
+    PROBE --> STATE["Canonical state.json + hash-chained events.jsonl"]
+    HARVEST --> STATE
+    STATE --> VALIDATE{"validate：fail-closed gates"}
+    VALIDATE -- 未過 --> PARTIAL["PARTIAL 或 BLOCKED"]
+    VALIDATE -- 通過 --> PASS["PASS"]
+    PARTIAL --> RENDER["render：與 state hash 綁定的 deterministic report.html"]
+    PASS --> RENDER
 ```
 
-## 研究契約
+每個 session 擁有四個不互相競爭的 artifact：
 
-每次 `/deep` 都必須請使用者確認三個獨立軸線。Organizer 應該先從上下文推斷推薦 preset，但在 contract 被確認前不應花 worker 成本。Preset 是組合捷徑，不是硬編碼預算。
-
-| 軸線 | 選項 |
+| 路徑 | 用途 |
 |---|---|
-| 深度 | `shallow`：一波 probe 或快速回答 / `medium`：probe 加上一兩份標準 report / `deep`：多個深度引擎並反覆迭代 |
-| 獨立性門檻 | 單一來源可接受 / 承重主張需要 2+ 來源 / 2+ index family 加上一輪盲驗 |
-| 嚴格程度 | 第一個滿意答案即可 / 補齊明顯缺口 / 追爭議直到解決或證明不可解 |
+| `state.json` | 唯一的 canonical semantic state |
+| `events.jsonl` | append-only、sequence-numbered、hash-chained 的操作與 revision |
+| `raw/` | 帶 hash、size、sensitivity、retention、provenance 的 immutable ingested bytes |
+| `report.html` | 與 canonical state hash 綁定的 deterministic 人類報告 |
 
-Harness 使用的 preset：
+系統不會再產生第二份完整 Markdown 報告。Agent 從 canonical JSON 讀 semantic state；需要完整 provider bytes 時，再沿 spool/artifact reference 讀取。人類看 HTML，也不需要再多一層模型摘要。
 
-| Preset | 組成 | 適合情境 |
-|---|---|---|
-| `fast` | shallow + 單一來源可接受 + 第一個滿意答案即可 | 低成本 fact-check 或快速建立方向感。 |
-| `standard` | medium + 2-source bar + 補齊明顯缺口 | 一般研究、帶引用摘要、日常判斷。 |
-| `decision` | deep + 跨 index family 盲驗 + 追爭議 | 高風險或會影響決策的研究。 |
+## Invariants
 
-Repo 裡的美元數字只代表當前清單價格下的概略估算。程式會記錄 provider 回傳的成本資訊，但不會強制執行預算上限。
+以下是 runtime 用機械方式強制的保證，不是靠慣例：
 
-## Worker Affordances
+| Invariant | 強制機制 |
+|---|---|
+| 使用者扣下 spend 的板機 | `confirm` 要求使用者看到的 card、registry、route-record hash 完全一致；任何 drift 都會產生新 session，不會重新解讀舊的 |
+| 一個 permit 等於一個實體 request | `permit` 預留精確數量；失敗或 uncertain 的嘗試一樣會消耗掉——這裡沒有退款 |
+| 付費 submission 永不自動重試 | `deep-submit` 是單一一次付費 POST；timeout 或 crash 會把 job 標成 `uncertain`，不會默默重送 |
+| Raw payload 一律先 spool 再 parse | `execute`、`deep-submit`、`deep-poll` 都會先把 provider byte stream 寫進 `provider_spool/`，才開始 parse |
+| Occurrence 由 code 寫入，絕不是 model prose | request boundary 自己組出每一筆 `retrieval_occurrence`；Organizer 沒辦法自己生一筆 |
+| Demo route 永遠不能支持 claim | 只要 `no_network_demo` route 宣稱 `can_support_claims: true`，registry validation 就會 hard-fail |
+| Credential 絕不會進入 state、fixture 或 fingerprint | key 只從 `env`/`.env` 解析；fingerprint 只 hash query，不 hash credential；ingest 進來的 bytes 都會過一次 deterministic 的 secret-pattern 檢查 |
+| `PASS` 是 non-vacuous 的 | 必須有非空 bounded answer、符合 contract 的 evidence floor、完整 claim→evidence→source-origin lineage；High 還要求有沒有產生 candidate 的 context-separated verifier |
 
-Workers 是 Organizer 可選用的工具，不是固定 pipeline 階段。沒有固定順序；選擇能降低最弱承重不確定性的最低成本 action。下表只是 GitHub overview；真正執行時的 reference 在 [WORKERS.md](WORKERS.md)。
+## Route Status
 
-| Provider | 角色 | Index family | 典型成本 | 典型時間 |
+[`research_harness/provider_registry.json`](research_harness/provider_registry.json) 是 capability 與 policy ledger，不是 pipeline。`.env` 裡有 key 只代表這條 route *eligible*，不代表它 *enabled*。只要 `enabled: true` 的 route 缺少真正的 adapter binding、active 的 lifecycle，或者（external `v2_request_boundary` route 的話）沒有非空 adoption evidence，registry validation 就會 hard-fail。目前 enabled 的 external route 是 `sonar`、`github`、`pypi`、`scholar`、`openalex`、`crossref`、`nvd`、`europe-pmc`、`ietf`、`osv`、`brave`，以及 async 的 `perplexity` deep-engine route。`exa` 已接上相同 boundary 並通過 fixture/live validation，但在獨立索引 paired benchmark 完成前仍預設 disabled。下面其他 route 仍是未採用的 candidate。
+
+透過 `research_harness.providers.load_provider_registry()`（跟 runtime 用的是同一個 loader）讀出 registry，印出每筆記錄的 `id`、`roles`、`index_family`、`enabled`、`execution_binding` 產生：
+
+| id | roles | index family | enabled | binding |
 |---|---|---|---|---|
-| `demo` | 本機 no-network smoke test，用來驗證 JSON/report/ledger contract | 無 | 免費 | 立即 |
-| `cascade` | 四角度快速偵察：直接回答、反證、版圖、推翻條件 | Perplexity | ~$0.10-0.15 | ~30 秒 |
-| `sonar` | 快速 grounded lookup，用於小缺口或 spot check | Perplexity | ~$0.01 | 數秒 |
-| `scholar` | Semantic Scholar 文獻搜尋 | Semantic Scholar | 免費 | 數秒 |
-| `perplexity` | 長篇、有引用的 deep-research report | Perplexity | ~$0.5-1 | 2-5 分鐘 |
-| `openai` | 使用 OpenAI deep-research models 的長篇、有引用 report | OpenAI | ~$0.4-8 | 5-25 分鐘 |
-| `gemini` | Gemini Deep Research report | Google | 視 provider 而定 | 3-10 分鐘 |
-| `deepseek` | 只處理檔案：合併、抽取、比較既有 artifacts | 無 | 近乎免費 | 1-5 分鐘 |
+| `brave` | scout, challenge | brave | yes | `v2_request_boundary` |
+| `crossref` | scholarly-scout | crossref | yes | `v2_request_boundary` |
+| `demo-cascade` | contract-test | demo | yes | `no_network_demo` |
+| `demo-probe` | contract-test | demo | yes | `no_network_demo` |
+| `europe-pmc` | biomedical-scout | europe-pmc | yes | `v2_request_boundary` |
+| `github` | source-of-record | github | yes | `v2_request_boundary` |
+| `host` | organizer, auditor | not_applicable | yes | `host_native_observed` |
+| `host-web` | scout, verifier, fetch | host-opaque | yes | `host_native_observed` |
+| `ietf` | source-of-record | ietf | yes | `v2_request_boundary` |
+| `local` | scout, verifier, experiment | local-project | yes | `local` |
+| `nvd` | source-of-record | nvd | yes | `v2_request_boundary` |
+| `openalex` | scholarly-scout | openalex | yes | `v2_request_boundary` |
+| `osv` | source-of-record | osv | yes | `v2_request_boundary` |
+| `perplexity` | investigation | perplexity-aggregated | yes | `v2_request_boundary` |
+| `pypi` | source-of-record | pypi | yes | `v2_request_boundary` |
+| `scholar` | scholarly-scout | semantic-scholar | yes | `v2_request_boundary` |
+| `sonar` | scout, challenge | perplexity-aggregated | yes | `v2_request_boundary` |
+| `cascade` | composite-scout | perplexity-aggregated | no | `legacy_unbound` |
+| `deepseek` | processor, blind-auditor | not_applicable | no | `legacy_unbound` |
+| `exa` | semantic-scout | exa | no | `v2_request_boundary` |
+| `firecrawl` | fetch | not_applicable | no | `legacy_unbound` |
+| `gemini` | investigation | google | no | `legacy_unbound` |
+| `jina` | fetch | not_applicable | no | `legacy_unbound` |
+| `mojeek` | scout, challenge | mojeek | no | `legacy_unbound` |
+| `openai` | investigation | openai-model-mediated | no | `legacy_unbound` |
+| `test-only-unbound-candidate` | candidate | unknown | no | `legacy_unbound` |
 
-重要：`deepseek` 在這個 harness 裡不是 retrieval worker。它只應處理已經抓回來的材料，不應用來憑空產生新證據。stdout JSON、ledger、resume、parallelism 與 recovery 規則請見 [WORKERS.md](WORKERS.md)。
+*26 個已登記 route 中有 17 個 enabled，as of commit `c808c4b`。*
+
+其餘的 adoption 順序——先做 Exa 對比其他獨立索引的 benchmark，最後只有在實測 fetch failure 後才上 Jina/Firecrawl——記錄在 [`docs/superpowers/specs/2026-07-10-provider-portfolio-design.md`](docs/superpowers/specs/2026-07-10-provider-portfolio-design.md)。
+
+## Credentials and Spend
+
+Provider key 的解析順序是 process environment，再來最近的 `.env`——把 [`.env.example`](.env.example) 複製成 `.env`，填你有的就好。有 key 只代表 route *eligible*；要靠上面的 registry gate 才會 *enabled*。
+
+Spend authority 在使用者手上，不在 key 手上。`confirm` 是唯一能把 contract 變成 session 的指令，而且只有在三個 hash 跟 `prepare` 顯示的內容逐 byte 相符時才會成功；改動 card、registry，或任何被引用的 route record，都會逼出一個新 session，不會默默重新解讀舊的。
+
+Cost 只會用區間揭露，絕不當成可強制的上限。Contract 的 `estimated_spend_usd` 明確標示不確定，因為一次 logical call 背後的 provider-side 工作量會變動；真正可強制的單位是實體 request count，不是金額上限。一個 request 完成後，occurrence 的 `cost_usd`——如果 adapter 讀得到——就是 provider 回報的數字：`sonar`/`perplexity` 讀 `usage.cost.total_cost`，`openalex` 讀 `meta.cost_usd`，`exa` 讀 `costDollars.total`；`github`、`pypi`、`scholar` 這類免費 route 則回報 `null`，不會用猜的。
+
+Credential 絕不會進入 canonical state、event、spool 檔名、fixture，或 request fingerprint。Adapter 只 fingerprint query，不 fingerprint key；任何 ingest 進來、bytes 符合 deterministic secret pattern 的 artifact——API key assignment、PEM private key、已知 provider key prefix——都會在落地前被拒絕。
+
+## Research Contract
+
+使用者同時控制研究邏輯與成本暴露。
+
+### Posture
+
+- `lookup`：由 source of record 定義的 bounded fact
+- `synthesis`：landscape、evidence map 或 literature review
+- `scientific`：競爭機制與 discriminating observation
+- `decision`：會推動 architecture/action，必須審核 premises 與 inference joints
+
+### Tier
+
+- `low`：窄、可逆、單 cycle
+- `medium`：development-grade evidence，加上事後補強 reserve
+- `high`：模糊、困難或難逆決策，加上額外 challenge 與 fresh-context verification
+- `custom`：使用者指定精確 stage/count map
+
+Tier 不控制 provider 內部 token 用量或單次確切價格；真正可強制的是 physical request count。Contract card 另外揭露 host context、local work、估價不確定性、raw-storage ceiling 與 reserved calls。
+
+## Field Notes: v2
+
+**Durability。** 每次 state 寫入都是 crash-consistent：換檔前，pending transaction 檔案會先記下前後兩個 state hash，所以 `recover` 能 deterministic 地把中斷的寫入 roll forward 或 roll back，而不是用猜的，而且只會碰自己 owned、malformed 的 tail。`events.jsonl` 是 append-only、hash-chained。Provider bytes 會先 spool 再 parse。中斷的 async deep-research job 不會被重送：它的 provider job token 在 accept 當下就寫進 journal；之後每次 `deep-poll` 只做一次已取得 permit 的 poll。15s → 30s → 60s → 120s 封頂的 cadence 由 Organizer 負責，不是 CLI 自動 sleep/retry。
+
+**Demo 同時是 test。** `research_state.py demo` 不是錄好的假 transcript——`tests/test_demo_flow.py` 呼叫的是同一個 `main(["demo", ...])` entry point，並且對它的 JSON output、spool 檔、occurrence 欄位做 assert。手動跑一次跟在 CI 跑一次，走的是同一條 code path。
+
+**要寫新 adapter？** 從 [`research_harness/adapters/README.md`](research_harness/adapters/README.md) 開始。裡面寫清楚 two-function 的 adapter contract、fixture 需求（一筆錄下來的真實回應，加上至少兩筆錄下來的失敗），以及之前寫 adapter 時已經踩過的限制。
+
+**已知限制。** 每次操作的成本會隨累積 event-journal 長度增長：每個操作都會完整重讀一次 `events.jsonl`，並對每一筆 event 做 hash-chain verification，而且沒有 compaction。針對真實的 `_read_events_unlocked`/`_event_chain_errors` path 實測：每筆 journaled event 的邊際成本大約 0.005ms，所以一個 session 大概要累積到 20 萬筆 event，單次操作才會逼近 1 秒。長時間跑的 session 應該拆開，不要放任單一 journal 無限成長。
+
+## Repo 地圖
+
+| 路徑 | 用途 |
+|---|---|
+| [HARNESS.md](HARNESS.md) | Host-neutral v2 Organizer protocol |
+| [SKILL.md](SKILL.md) | Claude Code `/deep` binding |
+| [AGENTS.md](AGENTS.md) | Codex `/deep` binding |
+| [research_harness](research_harness) | Contract、state、storage、quota、artifact、boundary、validation、rendering primitives |
+| [research_harness/adapters](research_harness/adapters) | 每個 provider 一個 module；[README.md](research_harness/adapters/README.md) 是開發指南 |
+| [scripts/research_state.py](scripts/research_state.py) | 主要 v2 JSON-first CLI |
+| [scripts/validate_state.py](scripts/validate_state.py) | V2 gate + 保留的 legacy Markdown validator |
+| [scripts/render_report.py](scripts/render_report.py) | Thin deterministic renderer CLI |
+| [research_harness/provider_registry.json](research_harness/provider_registry.json) | Versioned provider portfolio 與 route policy |
+| [WORKERS.md](WORKERS.md) | Legacy worker 行為與未來 adapter 參考 |
+| [examples/v2](examples/v2) | 已確認、無付費 provider 的 foundation example |
+| [docs/superpowers/specs](docs/superpowers/specs) | 設計與 provider-portfolio rationale |
 
 ## 安裝
 
 ### Claude Code
 
-Claude Code 是主要宿主。把 repo clone 到 Claude Code 的 skills 目錄。之後 `/deep` 會被當成 skill 探測到。
-
 ```bash
 git clone https://github.com/jechiu16/claude-research-cascade ~/.claude/skills/deep
 ```
 
+Claude Code 會發現 [SKILL.md](SKILL.md)。執行時使用 project venv 或已安裝 `requirements.txt` 的 interpreter。
+
 ### Codex
 
-Codex 是 secondary binding。把 repo clone 到任意位置，然後讓你的專案能發現它。Codex 會從 session working directory 往上尋找 `AGENTS.md`；它不會掃描 `~/.claude/skills/`。
+可安裝成全域 Codex skill，或 clone 到固定位置：
 
 ```bash
-git clone https://github.com/jechiu16/claude-research-cascade ~/tools/research-cascade
-export DEEP_HARNESS_DIR=~/tools/research-cascade
+git clone https://github.com/jechiu16/claude-research-cascade ~/tools/claude-research-cascade
+export DEEP_HARNESS_DIR=~/tools/claude-research-cascade
 ```
 
-接著在你的專案根目錄加一個短版 `AGENTS.md` stub：
+Codex 也會從 project hierarchy 讀取 [AGENTS.md](AGENTS.md)。Binding 內有 project stub 與 absolute-path invocation 說明。
 
-```md
-For `/deep` research, read `<absolute path>/HARNESS.md` and `<absolute path>/AGENTS.md`.
-Workers live at `<absolute path>/scripts/deep_research.py`.
+## Organizer CLI
+
+```text
+providers       顯示不含 secret value 的 registry capability
+prepare         normalize 並 hash 未確認的 contract card
+confirm         使用者選擇後綁定剛顯示的 card
+init            建立 canonical state 與 genesis event
+patch           套用 revision-checked Organizer patch
+permit          預留精確 physical requests
+demo            一鍵、no-network 跑完整個 loop（permit -> occurrence -> report.html）
+execute         透過 v2 request boundary 執行一個已 permit 的 probe
+deep-submit     送出 async deep-research job（付費 POST，永不重試）
+deep-poll       對 accepted/uncertain 的 deep job 做一次實體 poll
+deep-timeout    免費的 wall-clock 檢查：把卡住的 deep action 標成 uncertain
+deep-pending    免費：列出 accepted/uncertain 的 deep action 與其 job token
+status          顯示 state、quota use、validation
+artifact-add    安全 ingest local/user/fetched-source bytes
+artifact-purge  降級、purge、validate、rerender
+recover         恢復 WAL 與已授權 pending purge
+validate        執行 structure、lineage、quota、artifact、verdict gates
+render          atomic 寫入 deterministic report.html
+view            開啟目前報告
 ```
 
-完整的 Codex 安裝與操作注意事項請見 [AGENTS.md](AGENTS.md)。
+成功 command 加上 `--json` 時，stdout 只輸出一個 JSON object；error 與 progress 寫入 stderr。
 
-### 其他宿主
+## Legacy v1 Workers
 
-把 repo clone 到任意位置。宿主 Agent 先讀 [HARNESS.md](HARNESS.md)；只有在選擇或執行 worker 時才讀 [WORKERS.md](WORKERS.md)。
+`scripts/deep_research.py`、`doctor.py`、legacy Markdown examples，與 [WORKERS.md](WORKERS.md) 暫時保留，供相容與 adapter migration 使用。它們不能證明 v2 enforcement：
 
-## 30 秒 Smoke Test
+- credential check 綠燈不會啟用 registry route；
+- legacy call 不會取得 v2 permit；
+- legacy raw payload path 不符合 v2 provenance/storage-rights gate；
+- foundation test suite 完全不需要付費 legacy call。
 
-這會驗證本機 worker contract，不需要 API key、不打網路、不花錢：
+## 驗證
 
 ```bash
-python scripts/doctor.py
-python scripts/deep_research.py --provider demo \
-  --ledger reports/deep_state_demo.ledger.jsonl \
-  "smoke test"
+PY=python3   # 任何裝好 requirements.txt 的 interpreter 都可以
+
+"$PY" -m unittest discover -s tests -v
+"$PY" -m py_compile research_harness/*.py scripts/*.py
+"$PY" scripts/validate_transcripts.py --json
 ```
 
-預期結果：`doctor.py` 會列出 provider readiness；demo worker 會在 stdout 印出單一 JSON object，在 `reports/` 寫入 report，並 append 一行 ledger。範例產物請見 [examples/quickstart](examples/quickstart)。
-
-## Golden Transcript 驗證
-
-Golden transcripts 展示 quick fact、literature review、decision-critical 三種 `/deep` session 應該長什麼樣子。用下面指令檢查結構：
-
-```bash
-python scripts/validate_transcripts.py
-```
-
-## Worker 依賴
-
-安裝共用依賴：
-
-```bash
-pip install -r requirements.txt
-```
-
-Gemini 支援另外需要：
-
-```bash
-pip install google-genai
-```
-
-從範本建立本機 `.env`：
-
-```bash
-cp .env.example .env
-```
-
-API key 解析順序：
-
-1. Process environment
-2. 從目前 working directory 往上找到的最近 `.env`
-3. Harness checkout 旁邊的 `.env`
-
-支援的 key：
-
-| Key | 用途 |
-|---|---|
-| `PERPLEXITY_API_KEY` | `sonar`、`cascade`、`perplexity` |
-| `OPENAI_API_KEY` | `openai` |
-| `GEMINI_API_KEY` | `gemini` |
-| `DEEPSEEK_API_KEY` | `deepseek` |
-| `S2_API_KEY` | `scholar`，選填；不填也能用，但會受更嚴格的 shared limit 影響 |
-
-## Worker CLI
-
-先選擇已安裝依賴的 Python interpreter：
-
-```bash
-# Windows
-PY=.venv/Scripts/python.exe
-
-# POSIX
-PY=.venv/bin/python
-
-# 沒有 virtualenv
-PY=python3
-```
-
-直接執行 worker：
-
-```bash
-python scripts/doctor.py
-python scripts/validate_transcripts.py
-"$PY" scripts/deep_research.py --provider demo --ledger reports/deep_state_demo.ledger.jsonl "smoke test"
-"$PY" scripts/deep_research.py --provider sonar "quick question"
-"$PY" scripts/deep_research.py --provider cascade "scout this research question"
-"$PY" scripts/deep_research.py --provider scholar "dynamic factor model nowcasting"
-"$PY" scripts/deep_research.py "standard research question"
-"$PY" scripts/deep_research.py --provider openai --effort high "decision-critical question"
-"$PY" scripts/deep_research.py --provider deepseek --files a.md --files b.md "merge into a claims table"
-"$PY" scripts/deep_research.py --provider openai --submit-only "提交即返回，稍後收割"
-"$PY" scripts/deep_research.py --resume "openai:resp_abc123"
-"$PY" scripts/deep_research.py --list-pending
-"$PY" scripts/deep_research.py --cost-stats
-"$PY" scripts/validate_state.py reports/deep_state_20260709_topic.md
-```
-
-輸出契約：
-
-| Stream | 契約 |
-|---|---|
-| stdout | 單一 JSON 物件。成功時包含 `report`、`report_path`、`usage`、`cost_estimate_usd`、`wall_time_s`。 |
-| stderr | 只放進度訊息，包含 async resume token。 |
-| files | Report 會存到 `<cwd>/reports/deep_<timestamp>_<slug>.md`。 |
-
-中等深度以上的研究，建議傳入 ledger 路徑，讓 worker 追加機器可讀的花費紀錄：
-
-```bash
-"$PY" scripts/deep_research.py \
-  --provider cascade \
-  --ledger reports/deep_state_topic.ledger.jsonl \
-  "research question"
-```
-
-## 實務筆記
-
-### Durability 與恢復
-
-- 帶 `--ledger` 時，async 提交會在提交當下就落帳（`event: submitted`）— process 被殺也不會丟已付費的 resume token；`--list-pending`（以及 `doctor.py`）會列出未收割的 job。
-- Async poll 失敗時會回傳含有 `error` 與 `resume` 的 JSON；Organizer 應該 resume，而不是重新付費提交。
-- `--submit-only` 提交即返回 — 一輪齊發多個引擎，趁它們跑的時候做便宜驗證，再逐一 `--resume` 收割。
-- Completed job 的抽取若失敗，原始 provider payload 會先存進 `reports/deep_raw_*.json` — 已付費內容不因 schema 漂移而蒸發，修好後 `--resume` 零成本重收割。
-- `--cost-stats` 從你自己的帳本聚合 per-provider 實價 — 契約卡估價用你的價格史，不用 README 裡會腐爛的參考數字。
-- Report 檔名包含 `query + pid` 的短 hash，避免平行 probe 或純 CJK query 互相覆蓋。
-
-### Provider 行為
-
-- 在這個 workflow 裡，Perplexity `reasoning_effort=minimal` 視為 ungrounded：它可能計費搜尋，卻不回傳引用。真正研究請用 `medium` 或更高。
-- Perplexity 會回傳官方 `usage.cost.total_cost`，worker 照實報告；OpenAI 不回傳 cost field，worker 用 token 數和 web-search call 數估算。
-- OpenAI deep-research models 需要 verified organization。
-- Semantic Scholar 應該收到 keyword phrases，而不是自然語言問題；也不要平行呼叫。Worker 會 retry 暫時性的 GET 失敗，並回傳結構化 paper sources 方便 handoff。
-- Gemini 使用 worker 目標支援的 Interactions API `steps` schema，並需要 `google-genai`。
-
-### 交付
-
-- 最終交付偏 handoff artifact：contract、帶 tier 與時點的證據狀態、驗證 yield、花費、產物與下一步檢查點。
-
-## 狀態
-
-這是一個 harness 與 host binding，不是打包好的 Python library。核心行為寫在 Markdown 規格裡，並由擔任 Organizer 的宿主 Agent 執行。
+Deterministic suite 包含可通過的 Medium lookup、High decision，以及 false `PASS`、quota、corruption、secret、provenance、stale report、purge recovery、XSS、CLI boundary 等案例。付費 paired evaluation 與 external provider adoption 是另外需要使用者確認 call budget 的 follow-on。
 
 ## License
 
