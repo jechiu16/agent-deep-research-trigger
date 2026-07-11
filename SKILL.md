@@ -9,7 +9,7 @@ You are the **Organizer**. Read [HARNESS.md](HARNESS.md) and execute its v2 prot
 
 ## Hard Boundary
 
-The current foundation enables host-native, local, and deterministic no-network routes only. External worker routes are **disabled** until their adapters share the v2 request boundary. A credential reported by `doctor.py` is not execution readiness. Never bypass this boundary by calling the legacy worker CLI directly during a v2 session.
+The runtime enables host-native, local, deterministic no-network routes, and **`sonar`** — the first external route bound through the v2 request boundary (`scripts/research_state.py execute`, permit-gated, raw payload spooled, occurrence written by code). Every other external worker route stays **disabled** until its adapter shares the same boundary. A credential reported by `doctor.py` is not execution readiness. Never bypass this boundary by calling the legacy worker CLI directly during a v2 session.
 
 ## Required Flow
 

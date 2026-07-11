@@ -181,6 +181,53 @@ def acquire_permits(
         ]
 
 
+ATTEMPT_TRANSITIONS = {
+    "acquired": {"attempted"},
+    "attempted": {"accepted", "failed", "uncertain"},
+    "accepted": {"completed", "failed", "interrupted"},
+    "interrupted": {"completed", "failed"},
+}
+
+
+def _record_attempt_status_unlocked(
+    session_dir: Path,
+    action_id: str,
+    status: str,
+    now: str,
+    details: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Append one attempt transition. Caller holds the session lock."""
+
+    events, errors = _read_events_unlocked(session_dir)
+    if errors:
+        raise QuotaError("event history is malformed")
+    if not any(
+        event.get("event") == "permit_acquired" and event.get("action_id") == action_id
+        for event in events
+    ):
+        raise InvalidAttemptTransition(f"unknown action {action_id}")
+    statuses = [
+        event["status"]
+        for event in events
+        if event.get("event") == "attempt_status" and event.get("action_id") == action_id
+    ]
+    current = statuses[-1] if statuses else "acquired"
+    if status not in ATTEMPT_TRANSITIONS.get(current, set()):
+        raise InvalidAttemptTransition(f"cannot transition action {action_id} from {current} to {status}")
+    event: dict[str, Any] = {
+        "event": "attempt_status",
+        "at": now,
+        "action_id": action_id,
+        "from_status": current,
+        "status": status,
+    }
+    if details is not None:
+        if not isinstance(details, dict):
+            raise InvalidAttemptTransition("attempt details must be an object")
+        event["details"] = details
+    return _append_event_unlocked(session_dir, event)
+
+
 def record_attempt_status(
     session_dir: Path,
     action_id: str,
@@ -188,40 +235,7 @@ def record_attempt_status(
     now: str,
     details: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    transitions = {
-        "acquired": {"attempted"},
-        "attempted": {"accepted", "failed", "uncertain"},
-        "accepted": {"completed", "failed", "interrupted"},
-        "interrupted": {"completed", "failed"},
-    }
     session_dir = Path(session_dir)
     with session_lock(session_dir):
         _recover_session_unlocked(session_dir)
-        events, errors = _read_events_unlocked(session_dir)
-        if errors:
-            raise QuotaError("event history is malformed")
-        if not any(
-            event.get("event") == "permit_acquired" and event.get("action_id") == action_id
-            for event in events
-        ):
-            raise InvalidAttemptTransition(f"unknown action {action_id}")
-        statuses = [
-            event["status"]
-            for event in events
-            if event.get("event") == "attempt_status" and event.get("action_id") == action_id
-        ]
-        current = statuses[-1] if statuses else "acquired"
-        if status not in transitions.get(current, set()):
-            raise InvalidAttemptTransition(f"cannot transition action {action_id} from {current} to {status}")
-        event: dict[str, Any] = {
-            "event": "attempt_status",
-            "at": now,
-            "action_id": action_id,
-            "from_status": current,
-            "status": status,
-        }
-        if details is not None:
-            if not isinstance(details, dict):
-                raise InvalidAttemptTransition("attempt details must be an object")
-            event["details"] = details
-        return _append_event_unlocked(session_dir, event)
+        return _record_attempt_status_unlocked(session_dir, action_id, status, now, details)

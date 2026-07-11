@@ -604,6 +604,28 @@ def apply_state_patch(
         )
 
 
+# Boundary-authored writes: the request boundary records retrieval occurrences
+# itself (code provenance, not Organizer prose), so its patches carry their own
+# transition kind and a deliberately narrow root allowlist.
+BOUNDARY_ROOTS = frozenset({"retrieval_occurrences"})
+
+
+def _apply_boundary_patch_unlocked(
+    session_dir: Path,
+    operations: list[dict[str, Any]],
+    expected_revision: int,
+    now: str,
+) -> dict[str, Any]:
+    return _commit_patch_unlocked(
+        Path(session_dir),
+        operations,
+        expected_revision,
+        now,
+        BOUNDARY_ROOTS,
+        "boundary:occurrence",
+    )
+
+
 def _apply_artifact_state_patch_unlocked(
     session_dir: Path,
     transition_kind: str,

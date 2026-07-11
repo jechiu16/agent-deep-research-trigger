@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from research_harness.artifacts import ingest_fetched_source, ingest_local_artifact
+from research_harness.boundary import execute_probe
 from research_harness.contracts import (
     contract_card_sha256,
     normalize_contract,
@@ -216,6 +217,16 @@ def command_permit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return {"permits": permits, "usage": permit_usage(Path(args.session))}, 0
 
 
+def command_execute(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    result = execute_probe(
+        Path(args.session),
+        args.action_id,
+        args.query,
+        args.now or _now(),
+    )
+    return result, 0
+
+
 def command_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     state = load_state(Path(args.session))
     validation = validate_session(Path(args.session))
@@ -374,6 +385,16 @@ def build_parser() -> argparse.ArgumentParser:
     permit.add_argument("--now")
     _add_json_flag(permit)
     permit.set_defaults(handler=command_permit)
+
+    execute = subparsers.add_parser(
+        "execute", help="run one permitted probe through the v2 request boundary"
+    )
+    execute.add_argument("session")
+    execute.add_argument("--action-id", required=True, help="an acquired, un-attempted permit action")
+    execute.add_argument("--query", required=True)
+    execute.add_argument("--now")
+    _add_json_flag(execute)
+    execute.set_defaults(handler=command_execute)
 
     status = subparsers.add_parser("status", help="show canonical status and quota use")
     status.add_argument("session")

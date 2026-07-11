@@ -24,7 +24,7 @@ V2 foundation 已支援：
 - 與 canonical state hash 綁定、經 escaping 的 deterministic `report.html`；
 - host-neutral、JSON-first 的 Organizer CLI。
 
-**本 foundation slice 的 external provider 與 processor route 全部是 disabled。** API key 可以已存在，legacy credential doctor 也可能顯示 ready，但 credential readiness 不等於 v2 execution readiness。Worker route 必須先整合共用 v2 request boundary，並通過 provenance、recovery、policy、adoption fixtures 才能啟用。V2 session 不可直接呼叫 legacy worker CLI 繞過 registry。
+**`sonar` 是第一條綁進 v2 request boundary 的 external route**——permit 把關的執行（`research_state.py execute`）、raw payload 先落盤再解析、retrieval occurrence 由 code 寫入、fixtures 錄自真實回應。**其他 external provider 與 processor route 仍然全部 disabled。** API key 可以已存在，legacy credential doctor 也可能顯示 ready，但 credential readiness 不等於 v2 execution readiness。Worker route 必須先整合同一條 boundary，並通過 provenance、recovery、policy、adoption fixtures 才能啟用。V2 session 不可直接呼叫 legacy worker CLI 繞過 registry。
 
 ## 主要差異
 

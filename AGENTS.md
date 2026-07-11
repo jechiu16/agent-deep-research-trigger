@@ -22,7 +22,7 @@ Codex loads `AGENTS.md` from the project hierarchy. Set `DEEP_HARNESS_DIR` to th
 
 ## Current Execution Boundary
 
-External provider and processor routes are **disabled** in the foundation registry until a worker adapter uses the common v2 request boundary and passes adoption fixtures. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
+`sonar` is enabled through the common v2 request boundary (`research_state.py execute` after a permit). Every other external provider and processor route stays **disabled** until its worker adapter uses the same boundary and passes adoption fixtures. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
 
 ## Codex Map
 

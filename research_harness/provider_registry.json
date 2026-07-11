@@ -200,7 +200,15 @@
     },
     {
       "id": "sonar",
-      "adapter": "legacy-sonar",
+      "adapter": "perplexity-chat-completions",
+      "adapter_version": "v1",
+      "enabled": true,
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "baseline",
+      "adoption_evidence": [
+        "fixture-replay-suite-tests-test_boundary",
+        "live-occurrence-2026-07-11-sonar-fed-funds"
+      ],
       "roles": ["scout", "challenge"],
       "action_categories": ["probe"],
       "stage_capabilities": ["primary_scout", "anti_lock_in", "verification"],
@@ -209,8 +217,21 @@
       "index_provenance": "hybrid-opaque",
       "upstream_provider": "perplexity",
       "retrieval_shape": ["cited-synthesis"],
+      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "controls": {"domain_filter": "available-unused", "date_filter": "available-unused", "max_results": "not_applicable"},
+      "metering": {"unit": "request", "list_price": "provider-reported usage.cost.total_cost", "verified_at": "2026-07-11"},
+      "transport": {"mode": "sync", "polling": "not_applicable"},
+      "privacy": {"local_file_egress": false, "zdr": "unknown"},
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": ["query_hash", "request_count", "cost_usd", "citation_count"],
+        "verified_at": "2026-07-11",
+        "source": "https://docs.perplexity.ai/ (API output usable by customer; conservative session-only local retention)"
+      },
       "required_env": ["PERPLEXITY_API_KEY"],
-      "docs_url": "https://docs.perplexity.ai/"
+      "docs_url": "https://docs.perplexity.ai/",
+      "docs_verified_at": "2026-07-11"
     },
     {
       "id": "cascade",

@@ -10,7 +10,7 @@ The runtime improves reliability by making unsupported success mechanically diff
 
 ## Current Boundary
 
-The foundation runtime enables host-native retrieval, local inspection, Organizer passes, and deterministic no-network test routes. Every external network worker and processor route is **disabled** in `provider_registry.json` until its adapter:
+The runtime enables host-native retrieval, local inspection, Organizer passes, deterministic no-network test routes, and `sonar` (v2-bound external probe route; permits, spooled raw payloads, code-written occurrences). Every other external network worker and processor route is **disabled** in `provider_registry.json` until its adapter:
 
 1. uses the common v2 request boundary for every outbound request;
 2. has deterministic request, error, recovery, provenance, and storage-rights fixtures;

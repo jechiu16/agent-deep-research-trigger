@@ -202,25 +202,32 @@ class ContractTests(unittest.TestCase):
                         load_provider_registry(overlay=overlay)
 
     def test_enabled_external_route_requires_bound_interceptor_and_adoption(self) -> None:
+        # brave stays the canonical disabled candidate now that sonar is v2-bound.
         registry = copy.deepcopy(self.registry)
-        sonar = next(p for p in registry["providers"] if p["id"] == "sonar")
-        sonar["enabled"] = True
+        brave = next(p for p in registry["providers"] if p["id"] == "brave")
+        brave["enabled"] = True
         errors = validate_provider_registry(registry)
-        self.assertIn("enabled external route sonar is not v2-bound", errors)
-        sonar["execution_binding"] = "v2_request_boundary"
+        self.assertIn("enabled external route brave is not v2-bound", errors)
+        brave["execution_binding"] = "v2_request_boundary"
         errors = validate_provider_registry(registry)
-        self.assertIn("enabled external route sonar lacks adoption evidence", errors)
+        self.assertIn("enabled external route brave lacks adoption evidence", errors)
 
     def test_enabled_external_adoption_evidence_must_be_nonempty(self) -> None:
         registry = copy.deepcopy(self.registry)
-        sonar = next(p for p in registry["providers"] if p["id"] == "sonar")
-        sonar["enabled"] = True
-        sonar["execution_binding"] = "v2_request_boundary"
-        sonar["adoption_status"] = "validated"
-        sonar["adoption_evidence"] = []
-        sonar["storage_rights"]["payload_retention"] = "session"
+        brave = next(p for p in registry["providers"] if p["id"] == "brave")
+        brave["enabled"] = True
+        brave["execution_binding"] = "v2_request_boundary"
+        brave["adoption_status"] = "validated"
+        brave["adoption_evidence"] = []
+        brave["storage_rights"]["payload_retention"] = "session"
         errors = validate_provider_registry(registry)
-        self.assertIn("enabled external route sonar lacks adoption evidence", errors)
+        self.assertIn("enabled external route brave lacks adoption evidence", errors)
+
+    def test_enabled_sonar_route_is_v2_bound_with_adoption_evidence(self) -> None:
+        sonar = next(p for p in self.registry["providers"] if p["id"] == "sonar")
+        self.assertTrue(sonar["enabled"])
+        self.assertEqual(sonar["execution_binding"], "v2_request_boundary")
+        self.assertEqual(validate_provider_registry(self.registry), [])
 
     def test_enabled_route_rejects_sunset_or_unknown_storage_policy(self) -> None:
         registry = copy.deepcopy(self.registry)

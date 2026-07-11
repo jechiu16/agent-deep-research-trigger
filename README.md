@@ -24,7 +24,7 @@ The v2 foundation supports:
 - deterministic escaped `report.html` bound to the canonical state hash;
 - one host-neutral JSON-first Organizer CLI.
 
-**External provider and processor routes are disabled in this foundation slice.** Their API keys may be present and the legacy credential doctor may report them ready, but credential readiness is not v2 execution readiness. A worker route remains disabled until its adapter shares the common v2 request boundary and passes provenance, recovery, policy, and adoption fixtures. Do not bypass the registry by calling the legacy worker CLI from a v2 session.
+**`sonar` is the first external route bound through the v2 request boundary** — permit-gated execution (`research_state.py execute`), raw payload spooled before parsing, retrieval occurrence written by code, recorded-real-response fixtures. **Every other external provider and processor route remains disabled.** Their API keys may be present and the legacy credential doctor may report them ready, but credential readiness is not v2 execution readiness. A worker route stays disabled until its adapter shares the same boundary and passes provenance, recovery, policy, and adoption fixtures. Do not bypass the registry by calling the legacy worker CLI from a v2 session.
 
 ## Why It Is Different
 
