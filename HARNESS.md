@@ -165,7 +165,7 @@ Medium/High scientific or decision runs perform:
 - **coverage audit:** inspect omitted premises, boundary conditions, and candidate omissions;
 - **local applicability:** test project versions, environment, and constraints when feasible.
 
-High additionally requires a verifier with fresh context that receives the exact claim or argument packet, did not produce the candidate, and records `context_separated=true` and `produced_candidate=false`.
+High additionally requires a verifier with fresh context that receives the exact claim or argument packet, did not produce the candidate, and records `context_separated=true` and `produced_candidate=false`. When the verifier's organizer-pass action finishes, journal it with the `attempt` command (`attempted` -> `accepted` -> `completed`); `validate` only credits a verifier whose action reached `completed`.
 
 ### 7. Terminate Honestly
 
@@ -196,7 +196,7 @@ Purge is a semantic transition: downgrade affected claims and verdict first, per
 - confirmed evidence floor;
 - passing claim status, source origin, entailing exact excerpt, available raw artifact, and applicability for every load-bearing claim;
 - quota/event/state hash reconciliation;
-- posture-specific checks;
+- posture-specific checks (machine gates exist for lookup, scientific, and decision; synthesis relies on the common gates);
 - Medium/High anti-lock-in and coverage audit when required;
 - context-separated High verifier;
 - current HTML state hash when a report exists.

@@ -5,6 +5,13 @@ Semantic Versioning once the v2 runtime leaves development status.
 
 ## 2.0.0b3
 
+### Added
+
+- An `attempt` CLI subcommand that journals attempt-status transitions
+  (`attempted`/`accepted`/`failed`/`uncertain`/`completed`) for actions no
+  request boundary executes — host, local, and organizer-pass actions.
+  Illegal transitions are rejected by the existing quota transition table.
+
 ### Removed
 
 - The legacy worker CLI (`scripts/deep_research.py`, `WORKERS.md`) and its
@@ -27,13 +34,20 @@ Semantic Versioning once the v2 runtime leaves development status.
   READMEs) now states the resolved provider registry as the sole source of
   truth for route readiness, replacing references to the credential doctor
   and the legacy worker CLI.
-- The README CLI section lists all 19 `deep-research-state` subcommands.
+- The README CLI section lists all 20 `deep-research-state` subcommands.
 - `.env.example` drops keys with no consuming code (`OPENAI_API_KEY`,
   `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`) and describes Exa as enabled rather
   than pending benchmark.
 
 ### Fixed
 
+- High-tier `PASS` was unreachable through the CLI surface: validation
+  requires the context-separated verifier's organizer-pass action to reach
+  attempt status `completed`, but no command could journal attempt status
+  for such actions (only boundary-executed routes journal their own). The
+  new `attempt` subcommand closes the gap; `HARNESS.md` documents the step.
+- The redaction-review and fetched-source ingestion errors now name the
+  exact CLI flags and patch step that satisfy them.
 - The b2 entry below describing the release gate as "one-command
   no-network" is inaccurate: the gate's dependency-audit step (`pip_audit`)
   requires network access. Left as originally written since changelog

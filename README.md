@@ -190,6 +190,7 @@ prepare           normalize and hash an unconfirmed contract
 confirm           bind the exact user-approved contract
 init              create canonical state and genesis event
 permit            reserve exact physical requests
+attempt           journal one attempt-status transition for an acquired action
 execute           run one permitted synchronous request
 deep-submit       submit one paid async job, never auto-retried
 deep-poll         perform one permitted poll

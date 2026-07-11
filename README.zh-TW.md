@@ -194,6 +194,7 @@ prepare           normalize 並 hash 未確認 contract
 confirm           綁定使用者確認的精確 contract
 init              建立 canonical state 與 genesis event
 permit            預留精確 physical requests
+attempt           為已取得 permit 的 action 記錄一次 attempt-status 轉換
 execute           執行一個已 permit 的 sync request
 deep-submit       提交一次付費 async job，永不自動重送
 deep-poll         執行一次已 permit poll

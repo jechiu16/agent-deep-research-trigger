@@ -92,7 +92,10 @@ def _validate_common_request(
         if not isinstance(review, dict) or any(
             not isinstance(review.get(field), str) or not review[field].strip() for field in required
         ):
-            raise ArtifactPolicyError("local-sensitive artifacts require a complete redaction review")
+            raise ArtifactPolicyError(
+                "local-sensitive artifacts require a complete redaction review"
+                " (pass --reviewed-by, --reviewed-at, --review-method)"
+            )
         include_in_html = False
     elif review is not None and not isinstance(review, dict):
         raise ArtifactPolicyError("redaction_review must be an object")
@@ -381,7 +384,10 @@ def ingest_fetched_source(
             None,
         )
         if source is None or occurrence is None or occurrence.get("source_id") != source_id:
-            raise ArtifactPolicyError("fetched artifact requires a matching source and retrieval occurrence")
+            raise ArtifactPolicyError(
+                "fetched artifact requires a matching source and retrieval occurrence"
+                " (patch sources and retrieval_occurrences first; pass --source-id and --fetch-occurrence-id)"
+            )
         provenance = {
             "origin_kind": "fetched_source",
             "source_id": source_id,

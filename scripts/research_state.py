@@ -38,10 +38,17 @@ from research_harness.providers import (
     provider_registry_sha256,
     referenced_provider_records,
 )
-from research_harness.quota import acquire_permits, permit_usage
+from research_harness.quota import _record_attempt_status_unlocked, acquire_permits, permit_usage
 from research_harness.rendering import render_session_result
 from research_harness.state import new_state, state_sha256
-from research_harness.storage import apply_state_patch, create_session, load_state, read_events
+from research_harness.storage import (
+    _recover_session_unlocked,
+    apply_state_patch,
+    create_session,
+    load_state,
+    read_events,
+    session_lock,
+)
 from research_harness.validation import validate_session
 
 
@@ -264,6 +271,28 @@ def command_permit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         args.now or _now(),
     )
     return {"permits": permits, "usage": permit_usage(Path(args.session))}, 0
+
+
+def command_attempt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Journal one attempt-status transition for an acquired action.
+
+    Boundary-executed routes journal their own transitions; host, local,
+    and organizer-pass actions (e.g. the High-tier context-separated
+    verifier) have no boundary call, so this is their only path to
+    `completed`. Illegal transitions raise InvalidAttemptTransition from
+    the quota core unchanged."""
+
+    session = Path(args.session)
+    with session_lock(session):
+        _recover_session_unlocked(session)
+        event = _record_attempt_status_unlocked(
+            session, args.action_id, args.status, args.now or _now()
+        )
+    return {
+        "action_id": args.action_id,
+        "status": args.status,
+        "event_hash": event["event_hash"],
+    }, 0
 
 
 def _demo_contract(registry: dict[str, Any]) -> dict[str, Any]:
@@ -571,6 +600,20 @@ def build_parser() -> argparse.ArgumentParser:
     permit.add_argument("--now")
     _add_json_flag(permit)
     permit.set_defaults(handler=command_permit)
+
+    attempt = subparsers.add_parser(
+        "attempt", help="journal one attempt-status transition for an acquired action"
+    )
+    attempt.add_argument("session")
+    attempt.add_argument("--action-id", required=True)
+    attempt.add_argument(
+        "--status",
+        required=True,
+        choices=["attempted", "accepted", "failed", "uncertain", "completed"],
+    )
+    attempt.add_argument("--now")
+    _add_json_flag(attempt)
+    attempt.set_defaults(handler=command_attempt)
 
     demo = subparsers.add_parser(
         "demo", help="one-command no-network end-to-end session (permit -> occurrence -> report.html)"

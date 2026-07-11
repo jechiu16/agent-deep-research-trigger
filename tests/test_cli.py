@@ -16,7 +16,7 @@ from research_harness.operations import purge_artifact, recover_operation
 from research_harness.providers import load_provider_registry, provider_registry_sha256
 from research_harness.rendering import render_session_result
 from research_harness.state import state_sha256
-from research_harness.storage import load_state
+from research_harness.storage import load_state, read_events
 from tests.helpers import (
     NOW,
     confirmed_medium_contract,
@@ -117,6 +117,73 @@ class CliTests(unittest.TestCase):
         rendered = self.run_cli("render", str(self.session), "--json")
         self.assertTrue(json.loads(validated.stdout)["ok"])
         self.assertTrue(Path(json.loads(rendered.stdout)["report_path"]).exists())
+
+    def test_attempt_records_status_transitions_for_organizer_action(self) -> None:
+        self._init_session()
+        self.run_cli(
+            "permit",
+            str(self.session),
+            "--action-id",
+            "O1",
+            "--stage",
+            "final_inference_review",
+            "--category",
+            "organizer_pass",
+            "--route",
+            "host",
+            "--count",
+            "1",
+            "--fingerprint",
+            "sha256:verifier",
+            "--now",
+            NOW,
+            "--json",
+        )
+        for status in ("attempted", "accepted", "completed"):
+            result = self.run_cli(
+                "attempt",
+                str(self.session),
+                "--action-id",
+                "O1",
+                "--status",
+                status,
+                "--now",
+                NOW,
+                "--json",
+            )
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["action_id"], "O1")
+            self.assertEqual(payload["status"], status)
+            self.assertTrue(payload["event_hash"])
+        events, errors = read_events(self.session)
+        self.assertEqual(errors, [])
+        transitions = [
+            (event["from_status"], event["status"])
+            for event in events
+            if event.get("event") == "attempt_status" and event.get("action_id") == "O1"
+        ]
+        self.assertEqual(
+            transitions,
+            [("acquired", "attempted"), ("attempted", "accepted"), ("accepted", "completed")],
+        )
+
+    def test_attempt_rejects_invalid_transition(self) -> None:
+        self._init_session()
+        self._acquire_local()
+        result = self.run_cli(
+            "attempt",
+            str(self.session),
+            "--action-id",
+            "L1",
+            "--status",
+            "completed",
+            "--now",
+            NOW,
+            "--json",
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot transition action L1 from acquired to completed", result.stderr)
 
     def test_prepare_then_explicit_confirm_binds_exact_card_and_registry(self) -> None:
         prepared_result = self.run_cli("prepare", "--contract", str(self.draft), "--json")
