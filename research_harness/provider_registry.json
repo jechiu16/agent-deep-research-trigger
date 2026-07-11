@@ -251,11 +251,12 @@
       "id": "scholar",
       "adapter": "semantic-scholar-graph-search",
       "adapter_version": "v1",
-      "enabled": false,
+      "enabled": true,
       "execution_binding": "v2_request_boundary",
       "adoption_status": "baseline",
       "adoption_evidence": [
-        "fixture-replay-suite-tests-test_scholar"
+        "fixture-replay-suite-tests-test_scholar",
+        "live-occurrence-2026-07-11-scholar-boundary-e2e-attempt3"
       ],
       "roles": ["scholarly-scout"],
       "action_categories": ["probe"],
