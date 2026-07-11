@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-research-cascade"
-version = "2.0.0.dev1"
+version = "2.0.0b1"
 description = "Host-neutral, contract-bound research runtime for tool-using coding agents"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,6 +21,7 @@ gemini = ["google-genai>=2.0,<3"]
 dev = [
   "build>=1.2,<2",
   "coverage[toml]>=7.6,<8",
+  "packaging>=24,<27",
   "pip-audit>=2.9,<3",
   "ruff>=0.12,<1",
   "twine>=6,<7",

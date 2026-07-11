@@ -5,6 +5,9 @@ Semantic Versioning once the v2 runtime leaves development status.
 
 ## [Unreleased]
 
+The current package version is the `2.0.0b1` release candidate. A matching
+`v2.0.0-beta.1` tag triggers the gated GitHub prerelease workflow.
+
 ### Added
 
 - Standard `pyproject.toml` packaging with installed runtime and doctor CLIs.
@@ -14,6 +17,8 @@ Semantic Versioning once the v2 runtime leaves development status.
   dependency update checks.
 - An 80% core branch-coverage floor and one-command no-network release gate.
 - Ruff correctness and import-hygiene checks in local and hosted release gates.
+- A tag-version-locked GitHub prerelease workflow that uploads verified wheel
+  and source distributions.
 
 ### Fixed
 

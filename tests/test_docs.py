@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import re
 from pathlib import Path
 
 
@@ -8,6 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DocumentationTests(unittest.TestCase):
+    def test_package_versions_are_consistent(self) -> None:
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        from research_harness import __version__
+
+        declared = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE)
+        self.assertIsNotNone(declared)
+        self.assertEqual(declared.group(1), __version__)
+
     def test_bindings_use_posture_and_tier(self) -> None:
         for relative in ("SKILL.md", "AGENTS.md", "HARNESS.md"):
             with self.subTest(path=relative):
