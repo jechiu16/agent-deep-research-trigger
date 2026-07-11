@@ -67,62 +67,15 @@ class ParsedResult:
     cost_usd: Optional[float]
     usage: dict[str, Any]
     model: str
+    kind: str = "search_synthesis"  # e.g. search_synthesis / paper_listing / record_fetch
 
 
-# ── Adapters ──────────────────────────────────────────────────────────────────
-# Keyed by "<adapter>@<adapter_version>" exactly as the capability registry
-# binds them. An enabled v2 route whose key is absent here cannot execute.
+def _adapters() -> dict[str, dict[str, Any]]:
+    # Function-level import: adapter modules import RequestSpec/ParsedResult
+    # from this module, so the registry loads lazily to break the cycle.
+    from .adapters import ADAPTERS
 
-
-def _sonar_build(query: str, env: dict[str, str]) -> RequestSpec:
-    key = env.get("PERPLEXITY_API_KEY")
-    if not key:
-        raise BoundaryError("PERPLEXITY_API_KEY is not set")
-    body = json.dumps(
-        {"model": "sonar-pro", "messages": [{"role": "user", "content": query}]}
-    ).encode("utf-8")
-    return RequestSpec(
-        method="POST",
-        url="https://api.perplexity.ai/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        body=body,
-        timeout_s=120.0,
-    )
-
-
-def _sonar_parse(payload: bytes) -> ParsedResult:
-    try:
-        data = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise AdapterParseError(f"sonar payload is not JSON: {exc}") from exc
-    try:
-        text = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise AdapterParseError("sonar payload has no message content") from exc
-    if not isinstance(text, str) or not text.strip():
-        raise AdapterParseError("sonar message content is empty")
-    raw_citations = data.get("search_results") or [
-        {"url": url} for url in (data.get("citations") or [])
-    ]
-    citations = [
-        {"url": item.get("url"), "title": item.get("title"), "date": item.get("date")}
-        for item in raw_citations
-        if isinstance(item, dict) and isinstance(item.get("url"), str)
-    ]
-    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-    cost = (usage.get("cost") or {}).get("total_cost") if isinstance(usage.get("cost"), dict) else None
-    return ParsedResult(
-        synthesis_text=text,
-        citations=citations,
-        cost_usd=round(cost, 4) if isinstance(cost, (int, float)) else None,
-        usage=usage,
-        model=str(data.get("model", "sonar-pro")),
-    )
-
-
-ADAPTERS: dict[str, dict[str, Any]] = {
-    "perplexity-chat-completions@v1": {"build": _sonar_build, "parse": _sonar_parse},
-}
+    return ADAPTERS
 
 
 # ── Transport ────────────────────────────────────────────────────────────────
@@ -187,7 +140,7 @@ def _bound_route(state: dict[str, Any], route: str) -> dict[str, Any]:
     if preflight is None or preflight.get("ready") is not True:
         raise BoundaryError(f"route {route} preflight is not ready")
     adapter_key = f"{provider.get('adapter')}@{provider.get('adapter_version')}"
-    if adapter_key not in ADAPTERS:
+    if adapter_key not in _adapters():
         raise BoundaryError(f"no bound adapter for {adapter_key}")
     return {**provider, "_adapter_key": adapter_key}
 
@@ -223,7 +176,7 @@ def execute_probe(
         if permit.get("category") != "probe":
             raise BoundaryError("execute_probe only handles probe permits")
         provider = _bound_route(state, permit.get("route"))
-        adapter = ADAPTERS[provider["_adapter_key"]]
+        adapter = _adapters()[provider["_adapter_key"]]
 
         spec = adapter["build"](query.strip(), env)
         # Fingerprint binds the attempt to the exact request without leaking auth.
@@ -275,7 +228,7 @@ def execute_probe(
             "id": f"occ-{action_id}",
             "provider_id": provider["id"],
             "action_id": action_id,
-            "kind": "search_synthesis",
+            "kind": parsed.kind,
             "query_hash": sha256_hex(query.strip()),
             "fingerprint": fingerprint,
             "at": now,
