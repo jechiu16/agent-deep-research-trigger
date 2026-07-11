@@ -379,7 +379,12 @@
     },
     {
       "id": "brave",
-      "adapter": "candidate-brave-search",
+      "adapter": "brave-web-search",
+      "adapter_version": "v1",
+      "enabled": true,
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "baseline",
+      "adoption_evidence": ["fixture-replay-suite-tests-test_brave", "live-occurrence-2026-07-11-brave-web-search"],
       "roles": ["scout", "challenge"],
       "action_categories": ["probe"],
       "stage_capabilities": ["primary_scout", "anti_lock_in", "verification"],
@@ -387,9 +392,22 @@
       "index_family": "brave",
       "index_provenance": "independent",
       "upstream_provider": "brave",
-      "retrieval_shape": ["ranked-results", "snippets"],
+      "retrieval_shape": ["result-listing"],
+      "evidence_capabilities": {"can_support_claims": false, "requires_direct_fetch": true},
+      "controls": {"domain_filter": "not_applicable", "date_filter": "available-unused", "max_results": "count-param"},
+      "metering": {"unit": "request", "list_price": "$5 per 1,000 requests (Search plan); $5 free credit/month (~1,000 free requests); free credits carry no result-storage rights", "verified_at": "2026-07-11"},
+      "transport": {"mode": "sync", "polling": "not_applicable"},
+      "privacy": {"local_file_egress": false, "zdr": "unknown"},
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": ["query_hash", "request_count", "citation_count"],
+        "verified_at": "2026-07-11",
+        "source": "https://api-dashboard.search.brave.com/app/documentation (free-credit usage carries no result-storage rights; conservative session-only retention)"
+      },
       "required_env": ["BRAVE_SEARCH_API_KEY"],
-      "docs_url": "https://brave.com/search/api/"
+      "docs_url": "https://brave.com/search/api/",
+      "docs_verified_at": "2026-07-11"
     },
     {
       "id": "openalex",

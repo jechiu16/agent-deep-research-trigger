@@ -157,17 +157,29 @@ class ContractTests(unittest.TestCase):
         )
 
     def test_registry_overlay_can_add_disabled_candidate(self) -> None:
-        candidate = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "brave"))
+        # "test-only-unbound-candidate" (see the permanent sentinel note on
+        # test_enabled_external_route_requires_bound_interceptor_and_adoption
+        # below) -- this test needs a record that is guaranteed to still be
+        # disabled; brave served that role until adapter/brave built it out
+        # for real (2026-07-11), same trap the sentinel was reserved for.
+        candidate = copy.deepcopy(
+            next(p for p in self.registry["providers"] if p["id"] == "test-only-unbound-candidate")
+        )
         candidate["docs_verified_at"] = "2026-07-11"
         with tempfile.TemporaryDirectory() as tempdir:
             overlay = write_overlay(Path(tempdir) / "overlay.json", [candidate])
             registry = load_provider_registry(overlay=overlay)
         self.assertEqual(validate_provider_registry(registry), [])
-        brave = next(p for p in registry["providers"] if p["id"] == "brave")
-        self.assertFalse(brave["enabled"])
+        sentinel = next(p for p in registry["providers"] if p["id"] == "test-only-unbound-candidate")
+        self.assertFalse(sentinel["enabled"])
 
     def test_registry_overlay_cannot_enable_unbound_candidate(self) -> None:
-        candidate = copy.deepcopy(next(p for p in self.registry["providers"] if p["id"] == "brave"))
+        # Same permanent sentinel: it never leaves execution_binding
+        # "legacy_unbound", so this stays a true "unbound candidate" case
+        # instead of chasing whichever real provider is still unbound today.
+        candidate = copy.deepcopy(
+            next(p for p in self.registry["providers"] if p["id"] == "test-only-unbound-candidate")
+        )
         candidate["enabled"] = True
         with tempfile.TemporaryDirectory() as tempdir:
             overlay = write_overlay(Path(tempdir) / "overlay.json", [candidate])

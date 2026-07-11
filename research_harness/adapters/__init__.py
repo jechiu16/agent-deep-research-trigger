@@ -24,7 +24,7 @@ never appear in fixtures, occurrences, or fingerprints.
 
 from __future__ import annotations
 
-from . import crossref, europe_pmc, exa, github, ietf, nvd, openalex, osv, perplexity_deep, pypi, scholar, sonar
+from . import brave, crossref, europe_pmc, exa, github, ietf, nvd, openalex, osv, perplexity_deep, pypi, scholar, sonar
 
 ADAPTERS = {
     "perplexity-chat-completions@v1": {"build": sonar.build, "parse": sonar.parse},
@@ -44,4 +44,5 @@ ADAPTERS = {
     "nvd-cve-record@v1": {"build": nvd.build, "parse": nvd.parse},
     "europepmc-rest-search@v1": {"build": europe_pmc.build, "parse": europe_pmc.parse},
     "osv-query@v1": {"build": osv.build, "parse": osv.parse},
+    "brave-web-search@v1": {"build": brave.build, "parse": brave.parse},
 }

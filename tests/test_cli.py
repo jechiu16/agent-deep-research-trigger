@@ -286,7 +286,13 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(secret, result.stdout)
 
     def test_init_snapshots_validated_registry_overlay(self) -> None:
-        added = copy.deepcopy(next(item for item in load_provider_registry()["providers"] if item["id"] == "brave"))
+        # Templated from the permanent "test-only-unbound-candidate" sentinel
+        # (always disabled) rather than a real provider id -- copying brave
+        # here relied on it still being disabled, which broke the moment
+        # adapter/brave got built out for real (2026-07-11).
+        added = copy.deepcopy(
+            next(item for item in load_provider_registry()["providers"] if item["id"] == "test-only-unbound-candidate")
+        )
         added["id"] = "disabled-extra"
         overlay = write_overlay(
             self.root / "overlay.json",
