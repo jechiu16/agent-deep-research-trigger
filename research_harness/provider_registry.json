@@ -637,7 +637,12 @@
     },
     {
       "id": "osv",
-      "adapter": "candidate-osv",
+      "adapter": "osv-query",
+      "adapter_version": "v1",
+      "enabled": true,
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "baseline",
+      "adoption_evidence": ["fixture-replay-suite-tests-test_osv", "live-occurrence-2026-07-11-osv-pypi-requests"],
       "roles": ["source-of-record"],
       "action_categories": ["probe"],
       "stage_capabilities": ["primary_scout", "verification"],
@@ -645,9 +650,22 @@
       "index_family": "osv",
       "index_provenance": "registry",
       "upstream_provider": "osv",
-      "retrieval_shape": ["vulnerability-records"],
+      "retrieval_shape": ["record-fetch"],
+      "evidence_capabilities": {"can_support_claims": true, "requires_direct_fetch": true},
+      "controls": {"domain_filter": "not_applicable", "date_filter": "not_applicable", "max_results": "not_applicable"},
+      "metering": {"unit": "request", "list_price": "free (docs state \"Currently there are no limits on the API\")", "verified_at": "2026-07-11"},
+      "transport": {"mode": "sync", "polling": "not_applicable"},
+      "privacy": {"local_file_egress": false, "zdr": "not_applicable"},
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": ["query_hash", "request_count"],
+        "verified_at": "2026-07-11",
+        "source": "https://google.github.io/osv.dev/api/"
+      },
       "required_env": [],
-      "docs_url": "https://google.github.io/osv.dev/api/"
+      "docs_url": "https://google.github.io/osv.dev/api/",
+      "docs_verified_at": "2026-07-11"
     },
     {
       "id": "nvd",
