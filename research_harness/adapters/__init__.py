@@ -24,7 +24,7 @@ never appear in fixtures, occurrences, or fingerprints.
 
 from __future__ import annotations
 
-from . import exa, github, openalex, perplexity_deep, pypi, scholar, sonar
+from . import europe_pmc, exa, github, openalex, perplexity_deep, pypi, scholar, sonar
 
 ADAPTERS = {
     "perplexity-chat-completions@v1": {"build": sonar.build, "parse": sonar.parse},
@@ -39,4 +39,5 @@ ADAPTERS = {
     },
     "openalex-works-search@v1": {"build": openalex.build, "parse": openalex.parse},
     "exa-search@v1": {"build": exa.build, "parse": exa.parse},
+    "europepmc-rest-search@v1": {"build": europe_pmc.build, "parse": europe_pmc.parse},
 }
