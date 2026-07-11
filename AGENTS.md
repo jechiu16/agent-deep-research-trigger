@@ -22,9 +22,9 @@ Codex loads `AGENTS.md` from the project hierarchy. Set `DEEP_HARNESS_DIR` to th
 
 ## Current Execution Boundary
 
-`sonar` is enabled through the common v2 request boundary (`research_state.py execute` after a permit). Every other external provider and processor route stays **disabled** until its worker adapter uses the same boundary and passes adoption fixtures. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
+`sonar`, `github`, `pypi`, `scholar`, `openalex`, and async `perplexity` are enabled through the common v2 request boundary (`research_state.py execute` after a permit). `exa` uses the same boundary and has fixture/live evidence, but remains disabled pending an independent-index paired benchmark. Every other external provider and processor route stays disabled until its worker adapter passes the same gates. Existing API keys or a green credential doctor are not execution readiness. Do not call `scripts/deep_research.py` as a bypass inside a v2 session.
 
-First-run sanity check: `python "$DEEP_HARNESS_DIR/scripts/research_state.py" demo /tmp/deep-demo --json` proves the whole runtime (permit -> occurrence -> validate -> render) with zero network and zero cost.
+First-run sanity check: `"$PY" "$DEEP_HARNESS_DIR/scripts/research_state.py" demo /tmp/deep-demo --json` proves the whole runtime (permit -> occurrence -> validate -> render) with zero network and zero cost.
 
 ## Codex Map
 

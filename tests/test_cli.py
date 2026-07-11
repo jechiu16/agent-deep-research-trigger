@@ -140,12 +140,13 @@ class CliTests(unittest.TestCase):
             "user",
             "--json",
         )
-        contract = json.loads(confirmed.stdout)["contract"]
+        confirmed_payload = json.loads(confirmed.stdout)
+        contract = confirmed_payload["contract"]
         self.assertEqual(
             contract["confirmation"]["registry_sha256"],
             prepared_payload["binding"]["registry_sha256"],
         )
-        confirmed_path = self._write_json(contract, "confirmed.json")
+        confirmed_path = self._write_json(confirmed_payload, "confirmed.json")
         self.run_cli(
             "init",
             str(self.session),

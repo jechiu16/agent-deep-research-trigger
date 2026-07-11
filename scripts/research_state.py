@@ -192,7 +192,10 @@ def command_confirm(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def command_init(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    contract = normalize_contract(_read_json(args.contract))
+    contract_payload = _read_json(args.contract)
+    if isinstance(contract_payload, dict) and isinstance(contract_payload.get("contract"), dict):
+        contract_payload = contract_payload["contract"]
+    contract = normalize_contract(contract_payload)
     registry = _registry(args.registry_overlay)
     state = new_state(args.question, contract, args.now or _now(), registry, os.environ)
     session = Path(args.session)
