@@ -135,6 +135,50 @@ def _unconfirmed(contract: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+READY_BINDINGS = frozenset(
+    {"v2_request_boundary", "host_native_observed", "local", "no_network_demo"}
+)
+
+
+def _provider_readiness(provider: dict[str, Any]) -> tuple[str, str]:
+    missing = [item["name"] for item in provider["required_env"] if not item["present"]]
+    if not provider["enabled"]:
+        return "disabled", "-"
+    if provider["execution_binding"] not in READY_BINDINGS:
+        return "unbound", "-"
+    if missing:
+        return "missing-key", ",".join(missing)
+    return "ready", "configured" if provider["required_env"] else "none"
+
+
+def _format_provider_readiness(payload: dict[str, Any]) -> str:
+    rows = []
+    for provider in payload["providers"]:
+        if "contract-test" in provider.get("roles", []) or provider.get("adoption_status") == "not_tested":
+            continue
+        state, detail = _provider_readiness(provider)
+        rows.append((provider["id"], state, detail))
+    rows.sort()
+
+    route_width = max(len("ROUTE"), *(len(row[0]) for row in rows))
+    state_width = max(len("STATE"), *(len(row[1]) for row in rows))
+    lines = [
+        f"{'ROUTE':<{route_width}}  {'STATE':<{state_width}}  REQUIREMENT",
+        f"{'-' * route_width}  {'-' * state_width}  ------------",
+    ]
+    lines.extend(
+        f"{route:<{route_width}}  {state:<{state_width}}  {detail}"
+        for route, state, detail in rows
+    )
+    counts = {state: sum(row[1] == state for row in rows) for state in ("ready", "missing-key", "disabled", "unbound")}
+    lines.append(
+        "Counts: "
+        + ", ".join(f"{state}={counts[state]}" for state in ("ready", "missing-key", "disabled", "unbound"))
+    )
+    lines.append("Machine output: providers --json")
+    return "\n".join(lines) + "\n"
+
+
 def _validate_prepared_contract(
     contract: dict[str, Any], registry: dict[str, Any], binding: dict[str, str]
 ) -> None:
@@ -866,7 +910,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         return 1
-    if args.json:
+    if args.command == "providers" and not args.json:
+        print(_format_provider_readiness(payload), end="")
+    elif args.json:
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))

@@ -23,6 +23,7 @@ from research_harness.providers import (
 from research_harness.rendering import render_session_result
 from research_harness.state import state_sha256
 from research_harness.storage import load_state, read_events
+from scripts import research_state
 from tests.helpers import (
     NOW,
     confirmed_demo_contract,
@@ -479,6 +480,57 @@ class CliTests(unittest.TestCase):
             [{"name": "OPENALEX_API_KEY", "present": True}],
         )
         self.assertNotIn(secret, result.stdout)
+
+    def test_providers_default_is_human_readiness_table(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(self.cli), "providers"],
+            cwd=self.repo,
+            text=True,
+            capture_output=True,
+            env={**os.environ, "EXA_API_KEY": "secret-value", "BRAVE_SEARCH_API_KEY": ""},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ROUTE", result.stdout)
+        self.assertIn("STATE", result.stdout)
+        self.assertIn("exa", result.stdout)
+        self.assertIn("ready", result.stdout)
+        self.assertIn("brave", result.stdout)
+        self.assertIn("missing-key", result.stdout)
+        self.assertIn("BRAVE_SEARCH_API_KEY", result.stdout)
+        self.assertNotIn("secret-value", result.stdout)
+        self.assertNotIn("demo-probe", result.stdout)
+        self.assertNotIn("test-only-unbound-candidate", result.stdout)
+        self.assertIn("Machine output: providers --json", result.stdout)
+
+    def test_providers_human_view_marks_disabled_routes(self) -> None:
+        disabled = copy.deepcopy(
+            next(item for item in load_provider_registry()["providers"] if item["id"] == "exa")
+        )
+        disabled["enabled"] = False
+        overlay = write_overlay(self.root / "providers-overlay.json", [disabled])
+        result = subprocess.run(
+            [sys.executable, str(self.cli), "providers", "--registry-overlay", str(overlay)],
+            cwd=self.repo,
+            text=True,
+            capture_output=True,
+            env=os.environ.copy(),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r"(?m)^exa\s+disabled\s+-\s*$")
+
+    def test_provider_readiness_formatter_marks_unsupported_binding_unbound(self) -> None:
+        payload = {
+            "providers": [
+                {
+                    "id": "unsupported-route",
+                    "enabled": True,
+                    "execution_binding": "future_binding",
+                    "required_env": [],
+                }
+            ]
+        }
+        rendered = research_state._format_provider_readiness(payload)
+        self.assertRegex(rendered, r"(?m)^unsupported-route\s+unbound\s+-\s*$")
 
     def test_init_snapshots_validated_registry_overlay(self) -> None:
         # Templated from the permanent "test-only-unbound-candidate" sentinel
