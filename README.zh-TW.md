@@ -41,6 +41,7 @@ Agent Deep Research Trigger 把這些限制做成可執行規則：
 - provider bytes 一律先 spool 再 parse；
 - state update 有 revision check 並可在 crash 後恢復；
 - claim 必須連回 evidence 與 source origin；
+- 最終 verdict 只有在 fail-closed validation 通過 evidence floor 後才會 PASS；
 - HTML 只從唯一 canonical JSON state deterministic render。
 
 ## 關鍵術語
@@ -54,7 +55,7 @@ Agent Deep Research Trigger 把這些限制做成可執行規則：
 | Posture | 研究模式：`lookup`、`synthesis`、`scientific` 或 `decision` |
 | Tier | 成本／深度預算：`low`、`medium`、`high` 或 custom request envelope |
 | Permit | 針對單一 physical request 的一次性授權 |
-| Physical request | 一次真實的 provider 網路呼叫——permit 與 quota 追蹤的最小單位 |
+| Physical request | permit 授權、quota 計數的最小單位——一次 boundary execution，可能是 provider 網路呼叫，也可能是 deterministic 的 no-network route |
 
 ## Host 相容性
 

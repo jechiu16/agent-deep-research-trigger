@@ -32,6 +32,7 @@ Agent Deep Research Trigger makes those constraints executable:
 - provider bytes are spooled before parsing;
 - state changes are revision-checked and crash-recoverable;
 - claims must trace to evidence and source origins;
+- a final verdict passes only after fail-closed validation clears the evidence floor;
 - HTML output is rendered deterministically from one canonical JSON state.
 
 ## Key terms
@@ -45,7 +46,7 @@ The rest of this document leans on a few precise terms instead of loose ones lik
 | Posture | The research mode: `lookup`, `synthesis`, `scientific`, or `decision` |
 | Tier | The cost/depth budget: `low`, `medium`, `high`, or a custom request envelope |
 | Permit | A one-time authorization for exactly one physical request |
-| Physical request | One real network call to a provider — the unit permits and quotas track |
+| Physical request | The unit a permit authorizes and quotas count — one boundary execution, whether a provider network call or a deterministic local route |
 
 ## Host compatibility
 
@@ -55,8 +56,7 @@ The rest of this document leans on a few precise terms instead of loose ones lik
 | [OpenAI Codex](https://developers.openai.com/codex/build-skills/) | `AGENTS.md`, `.agents/skills/deep/SKILL.md` | Native web and shell/file tools after permits |
 | Other Agent Skills hosts | Root `SKILL.md` | Host-neutral protocol in `HARNESS.md` |
 
-The research protocol is shared. Host files only map native tools to the same
-mechanical runtime; they do not define competing behavior.
+The research protocol is shared. Host files only map native tools to the same mechanical runtime; they do not define competing behavior.
 
 ## Quickstart
 
