@@ -13,10 +13,12 @@ from research_harness.artifacts import (
     SecretDetected,
     ingest_fetched_source,
     ingest_local_artifact,
+    promote_provider_payload,
     purge_raw_artifact,
     recover_pending_purges,
 )
-from research_harness.contracts import contract_card_sha256
+from research_harness.boundary import execute_probe
+from research_harness.contracts import contract_card_sha256, normalize_contract
 from research_harness.providers import (
     load_provider_registry,
     provider_records_sha256,
@@ -26,10 +28,21 @@ from research_harness.providers import (
 from research_harness.quota import acquire_permits
 from research_harness.state import new_state
 from research_harness.storage import apply_state_patch, create_session, load_state
-from tests.helpers import NOW, confirmed_medium_contract
+from research_harness.validation import validate_session
+from tests.helpers import NOW, confirmed_demo_contract, confirmed_medium_contract
 
 
 LATER = "2026-07-10T12:01:00Z"
+FIXTURES = Path(__file__).with_name("fixtures")
+
+
+def fixture_transport(name: str, status: int = 200):
+    payload = (FIXTURES / name).read_bytes()
+
+    def transport(spec):
+        return status, payload
+
+    return transport
 
 
 class ArtifactTests(unittest.TestCase):
@@ -374,6 +387,330 @@ class ArtifactTests(unittest.TestCase):
         tombstone = recover_pending_purges(self.session, LATER)[0]
         self.assertEqual(tombstone["availability"], "purged")
         self.assertEqual(tombstone["purged_at"], LATER)
+
+
+class PromoteProviderPayloadTests(unittest.TestCase):
+    """promote_provider_payload: boundary-spooled payloads -> artifact_index.
+
+    A standalone TestCase (not a subclass of ArtifactTests -- subclassing a
+    TestCase for setUp reuse would re-run every inherited test_* method under
+    this class too) with its own minimal fixture: a tempdir and the loaded
+    provider registry, plus a helper to build a confirmed probe-route
+    session with artifact_policy.allow_provider_payloads overridden.
+    """
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.root = Path(self.tempdir.name)
+        self.registry = load_provider_registry()
+
+    def _make_provider_session(
+        self,
+        name: str,
+        route: str,
+        *,
+        allow_provider_payloads: bool,
+    ) -> Path:
+        """A confirmed probe-route session, with artifact_policy overridden
+        after the fact (mirrors confirmed_demo_contract's own confirm step:
+        mutate, then recompute the card/registry/records hashes so the
+        contract stays internally consistent)."""
+
+        resolved = copy.deepcopy(self.registry)
+        contract = confirmed_demo_contract(
+            route=route, request_count=1, probe_ceiling=1, registry=resolved
+        )
+        contract["artifact_policy"]["allow_provider_payloads"] = allow_provider_payloads
+        records = referenced_provider_records(contract, resolved)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(resolved),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        session = self.root / name
+        create_session(session, new_state("provider promote test", contract, NOW, resolved, {}))
+        return session
+
+    def _execute_and_promote(
+        self,
+        session: Path,
+        route: str,
+        action_id: str,
+        artifact_id: str,
+        *,
+        transport=None,
+        environ: dict[str, str] | None = None,
+        query: str = "jechiu16/agent-deep-research-trigger",
+    ) -> dict:
+        acquire_permits(
+            session, action_id, "primary_scout", "probe", route, 1, f"fp-{action_id.lower()}", NOW
+        )
+        execute_probe(session, action_id, query, NOW, transport=transport, environ=environ or {})
+        return promote_provider_payload(session, action_id, artifact_id, "session", False, NOW)
+
+    def test_promote_requires_contract_to_allow_provider_payloads(self) -> None:
+        session = self._make_provider_session(
+            "no-provider-payloads", "github", allow_provider_payloads=False
+        )
+        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
+        execute_probe(
+            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            transport=fixture_transport("github_success.json"), environ={},
+        )
+        with self.assertRaises(ArtifactPolicyError):
+            promote_provider_payload(session, "A1", "PA1", "session", False, NOW)
+        self.assertEqual(load_state(session)["artifact_index"], [])
+
+    def test_promote_requires_a_recorded_occurrence_for_the_action(self) -> None:
+        session = self._make_provider_session(
+            "no-occurrence", "github", allow_provider_payloads=True
+        )
+        with self.assertRaises(ArtifactPolicyError):
+            promote_provider_payload(session, "GHOST", "PA1", "session", False, NOW)
+        self.assertEqual(load_state(session)["artifact_index"], [])
+
+    def test_promote_refuses_deep_category_providers(self) -> None:
+        # perplexity's action_categories include "deep": its async result is
+        # spooled under provider_spool/<poll_action_id>.raw.json by
+        # execute_deep_poll, never under the submitted action_id recorded on
+        # the retrieval occurrence -- that action_id's own spool file (if
+        # any) is only the submit-accept stub. A synthetic occurrence is
+        # enough to exercise the guard; no real submit/poll cycle is needed
+        # since the rejection must happen before any spool file is read.
+        #
+        # confirmed_demo_contract/_make_provider_session always map
+        # primary_scout to category "probe", which perplexity's
+        # stage_capabilities (["investigation", "anti_lock_in"]) do not
+        # support, so this needs its own minimal contract referencing
+        # perplexity through a stage/category it actually supports (mirrors
+        # tests/test_async_boundary.py's inline _deep_contract).
+        resolved = copy.deepcopy(self.registry)
+        contract = normalize_contract(
+            {
+                "posture": "lookup",
+                "tier": "custom",
+                "scout_route": "demo-probe",
+                "resource_envelope": {
+                    "physical_ceiling": {
+                        "probe": 1, "deep": 1, "processor": 0, "network_experiment": 0,
+                        "transport": 0, "host_retrieval": 0, "local": 0, "organizer_pass": 0,
+                    },
+                    "external": {
+                        "metered_ceiling": {
+                            "probe": 0, "deep": 1, "processor": 0,
+                            "network_experiment": 0, "transport": 0,
+                        },
+                        "max_wall_time_seconds": 1200,
+                        "allowed_endpoint_classes": [],
+                        "local_file_egress": False,
+                        "network_experiment_endpoints": [],
+                        "estimated_spend_usd": {"minimum": 0.0, "maximum": 1.0, "hard_cap": False},
+                        "raw_storage_bytes": 10 * 1024 * 1024,
+                    },
+                    "host": {"context_class": "lean", "admitted_characters": 8000, "estimated_tokens": 2000},
+                    "local": {"admitted_output_characters": 0, "max_wall_time_seconds": 60, "network_egress": False},
+                },
+                "stage_permit_map": [
+                    {"stage": "primary_scout", "category": "probe", "route": "demo-probe",
+                     "invocations": 1, "count": 1, "reserved": False},
+                    {"stage": "investigation", "category": "deep", "route": "perplexity",
+                     "invocations": 1, "count": 1, "reserved": False},
+                ],
+                "evidence_floor": {"minimum_load_bearing_claims": 1, "require_raw_artifacts": True},
+                "artifact_policy": {"default_retention": "session", "allow_provider_payloads": True},
+            }
+        )
+        records = referenced_provider_records(contract, resolved)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(resolved),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        session = self.root / "perplexity-deep-promote-guard"
+        create_session(
+            session,
+            new_state(
+                "deep promote guard test", contract, NOW, resolved,
+                {"PERPLEXITY_API_KEY": "test-perplexity-key"},
+            ),
+        )
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {
+                    "op": "add",
+                    "path": "/retrieval_occurrences/-",
+                    "value": {"id": "occ-A1", "provider_id": "perplexity", "action_id": "A1"},
+                }
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+        with self.assertRaises(ArtifactPolicyError) as ctx:
+            promote_provider_payload(session, "A1", "PA1", "session", False, NOW)
+        self.assertIn("deep payloads spool under poll action ids", str(ctx.exception))
+        self.assertEqual(load_state(session)["artifact_index"], [])
+
+    def test_promote_github_payload_lands_under_raw_with_provider_provenance(self) -> None:
+        session = self._make_provider_session(
+            "github-promote", "github", allow_provider_payloads=True
+        )
+        artifact = self._execute_and_promote(
+            session, "github", "A1", "PA1",
+            transport=fixture_transport("github_success.json"),
+        )
+        self.assertEqual(artifact["id"], "PA1")
+        self.assertEqual(artifact["provenance"]["origin_kind"], "provider_payload")
+        self.assertEqual(artifact["provenance"]["provider_id"], "github")
+        self.assertEqual(load_state(session)["artifact_index"], [artifact])
+        raw_path = session / artifact["relative_path"]
+        self.assertEqual(raw_path, session / "raw" / "PA1.json")
+        self.assertTrue(raw_path.exists())
+        self.assertEqual(
+            raw_path.read_bytes(), (FIXTURES / "github_success.json").read_bytes()
+        )
+
+    def test_promoted_github_payload_can_support_a_claim_without_provider_claims_forbidden(
+        self,
+    ) -> None:
+        session = self._make_provider_session(
+            "github-evidence", "github", allow_provider_payloads=True
+        )
+        artifact = self._execute_and_promote(
+            session, "github", "A1", "PA1",
+            transport=fixture_transport("github_success.json"),
+        )
+        raw_bytes = (session / artifact["relative_path"]).read_bytes()
+
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {"op": "add", "path": "/source_origins/-", "value": {"id": "O1"}},
+                {
+                    "op": "add",
+                    "path": "/sources/-",
+                    "value": {"id": "S1", "origin_id": "O1", "tier": "T1", "direct_fetch": True},
+                },
+                {
+                    "op": "add",
+                    "path": "/evidence/-",
+                    "value": {
+                        "id": "E1",
+                        "artifact_id": "PA1",
+                        "source_id": "S1",
+                        "origin_id": "O1",
+                        "source_tier": "T1",
+                        "excerpt": raw_bytes.decode("utf-8"),
+                        "excerpt_start": 0,
+                        "excerpt_end": len(raw_bytes),
+                        "entailment": "entailed",
+                        "applicability": "checked",
+                    },
+                },
+                {
+                    "op": "add",
+                    "path": "/claims/-",
+                    "value": {
+                        "id": "C1",
+                        "load_bearing": True,
+                        "status": "corroborated",
+                        "supporting_evidence_ids": ["E1"],
+                        "counter_evidence_ids": [],
+                        "source_origin_ids": ["O1"],
+                        "applicability": "checked",
+                    },
+                },
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+
+        report = validate_session(session, check_report=False)
+        codes = {issue.code for issue in report.issues}
+        # This is the branch this whole feature exists to activate: a
+        # can_support_claims=true provider's promoted payload must not be
+        # treated as claim-forbidden, and its lineage/storage-rights must
+        # check out cleanly (proving the provenance shape written by
+        # promote_provider_payload is exactly what validation.py expects).
+        self.assertNotIn("evidence.provider_claims_forbidden", codes)
+        self.assertNotIn("artifact.provenance", codes)
+        self.assertNotIn("artifact.storage_rights", codes)
+
+    def test_promoted_discovery_only_payload_cannot_support_a_claim(self) -> None:
+        # crossref's registry record is evidence_capabilities.can_support_
+        # claims=false (a discovery/listing route, not a source of record)
+        # but -- unlike demo-probe/demo-cascade, whose storage_rights.
+        # payload_retention is "forbidden" and so refuse promotion outright
+        # -- crossref's payload_retention is "session", so promotion itself
+        # succeeds and the can_support_claims gate is the only thing that
+        # can catch it. The demo contract also ships allow_provider_payloads
+        # =false, so this uses the allowing variant to isolate the
+        # can_support_claims gate from the contract gate.
+        session = self._make_provider_session(
+            "crossref-evidence-forbidden", "crossref", allow_provider_payloads=True
+        )
+        artifact = self._execute_and_promote(
+            session, "crossref", "X1", "PX1",
+            transport=fixture_transport("crossref_success.json"),
+            query="dynamic factor model nowcasting",
+        )
+        raw_bytes = (session / artifact["relative_path"]).read_bytes()
+
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {"op": "add", "path": "/source_origins/-", "value": {"id": "O1"}},
+                {
+                    "op": "add",
+                    "path": "/sources/-",
+                    "value": {"id": "S1", "origin_id": "O1", "tier": "T1", "direct_fetch": True},
+                },
+                {
+                    "op": "add",
+                    "path": "/evidence/-",
+                    "value": {
+                        "id": "E1",
+                        "artifact_id": "PX1",
+                        "source_id": "S1",
+                        "origin_id": "O1",
+                        "source_tier": "T1",
+                        "excerpt": raw_bytes.decode("utf-8"),
+                        "excerpt_start": 0,
+                        "excerpt_end": len(raw_bytes),
+                        "entailment": "entailed",
+                        "applicability": "checked",
+                    },
+                },
+                {
+                    "op": "add",
+                    "path": "/claims/-",
+                    "value": {
+                        "id": "C1",
+                        "load_bearing": True,
+                        "status": "corroborated",
+                        "supporting_evidence_ids": ["E1"],
+                        "counter_evidence_ids": [],
+                        "source_origin_ids": ["O1"],
+                        "applicability": "checked",
+                    },
+                },
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+
+        report = validate_session(session, check_report=False)
+        self.assertIn(
+            "evidence.provider_claims_forbidden", {issue.code for issue in report.errors}
+        )
 
 
 if __name__ == "__main__":

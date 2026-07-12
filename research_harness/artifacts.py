@@ -10,7 +10,7 @@ import stat
 from pathlib import Path
 from typing import Any, Optional
 
-from ._canon import sha256_hex
+from ._canon import RETENTION_RANK, sha256_hex
 from .storage import (
     _apply_artifact_state_patch_unlocked,
     _fsync_dir,
@@ -404,6 +404,115 @@ def ingest_fetched_source(
             provenance,
             now,
             None,
+        )
+
+
+def promote_provider_payload(
+    session_dir: Path,
+    action_id: str,
+    artifact_id: str,
+    retention: str,
+    include_in_html: bool,
+    now: str,
+) -> dict[str, Any]:
+    """Promote a boundary-spooled provider payload into the artifact index.
+
+    Unlike ingest_local_artifact / ingest_fetched_source, the raw bytes are
+    never supplied by the caller: they are exactly what the v2 request
+    boundary (research_harness.boundary) already spooled to
+    provider_spool/<action_id>.raw.json when it recorded the retrieval
+    occurrence for this action. Only an action that already completed
+    through the boundary (a retrieval occurrence exists) can be promoted --
+    there is no path from an arbitrary filesystem path to an
+    evidence-capable artifact, and the generic artifact-add surface
+    continues to refuse origin_kind=provider_payload outright.
+
+    media_type and sensitivity are not caller-supplied: the spool is always
+    a JSON payload (see boundary._spool_raw), and provider-sourced records
+    follow the same "public" convention already used for fetched_source
+    artifacts (these routes are public record-fetch APIs by registry
+    construction; see storage_rights.source on each enabled provider).
+
+    Providers whose action_categories include "deep" are refused outright:
+    an async deep job's result is spooled under provider_spool/
+    <poll_action_id>.raw.json by execute_deep_poll, not under the submitted
+    action_id recorded on the retrieval occurrence -- that action_id's own
+    spool file (if any) is only the submit-accept stub. Promoting by
+    occurrence.action_id would therefore ingest the wrong bytes. Not
+    supported yet.
+    """
+
+    session_dir = Path(session_dir)
+    action_id = _require_nonempty(action_id, "action_id")
+    with session_lock(session_dir):
+        _recover_session_unlocked(session_dir)
+        state = _load_state_unlocked(session_dir)
+        if state["contract"].get("artifact_policy", {}).get("allow_provider_payloads") is not True:
+            raise ArtifactPolicyError("the confirmed contract forbids provider payload persistence")
+
+        occurrence = next(
+            (
+                item
+                for item in state.get("retrieval_occurrences", [])
+                if isinstance(item, dict) and item.get("action_id") == action_id
+            ),
+            None,
+        )
+        if occurrence is None:
+            raise ArtifactPolicyError(f"no retrieval occurrence is recorded for action {action_id}")
+        provider_id = occurrence.get("provider_id")
+
+        provider = next(
+            (item for item in state["capabilities"]["providers"] if item.get("id") == provider_id),
+            None,
+        )
+        preflight = next(
+            (item for item in state["capabilities"]["preflight"] if item.get("provider_id") == provider_id),
+            None,
+        )
+        if (
+            provider is None
+            or provider.get("enabled") is not True
+            or provider.get("execution_binding") not in {"v2_request_boundary", "no_network_demo"}
+            or preflight is None
+            or preflight.get("ready") is not True
+        ):
+            raise ArtifactPolicyError("provider is not enabled and bound in the capability snapshot")
+        if "deep" in (provider.get("action_categories") or []):
+            raise ArtifactPolicyError(
+                "deep payloads spool under poll action ids; promoting deep routes is not supported yet"
+            )
+
+        rights = provider.get("storage_rights")
+        if not isinstance(rights, dict):
+            raise ArtifactPolicyError("provider storage rights are missing")
+        allowed_retention = rights.get("payload_retention")
+        if allowed_retention not in RETENTION_RANK:
+            raise ArtifactPolicyError("provider payload retention is forbidden or non-persistable")
+        if retention not in RETENTIONS or RETENTION_RANK[retention] > RETENTION_RANK[allowed_retention]:
+            raise ArtifactPolicyError("requested retention exceeds provider storage rights")
+        if include_in_html and rights.get("html_allowed") is not True:
+            raise ArtifactPolicyError("provider storage rights forbid HTML inclusion")
+
+        # Fixed, deterministic path: the caller never names a source file.
+        spool_path = session_dir / "provider_spool" / f"{action_id}.raw.json"
+        provenance = {
+            "origin_kind": "provider_payload",
+            "provider_id": provider_id,
+            "attempt_or_occurrence_id": action_id,
+        }
+        return _ingest_unlocked(
+            session_dir,
+            spool_path,
+            artifact_id,
+            "application/json",
+            "public",
+            retention,
+            include_in_html,
+            provenance,
+            now,
+            None,
+            {"provider_storage_rights": rights},
         )
 
 

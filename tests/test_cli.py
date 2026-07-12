@@ -12,8 +12,14 @@ from pathlib import Path
 from unittest import mock
 
 from research_harness.artifacts import purge_raw_artifact
+from research_harness.contracts import contract_card_sha256
 from research_harness.operations import purge_artifact, recover_operation
-from research_harness.providers import load_provider_registry, provider_registry_sha256
+from research_harness.providers import (
+    load_provider_registry,
+    provider_records_sha256,
+    provider_registry_sha256,
+    referenced_provider_records,
+)
 from research_harness.rendering import render_session_result
 from research_harness.state import state_sha256
 from research_harness.storage import load_state, read_events
@@ -556,6 +562,160 @@ class CliTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("provider artifacts require a bound adapter operation", result.stderr)
+
+    def test_cli_promote_provider_payload_end_to_end(self) -> None:
+        # No live network from a subprocess test: this session is built
+        # entirely through CLI subcommands, with the boundary's own
+        # spool-then-occurrence bookkeeping (research_harness.boundary.
+        # execute_probe / _record_occurrence) stood in for directly -- a
+        # hand-written spool file plus a `patch` adding the matching minimal
+        # retrieval_occurrence -- rather than hitting the real GitHub API.
+        # This mirrors the minimal-occurrence pattern tests/helpers.py
+        # already uses for its own fetched-source fixtures (see
+        # make_complete_pass_session's retrieval_occurrences patch).
+        registry = load_provider_registry()
+        contract = confirmed_demo_contract(
+            route="github", request_count=1, probe_ceiling=1, registry=registry
+        )
+        contract["artifact_policy"]["allow_provider_payloads"] = True
+        records = referenced_provider_records(contract, registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        contract_path = self._write_json(contract, "github-promote-contract.json")
+        session = self.root / "github-promote-session"
+        self.run_cli(
+            "init", str(session),
+            "--question", "Choose a bounded dependency",
+            "--contract", str(contract_path),
+            "--json",
+        )
+        self.run_cli(
+            "permit", str(session),
+            "--action-id", "A1",
+            "--stage", "primary_scout",
+            "--category", "probe",
+            "--route", "github",
+            "--count", "1",
+            "--fingerprint", "sha256:a1",
+            "--now", NOW,
+            "--json",
+        )
+        spool_dir = session / "provider_spool"
+        spool_dir.mkdir(mode=0o700)
+        (spool_dir / "A1.raw.json").write_bytes(
+            json.dumps({"full_name": "octocat/Hello-World"}, ensure_ascii=False).encode("utf-8")
+        )
+        patch_path = self._write_json(
+            {
+                "operations": [
+                    {
+                        "op": "add",
+                        "path": "/retrieval_occurrences/-",
+                        "value": {"id": "occ-A1", "provider_id": "github", "action_id": "A1"},
+                    }
+                ]
+            },
+            "occurrence-patch.json",
+        )
+        self.run_cli("patch", str(session), "--patch", str(patch_path), "--now", NOW, "--json")
+
+        result = self.run_cli(
+            "promote", str(session),
+            "--action-id", "A1",
+            "--artifact-id", "PA1",
+            "--now", NOW,
+            "--json",
+        )
+        artifact = json.loads(result.stdout)["artifact"]
+        self.assertEqual(artifact["id"], "PA1")
+        self.assertEqual(
+            artifact["provenance"],
+            {
+                "origin_kind": "provider_payload",
+                "provider_id": "github",
+                "attempt_or_occurrence_id": "A1",
+            },
+        )
+        self.assertTrue((session / artifact["relative_path"]).exists())
+
+    def test_cli_citations_deduplicates_by_url_and_flags_directly_verified(self) -> None:
+        self._init_session()
+        patch_path = self._write_json(
+            {
+                "operations": [
+                    {
+                        "op": "add",
+                        "path": "/retrieval_occurrences/-",
+                        "value": {
+                            "id": "occ-A1",
+                            "provider_id": "host-web",
+                            "action_id": "A1",
+                            "citations": [
+                                {"url": "https://example.test/a", "title": "A"},
+                                {"url": "https://example.test/b", "title": "B"},
+                            ],
+                        },
+                    },
+                    {
+                        "op": "add",
+                        "path": "/retrieval_occurrences/-",
+                        "value": {
+                            "id": "occ-A2",
+                            "provider_id": "host-web",
+                            "action_id": "A2",
+                            "citations": [
+                                {"url": "https://example.test/a", "title": "A dup"},
+                                {"url": "https://example.test/c", "title": "C"},
+                            ],
+                        },
+                    },
+                    {
+                        "op": "add",
+                        "path": "/source_origins/-",
+                        "value": {"id": "O1", "kind": "primary-authority", "independent": True},
+                    },
+                    {
+                        "op": "add",
+                        "path": "/sources/-",
+                        "value": {
+                            "id": "S1",
+                            "origin_id": "O1",
+                            "tier": "T1",
+                            "title": "Fetched A",
+                            "url": "https://example.test/a",
+                            "direct_fetch": True,
+                        },
+                    },
+                ]
+            },
+            "citations-patch.json",
+        )
+        self.run_cli("patch", str(self.session), "--patch", str(patch_path), "--now", NOW, "--json")
+
+        result = self.run_cli("citations", str(self.session), "--json")
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["total"], 3)
+        self.assertEqual(payload["unverified"], 2)
+        by_url = {item["url"]: item for item in payload["citations"]}
+        self.assertTrue(by_url["https://example.test/a"]["directly_verified"])
+        self.assertEqual(
+            sorted(by_url["https://example.test/a"]["occurrence_action_ids"]), ["A1", "A2"]
+        )
+        self.assertFalse(by_url["https://example.test/b"]["directly_verified"])
+        self.assertFalse(by_url["https://example.test/c"]["directly_verified"])
+
+        filtered = self.run_cli("citations", str(self.session), "--action-id", "A1", "--json")
+        filtered_payload = json.loads(filtered.stdout)
+        self.assertEqual(filtered_payload["total"], 2)
+        self.assertEqual(
+            sorted(item["url"] for item in filtered_payload["citations"]),
+            ["https://example.test/a", "https://example.test/b"],
+        )
 
     def test_public_purge_revalidates_and_rerenders_partial_session(self) -> None:
         session = make_complete_pass_session(

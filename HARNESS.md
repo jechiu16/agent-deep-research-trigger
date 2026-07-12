@@ -161,7 +161,7 @@ Only source origins establish empirical corroboration. One directly fetched T1 s
 
 Medium/High scientific or decision runs perform:
 
-- **anti-lock-in:** seek evidence that would overturn the provisional candidate;
+- **anti-lock-in:** seek evidence that would overturn the provisional candidate. Disposition every anti-lock-in finding explicitly: refute it with evidence, absorb it by revising the candidate, or record it as an open tension with a revisit trigger. Merely noting counter-evidence does not count;
 - **coverage audit:** inspect omitted premises, boundary conditions, and candidate omissions;
 - **local applicability:** test project versions, environment, and constraints when feasible.
 
@@ -196,7 +196,7 @@ Purge is a semantic transition: downgrade affected claims and verdict first, per
 - confirmed evidence floor;
 - passing claim status, source origin, entailing exact excerpt, available raw artifact, and applicability for every load-bearing claim;
 - quota/event/state hash reconciliation;
-- posture-specific checks (machine gates exist for lookup, scientific, and decision; synthesis relies on the common gates);
+- posture-specific checks (machine gates exist for lookup, scientific, and decision; synthesis shares the Medium/High coverage-audit gate but has no anti-lock-in requirement of its own);
 - Medium/High anti-lock-in and coverage audit when required;
 - context-separated High verifier;
 - current HTML state hash when a report exists.

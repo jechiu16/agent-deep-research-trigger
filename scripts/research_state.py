@@ -18,7 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from research_harness.artifacts import ingest_fetched_source, ingest_local_artifact
+from research_harness.artifacts import (
+    ingest_fetched_source,
+    ingest_local_artifact,
+    promote_provider_payload,
+)
 from research_harness.boundary import (
     execute_deep_poll,
     execute_deep_submit,
@@ -478,6 +482,56 @@ def command_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     }, 0
 
 
+def command_citations(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Free, read-only harvest of citations recorded on retrieval occurrences.
+
+    This is the verification-stage collection list: the Organizer samples
+    from its `unverified` remainder and directly fetches (host-web permit)
+    a chosen citation, turning it into fetched_source evidence instead of a
+    listing-only reference. Citations are deduplicated by url across every
+    retrieval occurrence (optionally narrowed to one --action-id) and each
+    is marked `directly_verified` when state.sources already has a matching
+    url with `direct_fetch: true`. Zero network, no lock acquired, no state
+    write -- same read as the `status` subcommand.
+    """
+
+    state = load_state(Path(args.session))
+    direct_fetch_urls = {
+        source.get("url")
+        for source in state.get("sources", [])
+        if isinstance(source, dict)
+        and source.get("direct_fetch") is True
+        and isinstance(source.get("url"), str)
+    }
+    by_url: dict[str, dict[str, Any]] = {}
+    for occurrence in state.get("retrieval_occurrences", []):
+        if not isinstance(occurrence, dict):
+            continue
+        action_id = occurrence.get("action_id")
+        if args.action_id and action_id != args.action_id:
+            continue
+        for citation in occurrence.get("citations") or []:
+            if not isinstance(citation, dict):
+                continue
+            url = citation.get("url")
+            if not isinstance(url, str) or not url:
+                continue
+            entry = by_url.setdefault(
+                url,
+                {
+                    "title": citation.get("title"),
+                    "url": url,
+                    "occurrence_action_ids": [],
+                    "directly_verified": url in direct_fetch_urls,
+                },
+            )
+            if isinstance(action_id, str) and action_id not in entry["occurrence_action_ids"]:
+                entry["occurrence_action_ids"].append(action_id)
+    citations = sorted(by_url.values(), key=lambda item: item["url"])
+    unverified = sum(1 for item in citations if not item["directly_verified"])
+    return {"citations": citations, "total": len(citations), "unverified": unverified}, 0
+
+
 def command_artifact_add(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.origin_kind in {"provider_payload", "processor_output"}:
         raise ValueError("provider artifacts require a bound adapter operation")
@@ -525,6 +579,18 @@ def command_artifact_add(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         )
     else:
         raise ValueError("origin_kind must be local_output, user_file, or fetched_source")
+    return {"artifact": artifact}, 0
+
+
+def command_promote(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    artifact = promote_provider_payload(
+        Path(args.session),
+        args.action_id,
+        args.artifact_id,
+        args.retention,
+        args.include_in_html,
+        args.now or _now(),
+    )
     return {"artifact": artifact}, 0
 
 
@@ -702,6 +768,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(status)
     status.set_defaults(handler=command_status)
 
+    citations = subparsers.add_parser(
+        "citations", help="free: harvest deduplicated citations for verification-stage sampling"
+    )
+    citations.add_argument("session")
+    citations.add_argument("--action-id", help="limit to citations recorded on one retrieval occurrence")
+    _add_json_flag(citations)
+    citations.set_defaults(handler=command_citations)
+
     add = subparsers.add_parser("artifact-add", help="securely ingest local or fetched bytes")
     add.add_argument("session")
     add.add_argument("--source", required=True)
@@ -723,6 +797,18 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--now")
     _add_json_flag(add)
     add.set_defaults(handler=command_artifact_add)
+
+    promote = subparsers.add_parser(
+        "promote", help="promote a boundary-spooled provider payload into the artifact index"
+    )
+    promote.add_argument("session")
+    promote.add_argument("--action-id", required=True, help="the completed action whose occurrence to promote")
+    promote.add_argument("--artifact-id", required=True)
+    promote.add_argument("--retention", default="session")
+    promote.add_argument("--include-in-html", action="store_true")
+    promote.add_argument("--now")
+    _add_json_flag(promote)
+    promote.set_defaults(handler=command_promote)
 
     purge = subparsers.add_parser("artifact-purge", help="purge, revalidate, and rerender")
     purge.add_argument("session")

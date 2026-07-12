@@ -313,6 +313,58 @@
       "docs_verified_at": "2026-07-11"
     },
     {
+      "id": "openai-deep",
+      "adapter": "openai-deep-responses",
+      "adapter_version": "v1",
+      "execution_binding": "v2_request_boundary",
+      "adoption_status": "fixtures-only",
+      "adoption_evidence": ["fixture-replay-suite-tests-test_openai_deep"],
+      "roles": ["investigation"],
+      "action_categories": ["deep", "transport"],
+      "stage_capabilities": ["investigation", "anti_lock_in"],
+      "request_multiplicity": {"deep": 1, "transport": 1},
+      "index_family": "openai-model-mediated",
+      "index_provenance": "grounding-wrapper",
+      "upstream_provider": "not_disclosed",
+      "retrieval_shape": ["cited-synthesis"],
+      "evidence_capabilities": {
+        "can_support_claims": false
+      },
+      "controls": {
+        "domain_filter": "unknown",
+        "date_filter": "unknown",
+        "max_results": "not_applicable"
+      },
+      "metering": {
+        "unit": "request",
+        "list_price": "estimated: token-metered (input/output/reasoning tokens per o4-mini-deep-research rate card); response carries no dollar-cost field, unlike perplexity's usage.cost.total_cost",
+        "verified_at": "2026-07-12"
+      },
+      "transport": {
+        "mode": "async",
+        "polling": "required"
+      },
+      "privacy": {
+        "local_file_egress": false,
+        "zdr": "unknown"
+      },
+      "storage_rights": {
+        "payload_retention": "session",
+        "html_allowed": false,
+        "allowed_operational_fields": [
+          "query_hash",
+          "job",
+          "cost_usd",
+          "citation_count"
+        ],
+        "verified_at": "2026-07-12",
+        "source": "https://platform.openai.com/docs/guides/background (async Responses API job output; conservative session-only local retention, same posture as perplexity/sonar; adoption gate: not yet enabled pending a live occurrence)"
+      },
+      "required_env": ["OPENAI_API_KEY"],
+      "docs_url": "https://platform.openai.com/docs/guides/deep-research",
+      "docs_verified_at": "2026-07-12"
+    },
+    {
       "id": "brave",
       "adapter": "brave-web-search",
       "adapter_version": "v1",

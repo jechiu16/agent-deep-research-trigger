@@ -1,0 +1,21 @@
+{
+  "_note": "synthetic fixture (no live OpenAI call; a real failure was not deliberately induced); shape per OpenAI Responses API docs fetched 2026-07-12: https://platform.openai.com/docs/guides/background (status enum incl. failed/cancelled/incomplete), https://developers.openai.com/api/reference/resources/responses/methods/retrieve (error.code enum incl. server_error/rate_limit_exceeded, error.message)",
+  "id": "resp_68f3b02d0ef591929b3f7c2d4e5f6a71",
+  "object": "response",
+  "created_at": 1784001000,
+  "status": "failed",
+  "error": {
+    "code": "server_error",
+    "message": "The model encountered an error while processing your request."
+  },
+  "incomplete_details": null,
+  "model": "o4-mini-deep-research",
+  "output": [],
+  "usage": {
+    "input_tokens": 96,
+    "input_tokens_details": {"cached_tokens": 0},
+    "output_tokens": 0,
+    "output_tokens_details": {"reasoning_tokens": 0},
+    "total_tokens": 96
+  }
+}

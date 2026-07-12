@@ -181,6 +181,41 @@ class ValidationTests(unittest.TestCase):
         report = validate_session(session)
         self.assertTrue(report.ok, report.to_dict())
 
+    def test_synthesis_medium_pass_requires_coverage_audit(self) -> None:
+        # synthesis's posture promise IS a coverage/omissions declaration, so
+        # it shares the Medium/High coverage-audit gate with
+        # scientific/decision even though it has no anti-lock-in requirement
+        # of its own. make_complete_pass_session only adds anti_lock_in/
+        # coverage_audit verification records for scientific/decision, so a
+        # synthesis session starts without one and must be patched by hand.
+        session = make_complete_pass_session(self.root, "medium", "synthesis")
+        report = validate_session(session)
+        codes = {issue.code for issue in report.errors}
+        self.assertIn("tier.coverage_audit_missing", codes)
+        self.assertNotIn("tier.anti_lock_in_missing", codes)
+
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {
+                    "op": "add",
+                    "path": "/verification/-",
+                    "value": {
+                        "id": "V3",
+                        "kind": "coverage_audit",
+                        "completed": True,
+                        "candidate_omissions_dispositioned": True,
+                        "action_id": "A3",
+                    },
+                }
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+        report = validate_session(session)
+        self.assertNotIn("tier.coverage_audit_missing", {issue.code for issue in report.errors})
+
     def test_high_verifier_record_must_bind_reserved_verifier_action(self) -> None:
         session = make_complete_pass_session(self.root, "high", "decision")
         state = load_state(session)

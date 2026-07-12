@@ -201,8 +201,10 @@ deep-poll         執行一次已 permit poll
 deep-timeout      免費 wall-clock 檢查：把過期的 accepted deep action 轉為 uncertain
 deep-pending      不打網路列出可收割 async jobs
 status            顯示 canonical status 與 quota 使用量
+citations         免費 harvest 去重後的 citation，供 verification 階段抽樣
 patch             套用 revision-checked Organizer update
 artifact-add      安全 ingest local 或 fetched bytes
+promote           把 boundary-spooled provider payload 促升進 artifact index
 artifact-purge    purge、revalidate 並 rerender
 recover           恢復 WAL 與已授權 pending operation
 validate          執行 structure、lineage、quota、artifact、verdict gates
@@ -253,7 +255,7 @@ hosted runner 通過相同 gate 後，才會發布 prerelease。
 | [research_harness/adapters](research_harness/adapters) | Permit-bound provider adapters |
 | [scripts/research_state.py](scripts/research_state.py) | Main JSON-first CLI |
 | [docs/benchmarks](docs/benchmarks) | Provider adoption evidence |
-| [examples](examples) | Demo artifacts 與 v2 fixtures |
+| [examples](examples) | Demo artifacts、v2 fixtures，與 calibration eval 種子題組 |
 
 參與開發請先讀 [CONTRIBUTING.md](CONTRIBUTING.md)；安全問題請依
 [SECURITY.md](SECURITY.md) 使用 private reporting。

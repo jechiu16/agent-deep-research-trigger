@@ -1,0 +1,30 @@
+{
+  "_note": "synthetic fixture (no live OpenAI call); deliberately malformed to exercise the fail-closed extract() path -- status reads completed but the output array never carries a type=message item (only reasoning/web_search_call), so no synthesis text can be recovered. Shape otherwise per OpenAI Responses API docs fetched 2026-07-12: https://developers.openai.com/api/cookbook/examples/responses_api/responses_example (output array item types)",
+  "id": "resp_68f3b02d0ef591929b3f7c2d4e5f6a71",
+  "object": "response",
+  "created_at": 1784001500,
+  "status": "completed",
+  "error": null,
+  "incomplete_details": null,
+  "model": "o4-mini-deep-research",
+  "output": [
+    {
+      "id": "rs_68f3b04000000000000000000000001",
+      "type": "reasoning",
+      "summary": []
+    },
+    {
+      "id": "ws_68f3b04000000000000000000000002",
+      "type": "web_search_call",
+      "status": "completed",
+      "action": {"type": "search", "query": "small modular reactor commercialization timeline 2026"}
+    }
+  ],
+  "usage": {
+    "input_tokens": 60,
+    "input_tokens_details": {"cached_tokens": 0},
+    "output_tokens": 812,
+    "output_tokens_details": {"reasoning_tokens": 812},
+    "total_tokens": 872
+  }
+}

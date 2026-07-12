@@ -3,6 +3,63 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## 2.0.0b4
+
+### Added
+
+- A `promote` CLI subcommand and `promote_provider_payload` artifact
+  pipeline that turns a completed provider retrieval occurrence's
+  boundary-spooled payload into an indexed, provenance-bound artifact,
+  without ever letting a caller name an arbitrary filesystem path for
+  provider bytes.
+- A `citations` CLI subcommand: a free, read-only harvest of every citation
+  recorded on retrieval occurrences (optionally scoped to one action),
+  deduplicated by url and flagged `directly_verified` against `sources`
+  with a matching directly fetched url. Verification-stage sampling reads
+  this list to choose which citation to fetch directly next.
+- `scripts/calibration_report.py`, a pure offline reader that turns
+  finished session directories and an optional human-authored annotations
+  file into a PASS-correctness/verification-yield/cost report, plus a
+  small seed question-and-annotation set under `examples/eval/` for
+  running it.
+- An `openai-deep` adapter (OpenAI Deep Research, `o4-mini-deep-research`)
+  registered fixtures-only: adoption evidence is a fixture-replay suite,
+  not a live occurrence, so the registry keeps it disabled pending one.
+
+### Changed
+
+- `synthesis` posture now shares the Medium/High coverage-audit gate with
+  `scientific`/`decision`: its posture promise is itself a coverage/
+  omissions declaration, so a `synthesis` PASS at those tiers requires a
+  completed, dispositioned coverage-audit verification record. It still
+  has no anti-lock-in requirement of its own.
+- `HARNESS.md`'s anti-lock-in reinforcement step now states explicitly
+  that every finding must be dispositioned (refuted, absorbed into a
+  revised candidate, or recorded as an open tension with a revisit
+  trigger) -- noting counter-evidence without resolving it does not
+  satisfy the step.
+- The README CLI section lists all 22 `deep-research-state` subcommands.
+
+### Fixed
+
+- `promote_provider_payload` now refuses providers whose
+  `action_categories` include `"deep"`: an async deep job's result is
+  spooled under `provider_spool/<poll_action_id>.raw.json`, not under the
+  submitted action_id recorded on the retrieval occurrence, so promoting
+  by that action_id would have ingested the submit-accept stub instead of
+  the actual result.
+- `scripts/calibration_report.py`'s cost extraction now also reads exa's
+  `costDollars.total` and openalex's `meta.cost_usd` raw shapes; it
+  previously only summed the perplexity_deep/sonar `usage.cost.total_cost`
+  shape and silently undercounted sessions that used the other two
+  providers.
+- Validation's `provider_payload` evidence-lineage branch
+  (`artifact.provenance` / `evidence.provider_claims_forbidden` /
+  `artifact.storage_rights`) is reachable through the public CLI for the
+  first time since 0785603: before the `promote` subcommand existed, no
+  public path could create a `provider_payload`-origin artifact, so that
+  branch was exercised only by hand-built test fixtures.
+
 ## 2.0.0b3
 
 ### Added

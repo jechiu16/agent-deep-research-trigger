@@ -1,0 +1,25 @@
+{
+  "_note": "synthetic fixture (no live OpenAI call); shape per OpenAI Responses API docs fetched 2026-07-12: https://platform.openai.com/docs/guides/deep-research (model + request shape), https://platform.openai.com/docs/guides/background (background status enum + polling), https://developers.openai.com/api/reference/resources/responses/methods/retrieve (GET path + error/incomplete_details), https://developers.openai.com/cookbook/examples/responses_api/responses_example (output/message/annotations worked example)",
+  "id": "resp_68f3a01c9de481918a2f6b1c3d4e5f60",
+  "object": "response",
+  "created_at": 1784000000,
+  "status": "in_progress",
+  "error": null,
+  "incomplete_details": null,
+  "model": "o4-mini-deep-research",
+  "output": [
+    {
+      "id": "ws_68f3a05000000000000000000000001",
+      "type": "web_search_call",
+      "status": "completed",
+      "action": {"type": "search", "query": "small modular reactor commercialization timeline 2026"}
+    },
+    {
+      "id": "ws_68f3a05000000000000000000000002",
+      "type": "web_search_call",
+      "status": "in_progress",
+      "action": {"type": "open_page", "url": "https://www.energy.gov/ne/articles/900-million-available"}
+    }
+  ],
+  "usage": null
+}

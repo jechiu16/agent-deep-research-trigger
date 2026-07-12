@@ -14,10 +14,8 @@ session with resumable multi-provider execution and a deterministic report.
 
 ## Contents
 
-[Why this exists](#why-this-exists) · [Key terms](#key-terms) · [Host compatibility](#host-compatibility) ·
-[Quickstart](#quickstart) · [Install as a shared skill](#install-as-a-shared-skill) · [Use](#use) ·
-[How it works](#how-it-works) · [Provider routes](#provider-routes) · [CLI](#cli) ·
-[Credentials and security](#credentials-and-security) · [Development and release quality](#development-and-release-quality) · [Project map](#project-map)
+[Why this exists](#why-this-exists) · [Key terms](#key-terms) · [Host compatibility](#host-compatibility) · [Quickstart](#quickstart) · [Install as a shared skill](#install-as-a-shared-skill) · [Use](#use) ·
+[How it works](#how-it-works) · [Provider routes](#provider-routes) · [CLI](#cli) · [Credentials and security](#credentials-and-security) · [Development and release quality](#development-and-release-quality) · [Project map](#project-map)
 
 ## Why this exists
 
@@ -197,8 +195,10 @@ deep-poll         perform one permitted poll
 deep-timeout      move an accepted deep action to uncertain past its contract cap (free)
 deep-pending      list harvestable async jobs without network access
 status            show canonical status and quota use
+citations         harvest deduplicated citations for verification-stage sampling (free)
 patch             apply a revision-checked Organizer update
 artifact-add      securely ingest local or fetched bytes
+promote           promote a boundary-spooled provider payload into the artifact index
 artifact-purge    purge, revalidate, and rerender
 recover           recover WAL and authorized pending operations
 validate          run structure, lineage, quota, artifact, and verdict gates
@@ -249,7 +249,7 @@ GitHub Actions verifies Python 3.9, 3.12, and 3.13. A version-matching tag publi
 | [research_harness/adapters](research_harness/adapters) | Permit-bound provider adapters |
 | [scripts/research_state.py](scripts/research_state.py) | Main JSON-first CLI |
 | [docs/benchmarks](docs/benchmarks) | Provider adoption evidence |
-| [examples](examples) | Demo artifacts and v2 fixtures |
+| [examples](examples) | Demo artifacts, v2 fixtures, and the calibration eval seed question set |
 
 Contributions should start with [CONTRIBUTING.md](CONTRIBUTING.md). Report
 security issues through the private process in [SECURITY.md](SECURITY.md).

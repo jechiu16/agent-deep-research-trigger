@@ -555,6 +555,10 @@ def _validate_pass(
     if posture in {"scientific", "decision"} and tier in {"medium", "high"}:
         if not any(item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification):
             _add(issues, "tier.anti_lock_in_missing", "anti-lock-in checkpoint is missing", "/verification")
+    # synthesis's posture promise IS a coverage/omissions declaration (see
+    # HARNESS.md's posture table), so it shares this gate at Medium/High even
+    # though it has no anti-lock-in requirement of its own.
+    if posture in {"scientific", "decision", "synthesis"} and tier in {"medium", "high"}:
         if not any(
             item.get("kind") == "coverage_audit"
             and item.get("completed") is True
