@@ -46,6 +46,23 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("optional reference", harness.lower())
         self.assertIn("not required", harness.lower())
 
+    def test_protocol_authority_is_unambiguous(self) -> None:
+        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        harness = (ROOT / "HARNESS.md").read_text(encoding="utf-8")
+        self.assertIn("sole default and human protocol", skill.lower())
+        self.assertIn("thin binding", (ROOT / "AGENTS.md").read_text(encoding="utf-8").lower())
+        self.assertIn("implementation and recovery reference only", harness.lower())
+        self.assertNotIn("complete default host interaction protocol", harness.lower())
+        self.assertNotIn("executable protocol", harness.lower())
+
+    def test_progress_uses_natural_traditional_chinese_user_phases(self) -> None:
+        text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        phases = ("界定問題", "蒐集資料", "交叉檢查", "形成結論", "交付結果")
+        positions = [text.index(phase) for phase in phases]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("user-visible", text.lower())
+        self.assertIn("internal", text.lower())
+
     def test_discovery_wrappers_do_not_define_a_second_protocol(self) -> None:
         for relative in (".claude/skills/deep/SKILL.md", ".agents/skills/deep/SKILL.md"):
             text = (ROOT / relative).read_text(encoding="utf-8").lower()

@@ -5,8 +5,9 @@ description: Portable /deep research trigger for Claude Code and OpenAI Codex. U
 
 # Agent Deep Research Trigger
 
-This is the complete default protocol shared by
-Claude Code and OpenAI Codex.
+SKILL.md is the sole default and human protocol shared by
+Claude Code and OpenAI Codex. AGENTS.md is a thin host binding; HARNESS.md is
+an implementation and recovery reference only.
 It makes `/deep` one host-native research trigger, not a visible orchestration
 platform. The runtime is used only after the user explicitly types `/deep`.
 
@@ -34,8 +35,11 @@ choice; the card exposes only Low, Medium, and High.
    and local-data egress. Ask only questions that change scope or cost.
 3. Wait for exactly one choice. Host-native search, fetch, browser, local
    inspection, model reasoning, and subagents are the default actions.
-4. Report phase-only progress: `frame` -> `gather` -> `check` -> `conclude` ->
-   `deliver`. Do not narrate internal routing or accounting.
+4. Report phase-only progress using only these natural Traditional Chinese
+   phases, in order: 界定問題 -> 蒐集資料 -> 交叉檢查 -> 形成結論 -> 交付結果.
+   This progress is user-visible; the English tokens `frame` -> `gather` ->
+   `check` -> `conclude` -> `deliver` are internal labels only.
+   Do not narrate internal routing or accounting.
 5. Low returns a bounded Traditional Chinese chat answer and links. It creates
    no package by default.
 6. Medium adds a source only for a named gap, conflict, or decision risk. It

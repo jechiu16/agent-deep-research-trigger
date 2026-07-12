@@ -1,11 +1,14 @@
 # Agent Deep Research Trigger — V2 Organizer Harness
 
-> Optional reference only. `SKILL.md` and `AGENTS.md` are the complete default
-> host interaction protocol; this document is not required to start or run
-> `/deep`. It records canonical state, recovery, and deterministic gate detail
-> for maintainers and implementers.
+> Optional reference only: implementation and recovery reference only.
+> `SKILL.md` is the sole default
+> and human protocol. `AGENTS.md` is a thin binding to it; this optional
+> reference is not required to start or run `/deep`. It records canonical state, recovery, and
+> deterministic gate detail for maintainers and implementers.
 
-This is the host-neutral executable protocol. Claude Code uses [SKILL.md](SKILL.md); Codex uses [AGENTS.md](AGENTS.md). The design rationale lives under `docs/superpowers/specs/`.
+This is a host-neutral implementation reference. Claude Code and Codex use the
+sole protocol in [SKILL.md](SKILL.md); [AGENTS.md](AGENTS.md) only provides the
+thin host binding. The design rationale lives under `docs/superpowers/specs/`.
 
 ## Purpose
 
