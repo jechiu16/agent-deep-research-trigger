@@ -19,6 +19,7 @@ from research_harness.state import state_sha256
 from research_harness.storage import load_state, read_events
 from tests.helpers import (
     NOW,
+    confirmed_demo_contract,
     confirmed_medium_contract,
     draft_medium_contract,
     make_complete_pass_session,
@@ -184,6 +185,66 @@ class CliTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot transition action L1 from acquired to completed", result.stderr)
+
+    def test_attempt_refuses_boundary_managed_categories(self) -> None:
+        # Journaling "attempted" on a probe permit would permanently void it:
+        # the boundary's _permit_for refuses any already-attempted action.
+        # The medium contract has no probe mapping, so this uses a demo
+        # contract in its own session.
+        probe_session = self.root / "probe-session"
+        probe_contract = self._write_json(confirmed_demo_contract(), "probe-contract.json")
+        self.run_cli(
+            "init",
+            str(probe_session),
+            "--question",
+            "Choose a cache",
+            "--contract",
+            str(probe_contract),
+            "--json",
+        )
+        self.run_cli(
+            "permit",
+            str(probe_session),
+            "--action-id",
+            "P1",
+            "--stage",
+            "primary_scout",
+            "--category",
+            "probe",
+            "--route",
+            "demo-probe",
+            "--count",
+            "1",
+            "--fingerprint",
+            "sha256:probe",
+            "--now",
+            NOW,
+            "--json",
+        )
+        result = self.run_cli(
+            "attempt",
+            str(probe_session),
+            "--action-id",
+            "P1",
+            "--status",
+            "attempted",
+            "--now",
+            NOW,
+            "--json",
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("boundary-managed", result.stderr)
+        events, errors = read_events(probe_session)
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            [
+                event
+                for event in events
+                if event.get("event") == "attempt_status" and event.get("action_id") == "P1"
+            ],
+            [],
+        )
 
     def test_prepare_then_explicit_confirm_binds_exact_card_and_registry(self) -> None:
         prepared_result = self.run_cli("prepare", "--contract", str(self.draft), "--json")

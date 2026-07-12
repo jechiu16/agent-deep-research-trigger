@@ -42,6 +42,7 @@ from research_harness.quota import _record_attempt_status_unlocked, acquire_perm
 from research_harness.rendering import render_session_result
 from research_harness.state import new_state, state_sha256
 from research_harness.storage import (
+    _read_events_unlocked,
     _recover_session_unlocked,
     apply_state_patch,
     create_session,
@@ -273,18 +274,41 @@ def command_permit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return {"permits": permits, "usage": permit_usage(Path(args.session))}, 0
 
 
+ATTEMPT_CLI_CATEGORIES = {"organizer_pass", "local", "host_retrieval", "network_experiment"}
+
+
 def command_attempt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     """Journal one attempt-status transition for an acquired action.
 
     Boundary-executed routes journal their own transitions; host, local,
-    and organizer-pass actions (e.g. the High-tier context-separated
-    verifier) have no boundary call, so this is their only path to
-    `completed`. Illegal transitions raise InvalidAttemptTransition from
-    the quota core unchanged."""
+    organizer-pass, and network-experiment actions (e.g. the High-tier
+    context-separated verifier) have no boundary call, so this is their
+    only path to `completed`. Boundary-managed categories are refused:
+    `_permit_for` rejects any already-attempted action, so journaling one
+    here would permanently void its permit without a request. Illegal
+    transitions raise InvalidAttemptTransition from the quota core
+    unchanged."""
 
     session = Path(args.session)
     with session_lock(session):
         _recover_session_unlocked(session)
+        events, errors = _read_events_unlocked(session)
+        if errors:
+            raise ValueError("event history is malformed: " + "; ".join(errors))
+        permits = [
+            event
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == args.action_id
+        ]
+        if len(permits) != 1:
+            raise ValueError(f"action {args.action_id} has no unique acquired permit")
+        category = permits[0].get("category")
+        if category not in ATTEMPT_CLI_CATEGORIES:
+            raise ValueError(
+                f"attempt is only for host/local/organizer actions; category {category} "
+                "is boundary-managed (execute and deep-* record its transitions)"
+            )
         event = _record_attempt_status_unlocked(
             session, args.action_id, args.status, args.now or _now()
         )

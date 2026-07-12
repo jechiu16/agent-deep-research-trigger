@@ -12,6 +12,7 @@ from typing import Any
 
 from ._canon import RETENTION_RANK, indexed, sha256_hex
 from .artifacts import MEDIA_EXTENSIONS, SCANNER_VERSION
+from .quota import ATTEMPT_TRANSITIONS
 from .state import state_sha256, validate_state_document
 from .storage import (
     _event_chain_errors,
@@ -103,6 +104,40 @@ def _validate_event_lineage(
             _add(issues, "state.hash_mismatch", "genesis hash does not match canonical state", "/state")
     elif not revisions or revisions[-1].get("new_state_sha256") != current_hash:
         _add(issues, "state.hash_mismatch", "latest revision hash does not match canonical state", "/state")
+
+
+def _validate_attempt_lifecycle(events: list[dict[str, Any]], issues: list[Issue]) -> None:
+    """Independently re-derive every action's attempt state machine.
+
+    The writer enforces ATTEMPT_TRANSITIONS at append time, but validation is
+    the delivery gate and must not trust the writer: a hash-chained journal
+    can still contain forged from_status values or transitions appended by
+    other tooling."""
+
+    permits = {
+        event.get("action_id")
+        for event in events
+        if event.get("event") == "permit_acquired" and isinstance(event.get("action_id"), str)
+    }
+    current = {action_id: "acquired" for action_id in permits}
+    index = 0
+    for event in events:
+        if event.get("event") != "attempt_status":
+            continue
+        path = f"/events/attempt/{index}"
+        index += 1
+        action_id = event.get("action_id")
+        if action_id not in current:
+            _add(issues, "attempt.unknown_action", "attempt status references unknown action", path)
+            continue
+        expected_from = current[action_id]
+        if event.get("from_status") != expected_from:
+            _add(issues, "attempt.from_status", "attempt from_status does not match lifecycle", path)
+        status = event.get("status")
+        if status not in ATTEMPT_TRANSITIONS.get(expected_from, set()):
+            _add(issues, "attempt.transition", "attempt status transition is invalid", path)
+            continue
+        current[action_id] = status
 
 
 def _validate_quota(
@@ -643,6 +678,7 @@ def _validate_loaded_session(
         _add(issues, "state.structural", message, "/state")
     _validate_event_lineage(state, events, event_errors, current_hash, issues)
     _validate_quota(state, events, issues)
+    _validate_attempt_lifecycle(events, issues)
     artifacts, raw_payloads = _validate_artifacts(session_dir, state, events, issues)
     evidence_map = _validate_evidence(state, artifacts, raw_payloads, issues)
 

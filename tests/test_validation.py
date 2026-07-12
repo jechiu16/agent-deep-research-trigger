@@ -65,6 +65,62 @@ class ValidationTests(unittest.TestCase):
         report = validate_session(session)
         self.assertIn("quota.exceeded", {issue.code for issue in report.errors})
 
+    def test_attempt_lifecycle_is_clean_on_writer_built_session(self) -> None:
+        session = make_complete_pass_session(self.root)
+        report = validate_session(session)
+        attempt_codes = {
+            issue.code for issue in report.errors if issue.code.startswith("attempt.")
+        }
+        self.assertEqual(attempt_codes, set())
+
+    def test_attempt_status_for_unknown_action_fails_validation(self) -> None:
+        session = make_complete_pass_session(self.root)
+        append_valid_test_event_line(
+            session,
+            {
+                "event": "attempt_status",
+                "at": NOW,
+                "action_id": "GHOST",
+                "from_status": "acquired",
+                "status": "attempted",
+            },
+        )
+        report = validate_session(session)
+        self.assertIn("attempt.unknown_action", {issue.code for issue in report.errors})
+
+    def test_attempt_transition_out_of_terminal_state_fails_validation(self) -> None:
+        # A1 ends its writer-built lifecycle at "completed"; a forged extra
+        # transition out of a terminal state must be flagged even though the
+        # event line itself is correctly hash-chained.
+        session = make_complete_pass_session(self.root)
+        append_valid_test_event_line(
+            session,
+            {
+                "event": "attempt_status",
+                "at": NOW,
+                "action_id": "A1",
+                "from_status": "completed",
+                "status": "attempted",
+            },
+        )
+        report = validate_session(session)
+        self.assertIn("attempt.transition", {issue.code for issue in report.errors})
+
+    def test_attempt_forged_from_status_fails_validation(self) -> None:
+        session = make_complete_pass_session(self.root)
+        append_valid_test_event_line(
+            session,
+            {
+                "event": "attempt_status",
+                "at": NOW,
+                "action_id": "A1",
+                "from_status": "acquired",
+                "status": "attempted",
+            },
+        )
+        report = validate_session(session)
+        self.assertIn("attempt.from_status", {issue.code for issue in report.errors})
+
     def test_no_network_demo_route_can_never_contribute_evidence(self) -> None:
         session = make_session_with_demo_evidence(self.root)
         report = validate_session(session)

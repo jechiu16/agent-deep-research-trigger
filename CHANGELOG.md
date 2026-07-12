@@ -48,6 +48,12 @@ Semantic Versioning once the v2 runtime leaves development status.
   new `attempt` subcommand closes the gap; `HARNESS.md` documents the step.
 - The redaction-review and fetched-source ingestion errors now name the
   exact CLI flags and patch step that satisfy them.
+- `attempt` refuses boundary-managed categories (probe/deep/processor/
+  transport): journaling "attempted" on such a permit would permanently
+  void it, since the boundary refuses already-attempted actions.
+- Validation now independently re-derives every action's attempt lifecycle
+  (`attempt.unknown_action`/`attempt.from_status`/`attempt.transition`)
+  instead of trusting writer-side enforcement of the transition table.
 - The b2 entry below describing the release gate as "one-command
   no-network" is inaccurate: the gate's dependency-audit step (`pip_audit`)
   requires network access. Left as originally written since changelog
