@@ -70,6 +70,60 @@ class RenderingTests(unittest.TestCase):
         self.assertNotIn("<link", document.lower())
         self.assertNotIn("@import", document.lower())
 
+    def test_report_uses_traditional_chinese_chrome(self) -> None:
+        document = render_html(self.state, self.report)
+        self.assertIn('<html lang="zh-Hant-TW">', document)
+        for label in (
+            "有界研究 / Canonical 投影",
+            "有界結論",
+            "研究契約",
+            "Canonical Claims",
+            "證據脈絡",
+            "來源與起源",
+            "驗證",
+            "工程交接",
+            "待釐清問題",
+            "決定性檢查結果",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, document)
+
+    def test_report_preserves_dynamic_values_in_their_original_language(self) -> None:
+        state = copy.deepcopy(self.state)
+        state["framing"]["question"] = "Should cache remain enabled?"
+        state["summary"]["decision"] = "Keep 42 workers <unchanged>."
+        state["claims"][0]["text"] = "Original claim 42 <verbatim>"
+        state["sources"][0]["title"] = "Original Source Title"
+        state["evidence"][0]["excerpt"] = "Exact evidence 42 <verbatim>"
+        document = render_html(state, self.report)
+        self.assertIn("Should cache remain enabled?", document)
+        self.assertIn("Keep 42 workers &lt;unchanged&gt;.", document)
+        self.assertIn("Original claim 42 &lt;verbatim&gt;", document)
+        self.assertIn("Original Source Title", document)
+        self.assertIn("Exact evidence 42 &lt;verbatim&gt;", document)
+
+    def test_empty_states_and_boolean_labels_are_traditional_chinese(self) -> None:
+        state = copy.deepcopy(self.state)
+        state["claims"] = []
+        state["evidence"] = []
+        state["sources"] = []
+        state["verification"] = []
+        state["engineering_handoff"]["safe_actions"] = []
+        state["engineering_handoff"]["constraints"] = []
+        state["engineering_handoff"]["acceptance_tests"] = []
+        state["open_questions"] = []
+        document = render_html(state, self.report)
+        for label in (
+            "尚未記錄 canonical claim",
+            "尚未納入 evidence record",
+            "尚未記錄來源",
+            "尚未記錄驗證",
+            "尚未記錄安全行動",
+            "尚未記錄",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, document)
+
     def test_invalid_session_is_rendered_with_explicit_invalid_label(self) -> None:
         state = load_state(self.session)
         path = self.session / state["artifact_index"][0]["relative_path"]
