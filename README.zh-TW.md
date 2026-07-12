@@ -176,7 +176,7 @@ Enabled route 類型包括：
 | General discovery／challenge | Brave、Sonar、Exa |
 | Source of record | GitHub、PyPI、OSV、NVD、IETF |
 | Scholarly discovery | OpenAlex、Crossref、Semantic Scholar、Europe PMC |
-| Async investigation | Perplexity Deep Research |
+| Async investigation | Perplexity Deep Research、OpenAI Deep Research（o4-mini） |
 | Host-native 與 local inspection | — |
 | Deterministic no-network test | — |
 

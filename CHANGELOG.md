@@ -22,9 +22,11 @@ Semantic Versioning once the v2 runtime leaves development status.
   file into a PASS-correctness/verification-yield/cost report, plus a
   small seed question-and-annotation set under `examples/eval/` for
   running it.
-- An `openai-deep` adapter (OpenAI Deep Research, `o4-mini-deep-research`)
-  registered fixtures-only: adoption evidence is a fixture-replay suite,
-  not a live occurrence, so the registry keeps it disabled pending one.
+- An `openai-deep` adapter (OpenAI Deep Research, `o4-mini-deep-research`,
+  Responses API background mode): landed fixtures-first, then enabled the
+  same day after one live adoption occurrence (RFC 9110 lookup, terminal
+  success on the second poll, 4 citations, ~30k tokens) satisfied the same
+  gate perplexity crossed. The deep line now has two independent vendors.
 
 ### Changed
 

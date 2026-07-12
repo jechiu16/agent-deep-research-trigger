@@ -169,7 +169,7 @@ Enabled route classes include:
 | General discovery and challenge | Brave, Sonar, Exa |
 | Source of record | GitHub, PyPI, OSV, NVD, IETF |
 | Scholarly discovery | OpenAlex, Crossref, Semantic Scholar, Europe PMC |
-| Asynchronous investigation | Perplexity Deep Research |
+| Asynchronous investigation | Perplexity Deep Research, OpenAI Deep Research (o4-mini) |
 | Host-native and local inspection | — |
 | Deterministic no-network test | — |
 

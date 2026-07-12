@@ -293,10 +293,14 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         self.assertEqual(provider["transport"], {"mode": "async", "polling": "required"})
         self.assertEqual(provider["required_env"], ["OPENAI_API_KEY"])
         self.assertEqual(provider["evidence_capabilities"], {"can_support_claims": False})
-        self.assertEqual(provider["adoption_status"], "fixtures-only")
-        # adoption gate: still disabled until a live occurrence promotes it, same
-        # gate perplexity crossed in tests/test_async_boundary.py's live-run note.
-        self.assertFalse(provider["enabled"])
+        # adoption gate invariant (not a frozen snapshot): an enabled external
+        # route must carry a recognized adoption status and non-empty evidence;
+        # openai-deep crossed the gate with a live occurrence on 2026-07-12,
+        # the same gate perplexity crossed in test_async_boundary's live-run note.
+        self.assertTrue(provider["enabled"])
+        self.assertIn(provider["adoption_status"], {"baseline", "validated"})
+        self.assertTrue(provider["adoption_evidence"])
+        self.assertTrue(any("live-occurrence" in item for item in provider["adoption_evidence"]))
 
 
 if __name__ == "__main__":
