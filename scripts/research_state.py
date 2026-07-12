@@ -154,14 +154,14 @@ def _provider_readiness(provider: dict[str, Any]) -> tuple[str, str]:
 def _format_provider_readiness(payload: dict[str, Any]) -> str:
     rows = []
     for provider in payload["providers"]:
-        if "contract-test" in provider.get("roles", []) or provider.get("adoption_status") == "not_tested":
+        if provider.get("id", "").startswith("test-only-") or "contract-test" in provider.get("roles", []):
             continue
         state, detail = _provider_readiness(provider)
         rows.append((provider["id"], state, detail))
     rows.sort()
 
-    route_width = max(len("ROUTE"), *(len(row[0]) for row in rows))
-    state_width = max(len("STATE"), *(len(row[1]) for row in rows))
+    route_width = max((len(row[0]) for row in rows), default=len("ROUTE"))
+    state_width = max((len(row[1]) for row in rows), default=len("STATE"))
     lines = [
         f"{'ROUTE':<{route_width}}  {'STATE':<{state_width}}  REQUIREMENT",
         f"{'-' * route_width}  {'-' * state_width}  ------------",

@@ -532,6 +532,46 @@ class CliTests(unittest.TestCase):
         rendered = research_state._format_provider_readiness(payload)
         self.assertRegex(rendered, r"(?m)^unsupported-route\s+unbound\s+-\s*$")
 
+    def test_provider_readiness_formatter_hides_test_only_id_without_adoption_status(self) -> None:
+        payload = {
+            "providers": [
+                {
+                    "id": "test-only-synthetic-route",
+                    "enabled": True,
+                    "execution_binding": "local",
+                    "required_env": [],
+                }
+            ]
+        }
+        rendered = research_state._format_provider_readiness(payload)
+        self.assertNotIn("test-only-synthetic-route", rendered)
+        self.assertIn("Counts: ready=0, missing-key=0, disabled=0, unbound=0", rendered)
+
+    def test_provider_readiness_formatter_handles_all_hidden_payload(self) -> None:
+        payload = {
+            "providers": [
+                {
+                    "id": "contract-route",
+                    "roles": ["contract-test"],
+                    "enabled": True,
+                    "execution_binding": "local",
+                    "required_env": [],
+                },
+                {
+                    "id": "test-only-route",
+                    "adoption_status": "not_tested",
+                    "enabled": True,
+                    "execution_binding": "local",
+                    "required_env": [],
+                },
+            ]
+        }
+        rendered = research_state._format_provider_readiness(payload)
+        self.assertIn("ROUTE", rendered)
+        self.assertIn("STATE", rendered)
+        self.assertIn("Counts: ready=0, missing-key=0, disabled=0, unbound=0", rendered)
+        self.assertIn("Machine output: providers --json", rendered)
+
     def test_init_snapshots_validated_registry_overlay(self) -> None:
         # Templated from the permanent "test-only-unbound-candidate" sentinel
         # (always disabled) rather than a real provider id -- copying brave
