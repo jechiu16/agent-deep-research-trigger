@@ -54,9 +54,10 @@ missing-key, disabled, and hidden counts and point machine consumers to
 Readiness is presentation derived from the resolved registry and environment:
 
 - `disabled` when `enabled` is false;
-- `unbound` when an enabled route lacks an active lifecycle or its execution
-  binding is not one of `v2_request_boundary`, `host_native_observed`, `local`,
-  or `no_network_demo`;
+- `unbound` when an enabled route's execution binding is not one of
+  `v2_request_boundary`, `host_native_observed`, `local`, or
+  `no_network_demo`; registry validation already rejects enabled routes whose
+  lifecycle is not active;
 - `missing-key` when the route is enabled and bound but any `required_env`
   value is absent;
 - `ready` only when all three checks pass.
