@@ -76,14 +76,14 @@ class RenderingTests(unittest.TestCase):
         for label in (
             "有界研究 / 正式狀態投影",
             "有界結論",
-            "研究工作階段",
+            "研究契約",
             "成本層級",
             "研究模式",
             "初始搜尋路由",
             "實體請求上限",
             "正式主張",
             "證據紀錄",
-            "資料檔",
+            "來源標題",
             "來源層級",
             "上下文分離",
             "驗證",
@@ -158,6 +158,50 @@ class RenderingTests(unittest.TestCase):
         ):
             with self.subTest(fragment=fragment, state="false"):
                 self.assertIn(fragment, false_document)
+
+    def test_missing_context_separation_is_reported_as_unrecorded(self) -> None:
+        state = copy.deepcopy(self.state)
+        state["verification"][0].pop("context_separated", None)
+
+        document = render_html(state, self.report)
+
+        self.assertIn("<p>上下文分離：未記錄</p>", document)
+
+    def test_renderer_owned_missing_value_fallbacks_are_traditional_chinese(self) -> None:
+        state = copy.deepcopy(self.state)
+        state["claims"] = [{}]
+        state["evidence"] = [{}]
+        state["sources"] = [{}]
+        state["source_origins"] = []
+        state["verification"] = [{}]
+        state["engineering_handoff"]["safe_actions"] = [{}]
+        state["contract"].pop("tier", None)
+        state["contract"].pop("posture", None)
+
+        document = render_html(state, self.report)
+
+        for fallback in (
+            "未記錄狀態",
+            "未記錄來源層級",
+            "未記錄推論關係",
+            "未記錄起源類型",
+            "未記錄驗證類型",
+            "未記錄成本層級",
+            "未記錄研究模式",
+            "<td>未記錄</td>",
+            "<p>已完成：未記錄</p>",
+            "<p>可逆：未記錄</p>",
+        ):
+            with self.subTest(fallback=fallback):
+                self.assertIn(fallback, document)
+        for english_fallback in (
+            "tier unknown",
+            "entailment unknown",
+            ">unknown<",
+            ">check<",
+        ):
+            with self.subTest(english_fallback=english_fallback):
+                self.assertNotIn(english_fallback, document)
 
     def test_invalid_session_is_rendered_with_explicit_invalid_label(self) -> None:
         state = load_state(self.session)

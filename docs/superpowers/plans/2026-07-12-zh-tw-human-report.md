@@ -154,7 +154,7 @@ Bounded answer -> 有界結論
 Decision -> 結論
 No decision recorded -> 尚未記錄結論
 Updated -> 更新時間
-Contract -> 研究工作階段
+Contract -> 研究契約
 Tier -> 成本層級
 Posture -> 研究模式
 Scout route -> 初始搜尋路由
@@ -162,7 +162,7 @@ Load-bearing floor -> 關鍵主張下限
 Physical request ceilings -> 實體請求上限
 Canonical Claims -> 正式主張
 Evidence Lineage -> 證據紀錄
-Artifact table -> 資料檔
+Source title column -> 來源標題
 Source tier -> 來源層級
 Sources and Origins -> 來源與起源
 Verification -> 驗證

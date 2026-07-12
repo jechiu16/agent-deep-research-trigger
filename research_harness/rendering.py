@@ -42,6 +42,14 @@ def _empty(label: str) -> str:
     return f'<p class="empty">{_escape(label)}</p>'
 
 
+def _boolean_label(value: Any) -> str:
+    if value is True:
+        return "是"
+    if value is False:
+        return "否"
+    return "未記錄"
+
+
 def _text_list(values: Any, empty_label: str = "尚未記錄") -> str:
     if not isinstance(values, list) or not values:
         return _empty(empty_label)
@@ -71,7 +79,7 @@ def _render_claims(state: dict[str, Any]) -> str:
     rows: list[str] = []
     for claim in claims:
         load = _pill("關鍵主張", "critical") if claim.get("load_bearing") else ""
-        status = _pill(claim.get("status", "unknown"), "status")
+        status = _pill(claim.get("status", "未記錄狀態"), "status")
         qualifiers = _text_list(claim.get("qualifiers", []), "無限定條件")
         evidence = ", ".join(_escape(item) for item in claim.get("supporting_evidence_ids", [])) or "無"
         rows.append(
@@ -107,8 +115,8 @@ def _render_evidence(state: dict[str, Any]) -> str:
         blocks.append(
             "<details class=\"evidence\">"
             f'<summary><code>{_escape(evidence.get("id"))}</code> '
-            f'{_escape(evidence.get("source_tier", "tier unknown"))} / '
-            f'{_escape(evidence.get("entailment", "entailment unknown"))}</summary>'
+            f'{_escape(evidence.get("source_tier", "未記錄來源層級"))} / '
+            f'{_escape(evidence.get("entailment", "未記錄推論關係"))}</summary>'
             '<div class="evidence-meta">'
             f'<span>來源 {_escape(evidence.get("source_id"))}</span>'
             f'<span>起源 {_escape(evidence.get("origin_id"))}</span>'
@@ -141,14 +149,14 @@ def _render_sources(state: dict[str, Any]) -> str:
         rows.append(
             "<tr>"
             f'<td><code>{_escape(source.get("id"))}</code></td><td>{title}</td>'
-            f'<td>{_escape(source.get("tier", "unknown"))}</td>'
+            f'<td>{_escape(source.get("tier", "未記錄來源層級"))}</td>'
             f'<td>{_escape(source.get("origin_id"))}</td>'
-            f'<td>{_escape(origin.get("kind", "unknown"))}</td>'
-            f'<td>{"是" if source.get("direct_fetch") is True else "否"}</td>'
+            f'<td>{_escape(origin.get("kind", "未記錄起源類型"))}</td>'
+            f'<td>{_boolean_label(source.get("direct_fetch"))}</td>'
             "</tr>"
         )
     return (
-        '<div class="table-wrap"><table><thead><tr><th>ID</th><th>資料檔</th><th>來源層級</th>'
+        '<div class="table-wrap"><table><thead><tr><th>ID</th><th>來源標題</th><th>來源層級</th>'
         '<th>起源</th><th>起源類型</th><th>直接擷取</th></tr></thead><tbody>'
         + "".join(rows)
         + "</tbody></table></div>"
@@ -161,9 +169,9 @@ def _render_verification(state: dict[str, Any]) -> str:
         return _empty("尚未記錄驗證")
     return '<div class="verification-grid">' + "".join(
         '<article class="verification">'
-        f'<code>{_escape(item.get("id"))}</code><h3>{_escape(item.get("kind", "check"))}</h3>'
-        f'<p>已完成：{"是" if item.get("completed") is True else "否"}</p>'
-        f'<p>上下文分離：{"是" if item.get("context_separated") is True else "否"}</p>'
+        f'<code>{_escape(item.get("id"))}</code><h3>{_escape(item.get("kind", "未記錄驗證類型"))}</h3>'
+        f'<p>已完成：{_boolean_label(item.get("completed"))}</p>'
+        f'<p>上下文分離：{_boolean_label(item.get("context_separated"))}</p>'
         "</article>"
         for item in records
     ) + "</div>"
@@ -186,7 +194,7 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     valid = report.ok and report.state_sha256 == canonical_hash
     summary = state.get("summary", {})
     contract = state.get("contract", {})
-    status = summary.get("status", "UNKNOWN")
+    status = summary.get("status", "未記錄狀態")
     display_status = str(status) if valid else f"{status} / INVALID"
     status_class = "pass" if valid and status == "PASS" else "invalid" if not valid else "partial"
     ceilings = contract.get("resource_envelope", {}).get("physical_ceiling", {})
@@ -198,7 +206,7 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     safe_action_html = _empty("尚未記錄安全行動") if not safe_actions else "".join(
         '<article class="safe-action">'
         f'<h3>{_escape(action.get("id"))}: {_escape(action.get("description", "安全行動"))}</h3>'
-        f'<p>可逆：{"是" if action.get("reversible") is True else "否"}</p>'
+        f'<p>可逆：{_boolean_label(action.get("reversible"))}</p>'
         f'<p>依賴主張：{_escape(", ".join(action.get("depends_on_claim_ids", [])) or "無")}</p>'
         "</article>"
         for action in safe_actions
@@ -270,14 +278,14 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     <div class="eyebrow">有界研究 / 正式狀態投影</div>
     <h1>{_escape(state.get("framing", {}).get("question", "研究結果"))}</h1>
     <div class="status-line"><span class="verdict {status_class}">{_escape(display_status)}</span>
-      {_pill(contract.get("tier", "unknown"), "status")}{_pill(contract.get("posture", "unknown"), "status")}</div>
+      {_pill(contract.get("tier", "未記錄成本層級"), "status")}{_pill(contract.get("posture", "未記錄研究模式"), "status")}</div>
     <p class="hash">state sha256 {canonical_hash}</p>
   </header>
   <main>
     <section class="decision"><div class="eyebrow">有界結論</div><h2>結論</h2>
       <p class="decision-text">{_escape(summary.get("decision", "尚未記錄結論"))}</p>
       <p><strong>更新時間:</strong> {_escape(state.get("session", {}).get("updated_at"))}</p></section>
-    <section><h2>研究工作階段</h2><div class="meta-grid">
+    <section><h2>研究契約</h2><div class="meta-grid">
       <div class="meta-card"><strong>成本層級</strong><br>{_escape(contract.get("tier"))}</div>
       <div class="meta-card"><strong>研究模式</strong><br>{_escape(contract.get("posture"))}</div>
       <div class="meta-card"><strong>初始搜尋路由</strong><br>{_escape(contract.get("scout_route"))}</div>
