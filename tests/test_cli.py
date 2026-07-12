@@ -572,6 +572,27 @@ class CliTests(unittest.TestCase):
         self.assertIn("Counts: ready=0, missing-key=0, disabled=0, unbound=0", rendered)
         self.assertIn("Machine output: providers --json", rendered)
 
+    def test_provider_readiness_formatter_keeps_headers_aligned_for_short_route(self) -> None:
+        payload = {
+            "providers": [
+                {
+                    "id": "exa",
+                    "enabled": True,
+                    "execution_binding": "local",
+                    "required_env": [],
+                }
+            ]
+        }
+        rendered = research_state._format_provider_readiness(payload)
+        self.assertEqual(
+            rendered.splitlines()[:3],
+            [
+                "ROUTE  STATE  REQUIREMENT",
+                "-----  -----  ------------",
+                "exa    ready  none",
+            ],
+        )
+
     def test_init_snapshots_validated_registry_overlay(self) -> None:
         # Templated from the permanent "test-only-unbound-candidate" sentinel
         # (always disabled) rather than a real provider id -- copying brave

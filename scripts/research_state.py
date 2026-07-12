@@ -160,8 +160,8 @@ def _format_provider_readiness(payload: dict[str, Any]) -> str:
         rows.append((provider["id"], state, detail))
     rows.sort()
 
-    route_width = max((len(row[0]) for row in rows), default=len("ROUTE"))
-    state_width = max((len(row[1]) for row in rows), default=len("STATE"))
+    route_width = max(len("ROUTE"), max((len(row[0]) for row in rows), default=0))
+    state_width = max(len("STATE"), max((len(row[1]) for row in rows), default=0))
     lines = [
         f"{'ROUTE':<{route_width}}  {'STATE':<{state_width}}  REQUIREMENT",
         f"{'-' * route_width}  {'-' * state_width}  ------------",
