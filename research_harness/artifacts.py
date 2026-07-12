@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ._canon import RETENTION_RANK, sha256_hex
+from .quota import ACTION_ID_RE
 from .storage import (
     _apply_artifact_state_patch_unlocked,
     _fsync_dir,
@@ -444,6 +445,15 @@ def promote_provider_payload(
 
     session_dir = Path(session_dir)
     action_id = _require_nonempty(action_id, "action_id")
+    # _require_nonempty only strips whitespace; it does not reject path
+    # separators. quota.acquire_permits enforces the same ACTION_ID_RE at
+    # permit-reservation time, but this action_id comes from a retrieval
+    # occurrence, which (unlike a permit) can be written directly by a state
+    # patch -- so it is re-checked here independently rather than trusted.
+    if ACTION_ID_RE.fullmatch(action_id) is None:
+        raise ArtifactPolicyError(
+            "action_id must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$ (non-empty, no path separators)"
+        )
     with session_lock(session_dir):
         _recover_session_unlocked(session_dir)
         state = _load_state_unlocked(session_dir)
@@ -495,7 +505,14 @@ def promote_provider_payload(
             raise ArtifactPolicyError("provider storage rights forbid HTML inclusion")
 
         # Fixed, deterministic path: the caller never names a source file.
-        spool_path = session_dir / "provider_spool" / f"{action_id}.raw.json"
+        spool_dir = session_dir / "provider_spool"
+        spool_path = spool_dir / f"{action_id}.raw.json"
+        # Belt-and-suspenders: even though ACTION_ID_RE above already rejects
+        # "/" and "..", confine the resolved path under provider_spool/ too,
+        # so a future change to the format gate (or this action_id's origin)
+        # can't reopen a path-traversal read on its own.
+        if not _is_within(spool_path, spool_dir):
+            raise ArtifactPolicyError("resolved provider spool path escapes provider_spool")
         provenance = {
             "origin_kind": "provider_payload",
             "provider_id": provider_id,

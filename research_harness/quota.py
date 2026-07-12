@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +17,20 @@ from .storage import (
     _recover_session_unlocked,
     session_lock,
 )
+
+
+# Same shape as artifacts.ARTIFACT_ID_RE. Lives here (not in ._canon, which is
+# scoped to hash-affecting canonical-form primitives, not identifier shape)
+# because this module is where action_id is first minted and reserved
+# (acquire_permits below is the sole writer of permit_acquired events).
+# boundary.py and artifacts.py both key filesystem paths off action_id
+# (provider_spool/<action_id>.raw.json); rejecting the shape here, at
+# reservation time, is what keeps every downstream permit-gated consumer
+# (execute_probe/execute_deep_submit/execute_deep_poll/_spool_raw) from ever
+# seeing a path-traversal action_id. artifacts.promote_provider_payload reads
+# action_id from a retrieval occurrence instead of a permit (occurrences can
+# be patched directly), so it independently re-checks this same pattern.
+ACTION_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 
 
 class QuotaError(RuntimeError):
@@ -113,8 +128,10 @@ def acquire_permits(
         _recover_session_unlocked(session_dir)
         state = _load_state_unlocked(session_dir)
         _assert_confirmed_and_bound(state)
-        if not isinstance(action_id, str) or not action_id:
-            raise QuotaExceeded("action_id must be a non-empty string")
+        if not isinstance(action_id, str) or ACTION_ID_RE.fullmatch(action_id) is None:
+            raise QuotaExceeded(
+                "action_id must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$ (non-empty, no path separators)"
+            )
         if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
             raise QuotaExceeded("permit count must be a positive integer")
         if not isinstance(fingerprint, str) or not fingerprint:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -471,6 +472,108 @@ class PromoteProviderPayloadTests(unittest.TestCase):
         with self.assertRaises(ArtifactPolicyError):
             promote_provider_payload(session, "GHOST", "PA1", "session", False, NOW)
         self.assertEqual(load_state(session)["artifact_index"], [])
+
+    def test_promote_rejects_path_traversal_action_id_from_injected_occurrence(self) -> None:
+        # Security regression. An occurrence's action_id can be written
+        # directly by a state patch (organizer tooling), which never goes
+        # through acquire_permits -- so a crafted action_id like
+        # "../../pwned" used to walk provider_spool/<action_id>.raw.json
+        # straight out of the session directory and ingest whatever regular
+        # file it found there as a "public" provider-payload evidence
+        # artifact. Reproduces that exact path.
+        session = self._make_provider_session(
+            "traversal-occurrence", "github", allow_provider_payloads=True
+        )
+        # A real provider_spool/ must already exist on disk for the OS to
+        # walk ".." back out of it -- true of any session that has run one
+        # legitimate action, so exercise one honestly first.
+        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
+        execute_probe(
+            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            transport=fixture_transport("github_success.json"), environ={},
+        )
+
+        # session/provider_spool/../../pwned.raw.json resolves to
+        # session.parent / "pwned.raw.json" -- outside the session entirely.
+        bait_path = self.root / "pwned.raw.json"
+        bait_bytes = b'{"exfiltrated": "outside the session directory"}\n'
+        bait_path.write_bytes(bait_bytes)
+
+        malicious_action_id = "../../pwned"
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {
+                    "op": "add",
+                    "path": "/retrieval_occurrences/-",
+                    "value": {
+                        "id": "occ-evil",
+                        "provider_id": "github",
+                        "action_id": malicious_action_id,
+                    },
+                }
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+
+        with self.assertRaises(ArtifactPolicyError):
+            promote_provider_payload(session, malicious_action_id, "PWNED1", "session", False, NOW)
+
+        self.assertEqual(load_state(session)["artifact_index"], [])
+        # Nothing was ever ingested: the format gate fires before
+        # _ensure_raw_dir, so raw/ was never even created.
+        self.assertFalse((session / "raw").exists())
+        # The external file itself is untouched (proves it was never
+        # opened/copied, not just that the artifact record was rolled back).
+        self.assertEqual(bait_path.read_bytes(), bait_bytes)
+
+    def test_promote_confine_rejects_traversal_even_if_format_gate_is_bypassed(self) -> None:
+        # Defense in depth. Even if a future change (or bug) neutered the
+        # ACTION_ID_RE format gate, the independent confinement check on the
+        # resolved spool path must still refuse a path-traversal action_id
+        # on its own -- proven here by patching the format gate itself into
+        # a no-op and confirming the traversal is still blocked.
+        session = self._make_provider_session(
+            "traversal-confine-only", "github", allow_provider_payloads=True
+        )
+        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
+        execute_probe(
+            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            transport=fixture_transport("github_success.json"), environ={},
+        )
+
+        bait_path = self.root / "pwned2.raw.json"
+        bait_bytes = b'{"exfiltrated": "confine-only bypass probe"}\n'
+        bait_path.write_bytes(bait_bytes)
+
+        malicious_action_id = "../../pwned2"
+        state = load_state(session)
+        apply_state_patch(
+            session,
+            [
+                {
+                    "op": "add",
+                    "path": "/retrieval_occurrences/-",
+                    "value": {
+                        "id": "occ-evil2",
+                        "provider_id": "github",
+                        "action_id": malicious_action_id,
+                    },
+                }
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+
+        permissive = re.compile(r".*")
+        with mock.patch("research_harness.artifacts.ACTION_ID_RE", permissive):
+            with self.assertRaises(ArtifactPolicyError):
+                promote_provider_payload(session, malicious_action_id, "PWNED2", "session", False, NOW)
+
+        self.assertEqual(load_state(session)["artifact_index"], [])
+        self.assertEqual(bait_path.read_bytes(), bait_bytes)
 
     def test_promote_refuses_deep_category_providers(self) -> None:
         # perplexity's action_categories include "deep": its async result is

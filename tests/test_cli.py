@@ -643,6 +643,88 @@ class CliTests(unittest.TestCase):
         )
         self.assertTrue((session / artifact["relative_path"]).exists())
 
+    def test_cli_promote_rejects_path_traversal_action_id(self) -> None:
+        # Security regression at the CLI boundary: `patch` can inject a
+        # retrieval_occurrence with any action_id (organizer tooling), and
+        # `promote --action-id` must refuse a path-traversal id rather than
+        # walking provider_spool/<action_id>.raw.json outside the session.
+        registry = load_provider_registry()
+        contract = confirmed_demo_contract(
+            route="github", request_count=1, probe_ceiling=1, registry=registry
+        )
+        contract["artifact_policy"]["allow_provider_payloads"] = True
+        records = referenced_provider_records(contract, registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        contract_path = self._write_json(contract, "github-traversal-contract.json")
+        session = self.root / "github-traversal-session"
+        self.run_cli(
+            "init", str(session),
+            "--question", "Choose a bounded dependency",
+            "--contract", str(contract_path),
+            "--json",
+        )
+        self.run_cli(
+            "permit", str(session),
+            "--action-id", "A1",
+            "--stage", "primary_scout",
+            "--category", "probe",
+            "--route", "github",
+            "--count", "1",
+            "--fingerprint", "sha256:a1",
+            "--now", NOW,
+            "--json",
+        )
+        spool_dir = session / "provider_spool"
+        spool_dir.mkdir(mode=0o700)
+        (spool_dir / "A1.raw.json").write_bytes(
+            json.dumps({"full_name": "octocat/Hello-World"}, ensure_ascii=False).encode("utf-8")
+        )
+
+        # Bait file OUTSIDE the session directory: session/provider_spool/
+        # ../../pwned.raw.json resolves to session.parent / "pwned.raw.json".
+        bait_path = self.root / "pwned.raw.json"
+        bait_bytes = b'{"exfiltrated": "outside the session directory"}\n'
+        bait_path.write_bytes(bait_bytes)
+
+        malicious_action_id = "../../pwned"
+        patch_path = self._write_json(
+            {
+                "operations": [
+                    {
+                        "op": "add",
+                        "path": "/retrieval_occurrences/-",
+                        "value": {
+                            "id": "occ-evil",
+                            "provider_id": "github",
+                            "action_id": malicious_action_id,
+                        },
+                    }
+                ]
+            },
+            "occurrence-traversal-patch.json",
+        )
+        self.run_cli("patch", str(session), "--patch", str(patch_path), "--now", NOW, "--json")
+
+        result = self.run_cli(
+            "promote", str(session),
+            "--action-id", malicious_action_id,
+            "--artifact-id", "PWNED1",
+            "--now", NOW,
+            "--json",
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("action_id", result.stderr)
+        self.assertEqual(load_state(session)["artifact_index"], [])
+        self.assertFalse((session / "raw").exists())
+        self.assertEqual(bait_path.read_bytes(), bait_bytes)
+
     def test_cli_citations_deduplicates_by_url_and_flags_directly_verified(self) -> None:
         self._init_session()
         patch_path = self._write_json(

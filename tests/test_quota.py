@@ -140,6 +140,64 @@ class QuotaTests(unittest.TestCase):
                 _record_attempt_status_unlocked(self.session, "A1", "completed", NOW)
         self.assertEqual(len(read_events(self.session)[0]), 2)
 
+    # -- action_id format (security regression: path-traversal action_id) --
+    #
+    # promote_provider_payload and boundary._spool_raw both key a filesystem
+    # path off action_id (provider_spool/<action_id>.raw.json). Every
+    # permit-gated write path (execute_probe/execute_deep_submit/
+    # execute_deep_poll) only ever sees an action_id that already went
+    # through acquire_permits, so rejecting a malformed shape here is what
+    # closes those paths off. See tests/test_artifacts.py
+    # PromoteProviderPayloadTests for the read-side occurrence-injection
+    # variant, which does not go through acquire_permits at all.
+
+    def test_acquire_permits_rejects_path_traversal_action_id(self) -> None:
+        with self.assertRaises(QuotaExceeded):
+            acquire_permits(
+                self.session, "../../evil", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
+            )
+        self.assertEqual(permit_usage(self.session)["probe"], 0)
+
+    def test_acquire_permits_rejects_action_id_with_slash(self) -> None:
+        with self.assertRaises(QuotaExceeded):
+            acquire_permits(
+                self.session, "a/b", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
+            )
+        self.assertEqual(permit_usage(self.session)["probe"], 0)
+
+    def test_acquire_permits_rejects_action_id_with_space(self) -> None:
+        with self.assertRaises(QuotaExceeded):
+            acquire_permits(
+                self.session, "a b", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
+            )
+        self.assertEqual(permit_usage(self.session)["probe"], 0)
+
+    def test_acquire_permits_rejects_empty_action_id(self) -> None:
+        with self.assertRaises(QuotaExceeded):
+            acquire_permits(
+                self.session, "", "primary_scout", "probe", "demo-probe", 1, "sha256:x", NOW
+            )
+        self.assertEqual(permit_usage(self.session)["probe"], 0)
+
+    def test_acquire_permits_accepts_conventional_action_ids(self) -> None:
+        # Three differently-shaped IDs already in production use (single
+        # letter+digit, and a multi-letter prefix+digit), each landing on a
+        # distinct stage/category/route slot that confirmed_demo_contract's
+        # fixture actually maps -- proves the format gate does not regress
+        # any existing convention.
+        for action_id, stage, category, route in (
+            ("A1", "primary_scout", "probe", "demo-probe"),
+            ("D1", "local_applicability", "local", "local"),
+            ("CL6", "final_inference_review", "organizer_pass", "host"),
+        ):
+            acquire_permits(
+                self.session, action_id, stage, category, route, 1, f"sha256:{action_id.lower()}", NOW
+            )
+        usage = permit_usage(self.session)
+        self.assertEqual(usage["probe"], 1)
+        self.assertEqual(usage["local"], 1)
+        self.assertEqual(usage["organizer_pass"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
