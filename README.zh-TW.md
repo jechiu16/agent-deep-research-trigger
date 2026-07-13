@@ -17,7 +17,7 @@
 git clone https://github.com/jechiu16/agent-deep-research-trigger.git \
   "$HOME/.agent-deep-research-trigger"
 cd "$HOME/.agent-deep-research-trigger"
-git checkout v2.0.0b7
+git checkout v2.0.0b8
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```

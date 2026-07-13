@@ -205,7 +205,7 @@ class DocumentationTests(unittest.TestCase):
                 quickstart = self.section(text, heading, next_heading)
                 positions = [quickstart.index(step) for step in steps]
                 self.assertEqual(positions, sorted(positions))
-                self.assertIn("v2.0.0b7", quickstart)
+                self.assertIn("v2.0.0b8", quickstart)
                 self.assertIn("python3 -m venv .venv", quickstart)
                 self.assertIn(".venv/bin/python -m pip install -e .", quickstart)
                 self.assertIn('ln -s "$PWD" "$HOME/.claude/skills/deep"', quickstart)
@@ -300,9 +300,12 @@ class DocumentationTests(unittest.TestCase):
         pyproject = self.read("pyproject.toml")
         changelog = self.read("CHANGELOG.md")
 
-        self.assertIsNotNone(re.search(r'^version = "2\.0\.0b7"$', pyproject, re.MULTILINE))
-        b7, historical = changelog.split("## 2.0.0b6", 1)
-        self.assertIn("## 2.0.0b7", b7)
+        self.assertIsNotNone(re.search(r'^version = "2\.0\.0b8"$', pyproject, re.MULTILINE))
+        b8, b7_and_historical = changelog.split("## 2.0.0b7", 1)
+        self.assertIn("## 2.0.0b8", b8)
+        self.assertIn("Python 3.9", b8)
+        b7, historical = b7_and_historical.split("## 2.0.0b6", 1)
+        self.assertIn("## 2.0.0b7", changelog)
         for concept in (
             "ultra",
             "gemini",
@@ -357,7 +360,7 @@ class DocumentationTests(unittest.TestCase):
         from research_harness import __version__
 
         self.assertEqual(declared.group(1), __version__)
-        self.assertEqual(__version__, "2.0.0b7")
+        self.assertEqual(__version__, "2.0.0b8")
 
     def test_active_identity_has_no_retired_brand(self) -> None:
         for relative in ("README.md", "README.zh-TW.md", "SKILL.md", "AGENTS.md", "HARNESS.md"):

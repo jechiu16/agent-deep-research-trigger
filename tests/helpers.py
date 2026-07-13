@@ -543,7 +543,7 @@ def make_complete_pass_session(
                 "retrieved_at": NOW,
             }
             for index, (capture, payload) in enumerate(
-                zip(captures, (b"Ultra finding A", b"Ultra finding B"), strict=True),
+                zip(captures, (b"Ultra finding A", b"Ultra finding B")),
                 start=1,
             )
         ]

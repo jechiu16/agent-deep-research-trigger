@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## 2.0.0b8
+
+### Fixed
+
+- Restored the documented Python 3.9 test compatibility by avoiding a
+  Python 3.10-only `zip` argument in the Ultra fixture helper.
+
 ## 2.0.0b7
 
 ### Added
