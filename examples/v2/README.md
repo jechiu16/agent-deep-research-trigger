@@ -11,7 +11,7 @@ It authorizes:
 - one Organizer final review pass;
 - zero external provider, processor, experiment, or transport requests.
 
-Fixture confirmation hashes only bind the smoke-test contract. A real `/deep` session follows the canonical `SKILL.md` seven-line card; after the user chooses a tier, the internal bridge handles binding without showing hashes or requiring a second confirmation.
+Fixture confirmation hashes only bind the smoke-test contract. A real `/deep` session follows the canonical `SKILL.md` eight-line card; after the user chooses a tier, the internal bridge handles binding without showing hashes or requiring a second confirmation.
 
 ```bash
 set -e

@@ -1,0 +1,8 @@
+{
+  "id": "gemini-interaction-fixture-001",
+  "status": "failed",
+  "error": {
+    "code": "FAILED",
+    "message": "The preview research interaction failed before completion."
+  }
+}

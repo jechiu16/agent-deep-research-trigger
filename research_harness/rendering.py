@@ -483,7 +483,9 @@ def finalize_session_result(session_dir: Path, now: str) -> RenderedReport:
         validation = _validate_loaded_session(
             session_dir, state, events, event_errors, check_report=False
         )
-        if validation.integrity_ok and not validation.ok:
+        if (
+            validation.integrity_ok and not validation.ok
+        ):
             seal_human_status, _ = tier_shortfall_labels(validation.issues)
             operations = []
             if state["summary"].get("status") != "BLOCKED":

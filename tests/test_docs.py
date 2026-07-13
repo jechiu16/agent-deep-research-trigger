@@ -20,7 +20,7 @@ class DocumentationTests(unittest.TestCase):
         end = text.index(next_heading, start) if next_heading else len(text)
         return text[start:end]
 
-    def test_first_trigger_card_is_exactly_seven_lines(self) -> None:
+    def test_first_trigger_card_is_exactly_eight_lines(self) -> None:
         text = self.read("SKILL.md")
         start = text.index("<!-- PURE_TRIGGER_CARD_START -->")
         end = text.index("<!-- PURE_TRIGGER_CARD_END -->", start)
@@ -34,11 +34,16 @@ class DocumentationTests(unittest.TestCase):
                 "Low：只在對話中回答，附上連結。",
                 "Medium：為具名缺口補上直接取得的來源，並交付套件。",
                 "High：直接取得至少兩個不同來源，並交付套件。",
-                "額外付費請求：{精確數量}；本機資料外送：{是／否}。",
-                "開始：Low｜Medium｜High｜調整",
+                "Ultra：完整 High 證據與驗證，並交付套件。",
+                "付費上限：Low {N/routes}｜Medium {N/routes}｜High {N/routes}｜Ultra {1/2 total；D1=route；D2=route/無；cost/privacy=disclosure}；本機外送：{否/是：範圍}。",
+                "開始：Low｜Medium｜High｜Ultra｜調整",
             ],
         )
+        self.assertEqual(len(card), 8)
         self.assertLessEqual(len(text.splitlines()), 60)
+        self.assertNotIn("mandatory Deep Research", card[6])
+        self.assertIn("Render every `{...}` token", text)
+        self.assertIn("D1=route；D2=route/無", card[6])
 
     def test_missing_question_still_returns_the_card_without_a_followup(self) -> None:
         text = " ".join(self.read("SKILL.md").split())
@@ -63,6 +68,25 @@ class DocumentationTests(unittest.TestCase):
                 self.assertIn(phrase, normalized)
         self.assertIn("Low never reads or invokes the runtime", normalized)
         self.assertIn("read [HARNESS.md](HARNESS.md)", text)
+
+    def test_card_authorization_is_unverified_and_postselection_is_fail_closed(self) -> None:
+        text = self.read("SKILL.md")
+        normalized = " ".join(text.split())
+        before = " ".join(self.section(text, "## Before Selection", "## After Selection").split())
+        after = " ".join(self.section(text, "## After Selection", "## Evidence And Delivery").split())
+
+        self.assertIn("precise, unverified authorization proposal", normalized)
+        self.assertIn("conversation text plus static policy", normalized)
+        self.assertIn("not route readiness", normalized)
+        self.assertIn("preflight registry routes", before)
+        self.assertIn("Each concrete card's tier choice is the only confirmation for that run/contract; re-card requires a new choice.", before)
+        self.assertIn("Only local-preflight the exact routes/counts on the confirmed card", after)
+        self.assertIn("make no paid call", after)
+        self.assertIn("Never silently fallback", after)
+        self.assertIn("runtime-resolved wildcard", after)
+        self.assertIn("any route, count, or egress change requires a new concrete card and tier confirmation", after)
+        self.assertIn("When a concrete route is Gemini", after)
+        self.assertIn("without a second confirmation", after)
 
     def test_paid_call_count_excludes_non_provider_actions(self) -> None:
         text = " ".join(self.read("SKILL.md").split())
@@ -119,7 +143,7 @@ class DocumentationTests(unittest.TestCase):
         normalized = " ".join(before.split())
 
         self.assertIn("Low never reads or invokes the runtime", normalized)
-        self.assertIn("After Medium or High is selected", skill)
+        self.assertIn("After Medium, High, or Ultra is selected", skill)
         self.assertIn("Low never reads or invokes this runtime", harness)
 
     def test_agents_and_wrappers_keep_one_protocol_with_discovery_exemption(self) -> None:
@@ -181,15 +205,26 @@ class DocumentationTests(unittest.TestCase):
                 quickstart = self.section(text, heading, next_heading)
                 positions = [quickstart.index(step) for step in steps]
                 self.assertEqual(positions, sorted(positions))
-                self.assertIn("v2.0.0b6", quickstart)
+                self.assertIn("v2.0.0b7", quickstart)
                 self.assertIn("python3 -m venv .venv", quickstart)
                 self.assertIn(".venv/bin/python -m pip install -e .", quickstart)
                 self.assertIn('ln -s "$PWD" "$HOME/.claude/skills/deep"', quickstart)
                 self.assertIn('ln -s "$PWD" "$HOME/.agents/skills/deep"', quickstart)
-                for tier in ("Low", "Medium", "High"):
+                for tier in ("Low", "Medium", "High", "Ultra"):
                     self.assertIn(tier, text)
                 self.assertIn("Canonical JSON", text)
                 self.assertIn("zh-Hant-TW", text)
+
+    def test_scenarios_and_binding_pin_all_four_tiers_and_conditional_ultra(self) -> None:
+        scenarios = self.read("SCENARIOS.md")
+        agents = self.read("AGENTS.md")
+        for tier in ("Low", "Medium", "High", "Ultra"):
+            with self.subTest(tier=tier):
+                self.assertIn(tier, scenarios)
+                self.assertIn(tier, agents)
+        self.assertIn("material next question inside the two-submit envelope", scenarios)
+        self.assertIn("provider uncertainty", scenarios)
+        self.assertIn("Organizer may stop", scenarios)
 
     def test_readmes_keep_product_surface_and_hide_runtime_armor(self) -> None:
         required_headings = {
@@ -220,46 +255,68 @@ class DocumentationTests(unittest.TestCase):
                 self.assertIn("CONTRIBUTING.md", text)
                 self.assertIn("SECURITY.md", text)
 
-    def test_readmes_link_to_bounded_blind_comparison(self) -> None:
-        example = "examples/paired/2026-07-13-sqlite-wal-blind/"
-        boundaries = {
-            "README.md": "not evidence of general superiority",
-            "README.zh-TW.md": "不能證明普遍優於",
-        }
-        for relative, boundary in boundaries.items():
+    def test_readmes_link_to_bounded_examples(self) -> None:
+        examples = (
+            "examples/paired/2026-07-13-sqlite-wal-blind/",
+            "examples/paired/2026-07-13-rfc9110-ultra-blind/",
+        )
+        for relative in ("README.md", "README.zh-TW.md"):
             with self.subTest(path=relative):
                 text = self.read(relative)
-                self.assertIn(example, text)
-                self.assertIn(boundary, text)
+                for example in examples:
+                    self.assertIn(example, text)
+                self.assertIn("output-level integration evidence", text)
+                self.assertIn("full-runtime", text)
+                self.assertIn("provider ranking", text)
+                if relative == "README.md":
+                    self.assertIn("not evidence of general superiority", text)
+                else:
+                    self.assertIn("不能證明普遍優於", text)
 
-        artifacts = (
-            "task.md",
-            "adjudication.md",
-            "direct-deep-research.md",
-            "deep-high.md",
-            "blind-verdict.md",
-        )
-        for name in artifacts:
-            with self.subTest(artifact=name):
-                self.assertTrue((ROOT / example / name).is_file())
+        suites = {
+            examples[0]: (
+                "task.md",
+                "adjudication.md",
+                "direct-deep-research.md",
+                "deep-high.md",
+                "blind-verdict.md",
+            ),
+            examples[1]: (
+                "task.md",
+                "rubric.md",
+                "candidate-a.md",
+                "candidate-b.md",
+                "blind-verdict.md",
+                "provenance.md",
+                "README.md",
+            ),
+        }
+        for example, artifacts in suites.items():
+            for name in artifacts:
+                with self.subTest(example=example, artifact=name):
+                    self.assertTrue((ROOT / example / name).is_file())
 
-    def test_version_and_release_note_are_b6(self) -> None:
+    def test_version_and_release_notes_are_current(self) -> None:
         pyproject = self.read("pyproject.toml")
         changelog = self.read("CHANGELOG.md")
 
-        self.assertIsNotNone(re.search(r'^version = "2\.0\.0b6"$', pyproject, re.MULTILINE))
-        self.assertIn("## 2.0.0b6", changelog.split("## 2.0.0b5", 1)[0])
-        b6 = changelog.split("## 2.0.0b5", 1)[0]
-        for term in (
-            "host-capture",
-            "v2.0.0b6",
-            "證據不足",
-            "EVIDENCE_INSUFFICIENT",
-            "交付不完整",
-            "DELIVERY_INCOMPLETE",
+        self.assertIsNotNone(re.search(r'^version = "2\.0\.0b7"$', pyproject, re.MULTILINE))
+        b7, historical = changelog.split("## 2.0.0b6", 1)
+        self.assertIn("## 2.0.0b7", b7)
+        for concept in (
+            "ultra",
+            "gemini",
+            "provider reports",
+            "direct capture",
+            "rfc 9110",
+            "non-ranking",
+            "false-pass",
         ):
-            with self.subTest(term=term):
-                self.assertIn(term, b6)
+            with self.subTest(concept=concept):
+                self.assertIn(concept, b7.lower())
+        b6 = historical.split("## 2.0.0b5", 1)[0]
+        self.assertIn("seven-line", b6)
+        self.assertIn("v2.0.0b6", b6)
 
     def test_harness_execution_acceptance_and_high_verifier_rules(self) -> None:
         harness = " ".join(self.read("HARNESS.md").split())
@@ -287,6 +344,10 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("no permit or attempt event", harness)
         self.assertIn("`external_managed` verifier additionally requires", harness)
         self.assertIn("completed organizer-pass action", harness)
+        self.assertIn("Provider synthesis remains discovery-only", harness)
+        self.assertIn("direct captures support claims", harness)
+        self.assertIn("raw pointer remains only in canonical", harness)
+        self.assertIn("`retrieval_occurrences`/machine JSON", harness)
 
     def test_version_metadata_matches_runtime_source(self) -> None:
         pyproject = self.read("pyproject.toml")
@@ -296,7 +357,7 @@ class DocumentationTests(unittest.TestCase):
         from research_harness import __version__
 
         self.assertEqual(declared.group(1), __version__)
-        self.assertEqual(__version__, "2.0.0b6")
+        self.assertEqual(__version__, "2.0.0b7")
 
     def test_active_identity_has_no_retired_brand(self) -> None:
         for relative in ("README.md", "README.zh-TW.md", "SKILL.md", "AGENTS.md", "HARNESS.md"):

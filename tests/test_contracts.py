@@ -130,7 +130,7 @@ class ContractTests(unittest.TestCase):
             if mapping["stage"] not in {"anti_lock_in", "verification"}
         ]
         self.assertIn(
-            "medium and high tiers require reserved post-result reinforcement",
+            "Medium, High, and Ultra tiers require reserved post-result reinforcement",
             validate_contract(contract, self.registry),
         )
 
@@ -149,9 +149,91 @@ class ContractTests(unittest.TestCase):
             if mapping["stage"] != "context_separated_verification"
         ]
         self.assertIn(
-            "high tier requires reserved context-separated verifier capacity",
+            "High and Ultra tiers require reserved context-separated verifier capacity",
             validate_contract(missing, self.registry),
         )
+
+    def test_ultra_allows_one_or_two_bounded_deep_submissions(self) -> None:
+        one = confirmed_contract("ultra", registry=self.registry)
+        deep = [item for item in one["stage_permit_map"] if item["category"] == "deep"]
+        one["stage_permit_map"] = [
+            item
+            for item in one["stage_permit_map"]
+            if item is not deep[1]
+            and not (item.get("stage") == "anti_lock_in" and item.get("category") == "transport")
+        ]
+        one["resource_envelope"]["physical_ceiling"]["transport"] = 20
+        one["resource_envelope"]["physical_ceiling"]["deep"] = 1
+        one["resource_envelope"]["external"]["metered_ceiling"]["deep"] = 1
+        one["confirmation"]["card_sha256"] = contract_card_sha256(one)
+        self.assertEqual(validate_contract(one, self.registry), [])
+        self.assertEqual(validate_contract(confirmed_contract("ultra", registry=self.registry)), [])
+
+    def test_ultra_rejects_zero_or_three_deep_submissions(self) -> None:
+        contract = confirmed_contract("ultra", registry=self.registry)
+        contract["stage_permit_map"] = [
+            item for item in contract["stage_permit_map"] if item["category"] != "deep"
+        ]
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        self.assertIn("Ultra tier requires one or two deep submission mappings", validate_contract(contract, self.registry))
+
+        contract = confirmed_contract("ultra", registry=self.registry)
+        second = next(item for item in contract["stage_permit_map"] if item["category"] == "deep" and item["stage"] == "anti_lock_in")
+        third = copy.deepcopy(second)
+        third["marginal_purpose"] = "a third purpose"
+        contract["stage_permit_map"].append(third)
+        contract["resource_envelope"]["physical_ceiling"]["deep"] = 3
+        contract["resource_envelope"]["external"]["metered_ceiling"]["deep"] = 3
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        self.assertIn("Ultra tier requires one or two deep submission mappings", validate_contract(contract, self.registry))
+
+    def test_ultra_second_submission_stage_is_bound(self) -> None:
+        contract = confirmed_contract("ultra", registry=self.registry)
+        second = next(item for item in contract["stage_permit_map"] if item["category"] == "deep" and item["stage"] == "anti_lock_in")
+        second["stage"] = "investigation"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        errors = validate_contract(contract, self.registry)
+        self.assertIn("Ultra second deep submission must use anti_lock_in stage", errors)
+
+    def test_ultra_deep_mappings_match_ceilings_and_transports(self) -> None:
+        cases = ("one_mapping_ceiling_two", "missing_d2_transport", "duplicate_transport")
+        for case in cases:
+            with self.subTest(case=case):
+                contract = confirmed_contract("ultra", registry=self.registry)
+                if case == "one_mapping_ceiling_two":
+                    contract["stage_permit_map"] = [
+                        item
+                        for item in contract["stage_permit_map"]
+                        if not (
+                            item.get("stage") == "anti_lock_in"
+                            and item.get("category") in {"deep", "transport"}
+                        )
+                    ]
+                    expected = "Ultra physical deep ceiling must equal the deep mapping count"
+                elif case == "missing_d2_transport":
+                    contract["stage_permit_map"] = [
+                        item
+                        for item in contract["stage_permit_map"]
+                        if not (
+                            item.get("stage") == "anti_lock_in"
+                            and item.get("category") == "transport"
+                        )
+                    ]
+                    expected = "Ultra deep submission 2 requires exactly one matching transport mapping"
+                else:
+                    duplicate = copy.deepcopy(
+                        next(
+                            item
+                            for item in contract["stage_permit_map"]
+                            if item.get("stage") == "anti_lock_in"
+                            and item.get("category") == "transport"
+                        )
+                    )
+                    contract["stage_permit_map"].append(duplicate)
+                    contract["resource_envelope"]["physical_ceiling"]["transport"] = 60
+                    expected = "Ultra deep submission 2 requires exactly one matching transport mapping"
+                contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+                self.assertIn(expected, validate_contract(contract, self.registry))
 
     def test_host_external_and_local_envelopes_are_distinct(self) -> None:
         contract = normalize_contract(self.contract)
@@ -197,7 +279,7 @@ class ContractTests(unittest.TestCase):
         contract["tier"] = "medium"
         contract["durability"] = "chat_only"
         contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
-        self.assertIn("medium and high tiers require canonical_package durability", validate_contract(contract, self.registry))
+        self.assertIn("Medium, High, and Ultra tiers require canonical_package durability", validate_contract(contract, self.registry))
 
     def test_metered_subceiling_cannot_exceed_physical_ceiling(self) -> None:
         contract = copy.deepcopy(self.contract)

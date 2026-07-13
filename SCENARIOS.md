@@ -12,6 +12,7 @@ inspection are the default; provider keys are optional.
 | `/deep Summarize the literature on RAG hallucination` | `synthesis` | `medium` | Use scholarly discovery, separate paper claims from model summaries, audit coverage |
 | `/deep Which mechanism explains this regression?` | `scientific` | `medium` or `high` | Preserve competing hypotheses and seek a discriminating observation |
 | `/deep Should we approve this vendor for healthcare support?` | `decision` | `high` | Verify load-bearing premises across source families and use context-separated verification |
+| `/deep Which bounded approach should we ship when one material unknown remains?` | `decision` | `ultra` | Run High plus an adaptive Deep loop; Organizer may use D2 for a material next question inside the two-submit envelope, never a parallel provider bundle |
 | `/deep` after a long conversation | inferred | inferred | Infer the likely target; ask only when ambiguity would change the contract |
 | Missing provider keys | unchanged | unchanged | Continue with host-native/local work when sufficient; otherwise explain the unavailable evidence and offer a substitution |
 | Local files plus web context | task-dependent | task-dependent | Obtain explicit external-egress authority before sending local content |
@@ -24,7 +25,7 @@ Every scenario follows the same public interaction shape:
 
 1. The literal `/deep` trigger identifies the research target.
 2. The Organizer recommends a tier with one reason and waits for exactly one
-   `Low`, `Medium`, or `High` choice.
+  `Low`, `Medium`, `High`, or `Ultra` choice.
 3. Host-native and local actions are preferred; Medium adapts to the named gap,
    while High obtains multiple direct sources.
 4. Paid requests reserve their exact physical multiplicity atomically inside the
@@ -33,6 +34,12 @@ Every scenario follows the same public interaction shape:
 5. Semantic truth lives only in canonical `state.json`; events and raw bytes
    retain their own operational roles.
 6. `validate` must pass before `render` can deliver a `PASS` report.
+
+Ultra starts D1, consumes its full report with session context, and reuses High
+for direct evidence plus coverage and anti-lock-in. The Organizer may stop or
+use D2 inside the confirmed two-submit envelope for a material next question,
+whether a gap or a justified expansion/alternate angle; provider uncertainty
+alone is not a trigger. D2 is incremental High work, not a repeated pipeline.
 
 ## Evaluation prompts
 

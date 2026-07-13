@@ -9,7 +9,10 @@ from research_harness.artifacts import ingest_fetched_source
 from research_harness.rendering import finalize_session_result
 from research_harness.state import new_state
 from research_harness.storage import apply_state_patch, create_session, load_state
-from research_harness.validation import _validate_evidence, validate_session
+from research_harness.validation import (
+    _validate_evidence,
+    validate_session,
+)
 from tests.helpers import (
     NOW,
     append_valid_test_event_line,
@@ -18,6 +21,7 @@ from tests.helpers import (
     make_incomplete_session,
     make_partial_session,
     make_session_with_demo_evidence,
+    make_ultra_pass_session,
 )
 
 
@@ -224,9 +228,91 @@ class ValidationTests(unittest.TestCase):
         report = validate_session(session)
         self.assertTrue(report.ok, report.to_dict())
 
+    def test_complete_ultra_inherits_captures_and_verifier_gates(self) -> None:
+        session = make_ultra_pass_session(self.root, second_shot=True)
+        report = validate_session(session)
+        self.assertTrue(report.ok, report.to_dict())
+        state = load_state(session)
+        self.assertEqual(len(state["artifact_index"]), 2)
+        self.assertTrue(any(item.get("kind") == "verifier" for item in state["verification"]))
+
+    def test_complete_ultra_one_shot_is_legal(self) -> None:
+        report = validate_session(
+            make_ultra_pass_session(self.root, second_shot=False)
+        )
+        self.assertTrue(report.ok, report.to_dict())
+
+    def test_ultra_corrupt_shortfall_is_invalid_and_not_sealed(self) -> None:
+        session = make_ultra_pass_session(
+            self.root, second_shot=True, second_outcome="failed"
+        )
+        artifact = load_state(session)["artifact_index"][0]
+        (session / artifact["relative_path"]).write_bytes(b"corrupt")
+
+        rendered = finalize_session_result(session, NOW)
+        self.assertFalse(rendered.validation.integrity_ok)
+        self.assertFalse(rendered.validation.ok)
+        self.assertEqual(load_state(session)["summary"]["status"], "PASS")
+        html = rendered.path.read_text(encoding="utf-8")
+        self.assertIn("報告驗證失敗", html)
+        self.assertNotIn("BLOCKED / DELIVERY_INCOMPLETE", html)
+
+    def test_ultra_final_action_must_be_on_same_valid_verifier_record(self) -> None:
+        session = make_ultra_pass_session(self.root, second_shot=True)
+        state = load_state(session)
+        verifier_index = next(
+            index
+            for index, item in enumerate(state["verification"])
+            if item.get("kind") == "verifier"
+        )
+        valid_d1 = state["verification"][verifier_index]
+        invalid_d2 = dict(valid_d1)
+        invalid_d2.update({"id": "V5", "final_deep_action_id": "D2", "completed": False})
+        apply_state_patch(
+            session,
+            [
+                {
+                    "op": "replace",
+                    "path": f"/verification/{verifier_index}/final_deep_action_id",
+                    "value": "D1",
+                },
+                {"op": "add", "path": "/verification/-", "value": invalid_d2},
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+        report = validate_session(session)
+        self.assertFalse(report.ok, report.to_dict())
+        self.assertIn("tier.high_verifier_invalid", {issue.code for issue in report.errors})
+
+    def test_ultra_public_shot_and_occurrence_gates(self) -> None:
+        cases = (
+            ("d2_failed", {"second_shot": True, "second_outcome": "failed"}, "tier.ultra_deep_second_completed_missing"),
+            ("d2_uncertain", {"second_shot": True, "second_outcome": "uncertain"}, "tier.ultra_deep_second_completed_missing"),
+            ("d2_accepted", {"second_shot": True, "second_outcome": "accepted"}, "tier.ultra_deep_second_completed_missing"),
+            ("d1_incomplete", {"completed": False}, "tier.ultra_deep_completed_missing"),
+            ("d1_missing_occurrence", {"first_occurrence": "remove"}, "tier.ultra_deep_completed_missing"),
+            ("d1_mismatched_occurrence", {"first_occurrence": "mismatch"}, "tier.ultra_deep_completed_missing"),
+        )
+        for index, (name, options, expected_code) in enumerate(cases):
+            with self.subTest(case=name):
+                session = make_ultra_pass_session(self.root, **options)
+                report = validate_session(session)
+                self.assertFalse(report.ok, report.to_dict())
+                self.assertFalse(report.tier_contract_met, report.to_dict())
+                self.assertIn(expected_code, {issue.code for issue in report.errors})
+                if index == 0:
+                    rendered = finalize_session_result(session, NOW)
+                    sealed = load_state(session)
+                    self.assertEqual(rendered.validation.human_status, "交付不完整")
+                    self.assertEqual(sealed["summary"]["status"], "BLOCKED")
+                    self.assertEqual(sealed["summary"]["human_status"], "交付不完整")
+                    html = rendered.path.read_text(encoding="utf-8")
+                    self.assertIn("BLOCKED / DELIVERY_INCOMPLETE", html)
+
     def test_synthesis_medium_pass_requires_coverage_audit(self) -> None:
         # synthesis's posture promise IS a coverage/omissions declaration, so
-        # it shares the Medium/High coverage-audit gate with
+        # it shares the Medium/High/Ultra coverage-audit gate with
         # scientific/decision even though it has no anti-lock-in requirement
         # of its own. make_complete_pass_session only adds anti_lock_in/
         # coverage_audit verification records for scientific/decision, so a

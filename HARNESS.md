@@ -1,8 +1,8 @@
 # Agent Deep Research Trigger — V2 Organizer Harness
 
 > `SKILL.md` is the sole default and human protocol. This file is the
-> Medium/High runtime bridge and implementation/recovery reference; it is read
-> only after the user selects Medium or High.
+> Medium/High/Ultra runtime bridge and implementation/recovery reference; it is read
+> only after the user selects Medium, High, or Ultra.
 
 This is a host-neutral implementation reference. Claude Code and Codex use the
 sole protocol in [SKILL.md](SKILL.md); [AGENTS.md](AGENTS.md) only provides the
@@ -28,7 +28,7 @@ A present credential is not execution readiness. No disabled route may be exerci
 ## Non-Negotiables
 
 - Activate only on explicit `/deep`.
-- The user selects one tier after seeing the kernel-free seven-line card.
+- The user selects one tier after seeing the kernel-free eight-line card.
 - Choose exactly one primary scout route.
 - Boundary actions derive and reserve their exact request atomically; uncertain attempts remain consumed.
 - Keep one semantic source of truth: canonical `state.json`.
@@ -44,14 +44,14 @@ A present credential is not execution readiness. No disabled route may be exerci
 implementation and recovery boundary; it does not define another user flow.
 
 1. The user types the literal `/deep`.
-2. The Organizer shows the kernel-free seven-line card defined by `SKILL.md`.
-3. The user chooses exactly one tier: `Low`, `Medium`, or `High`.
+2. The Organizer shows the kernel-free eight-line card defined by `SKILL.md`.
+3. The user chooses exactly one tier: `Low`, `Medium`, `High`, or `Ultra`.
 4. `Adjust` revises the scope and shows a new card; it does not start research.
 5. The tier choice is the only confirmation for that run.
 
 ## Runtime Bridge
 
-After Medium or High selection, the host reads this `HARNESS.md` beside the
+After Medium, High, or Ultra selection, the host reads this `HARNESS.md` beside the
 canonical `SKILL.md` and uses the repo-local CLI. `ROOT` is the absolute
 directory containing that canonical `SKILL.md`; `CLI` is always:
 
@@ -84,7 +84,7 @@ constraints/safe_actions/acceptance_tests. Each acceptance-test string MUST use
 Set status before `validate` for PASS; the final package must not retain
 `IN_PROGRESS`.
 
-The Medium/High canonical terminal, handoff, and completeness gates apply
+The Medium/High/Ultra canonical terminal, handoff, and completeness gates apply
 equally to `host_native` and `external_managed` execution.
 
 Fail closed with the matching reason: an evidence-floor gap sets canonical
@@ -107,6 +107,20 @@ contract. It may use `prepare`, `confirm`, and `init` as implementation details,
 not as user steps or another confirmation. An external paid-request count or
 local-data egress semantic change requires a new card and a new run, as defined
 by `SKILL.md`.
+
+Ultra provider routing SHOULD adapt to the question rather than follow a fixed
+pipeline or permanent ranking. Use at most one provider per shot, never call all
+three automatically: OpenAI is source-of-record-oriented POINTER DISCOVERY only;
+Perplexity fits broad coverage or challenge when its reported cost is accepted;
+Gemini is high-exploration only when explicitly disclosed as D1 or D2 in the
+initial Ultra card; choosing Ultra authorizes it, but it is not an automatic
+preference or default. The concrete Ultra card names exact D1 and optional D2
+routes, max total 1 or 2, and each route's cost, retention/privacy, and egress
+characteristics. The Organizer chooses at most one provider per shot and may stop
+after High or use D2 inside that envelope; a different route, count, egress,
+privacy, or cost scope requires a new card and run. If a host-native direct fetch
+suffices, stop. Provider synthesis remains discovery-only; direct captures support
+claims.
 
 `execution` is the Organizer/host home execution mode; `host_native` does not
 exclude an optional external provider route already confirmed on the card.
@@ -187,13 +201,30 @@ Only source origins establish empirical corroboration. One directly fetched T1 s
 
 ### 6. Reinforce After a Candidate Appears
 
-Medium/High scientific or decision runs perform:
+Medium/High/Ultra scientific or decision runs perform:
 
 - **anti-lock-in:** seek evidence that would overturn the provisional candidate. Disposition every anti-lock-in finding explicitly: refute it with evidence, absorb it by revising the candidate, or record it as an open tension with a revisit trigger. Merely noting counter-evidence does not count;
 - **coverage audit:** inspect omitted premises, boundary conditions, and candidate omissions;
 - **local applicability:** test project versions, environment, and constraints when feasible.
 
 High MUST include a fresh, context-separated analyst pass over the exact claim packet. Its canonical verifier record minimally contains `verifier_actor != candidate_actor`, `packet_claim_ids`, a recomputable `packet_sha256`, `verdict` in `accept/revise/block`, `disposition`, `completed=true`, `context_separated=true`, and `produced_candidate=false`. This is host attestation plus canonical packet binding; it proves neither context nor source independence. A `host_native` verifier writes only the completed verifier record, with no permit or attempt event. An `external_managed` verifier additionally requires the existing completed organizer-pass action.
+
+Ultra is exactly High plus an upstream Deep exploration layer, not a parallel
+end-to-end evidence workflow. Cycle 1 is D1 -> the current host Organizer with
+the bounded session context -> the existing High targeted search/direct captures,
+provisional claims, and coverage/anti-lock-in checkpoint -> a stop decision or
+an optional D2. Deep expands hypotheses, counterexamples, and residuals but
+never replaces High evidence gates. D2 is chosen by the Organizer inside the
+confirmed two-submit envelope, targets a material next question (a gap or a
+justified expansion/alternate angle), returns through the Organizer with prior
+validated state and context, and adds incremental High verification. Do not
+rerun the whole High state, and provider uncertainty alone never triggers D2.
+After D1, or after D2 when used, run one final context-separated verifier bound
+to the final claim packet. Poll and transport actions do not count as submits;
+started deep actions must reach a completed terminal occurrence, and failed or
+uncertain actions cannot satisfy completion. Provider synthesis may inform the
+Organizer decision delta but cannot support canonical claims because
+`can_support_claims=false`.
 
 ### 7. Terminate Honestly
 
@@ -216,6 +247,22 @@ When the user's working language is Traditional Chinese, author human-facing can
 
 Secret-classified data never enters raw storage. Local-sensitive artifacts require redaction review and never enter HTML. Provider payload retention and HTML inclusion must fit the session's immutable storage-rights snapshot.
 
+Gemini citations are wrapper discovery hints, while the full provider report
+remains in the spool and is consumed by the Organizer as an untrusted research
+memo together with a bounded context slice: the current development/research
+goal, accepted user constraints and decisions, relevant repo state, and earlier
+findings/direct captures. Its compact output is a session-native decision delta:
+strengthened/refuted/unresolved beliefs, candidate claims needing direct
+capture, implementation implications, a material next question for Shot 2, and the
+next coding action or revisit trigger. The report cannot
+itself support a canonical claim. The Organizer MAY use an authorized
+host-native fetch to follow a wrapper; only the final canonical URL's direct
+capture, raw bytes, and exact excerpt may support claims, and the adapter never
+resolves wrappers. Final HTML, chat, and coding handoff omit verbatim/full report
+text and spool links for concision; the raw pointer remains only in canonical
+`retrieval_occurrences`/machine JSON. Verifier packets bind only selected direct
+evidence.
+
 Purge is a semantic transition: downgrade affected claims and verdict first, persist authorization, remove bytes, leave a tombstone, validate, and rerender. Recovery only resumes that persisted authorization.
 
 ## Gates
@@ -226,9 +273,9 @@ Purge is a semantic transition: downgrade affected claims and verdict first, per
 - confirmed evidence floor;
 - passing claim status, source origin, entailing exact excerpt, available raw artifact, and applicability for every load-bearing claim;
 - quota/event/state hash reconciliation;
-- posture-specific checks (machine gates exist for lookup, scientific, and decision; synthesis shares the Medium/High coverage-audit gate but has no anti-lock-in requirement of its own);
-- Medium/High anti-lock-in and coverage audit when required;
-- context-separated High verifier;
+- posture-specific checks (machine gates exist for lookup, scientific, and decision; synthesis shares the Medium/High/Ultra coverage-audit gate but has no anti-lock-in requirement of its own);
+- Medium/High/Ultra anti-lock-in and coverage audit when required;
+- context-separated High/Ultra verifier;
 - current HTML state hash when a report exists.
 
 `PARTIAL` requires a named reversible safe action whose validity does not depend on unresolved or purged-evidence claims. Otherwise use `BLOCKED`.

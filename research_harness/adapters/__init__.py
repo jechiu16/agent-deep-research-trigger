@@ -24,7 +24,7 @@ never appear in fixtures, occurrences, or fingerprints.
 
 from __future__ import annotations
 
-from . import brave, crossref, europe_pmc, exa, github, ietf, nvd, openai_deep, openalex, osv, perplexity_deep, pypi, scholar, sonar
+from . import brave, crossref, europe_pmc, exa, gemini_deep, github, ietf, nvd, openai_deep, openalex, osv, perplexity_deep, pypi, scholar, sonar
 
 ADAPTERS = {
     "perplexity-chat-completions@v1": {"build": sonar.build, "parse": sonar.parse},
@@ -43,6 +43,12 @@ ADAPTERS = {
         "job_token": openai_deep.job_token,
         "poll": openai_deep.poll,
         "extract": openai_deep.extract,
+    },
+    "gemini-interactions-deep@v1": {
+        "submit": gemini_deep.submit,
+        "job_token": gemini_deep.job_token,
+        "poll": gemini_deep.poll,
+        "extract": gemini_deep.extract,
     },
     "openalex-works-search@v1": {"build": openalex.build, "parse": openalex.parse},
     "exa-search@v1": {"build": exa.build, "parse": exa.parse},

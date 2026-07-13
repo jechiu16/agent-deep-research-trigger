@@ -446,10 +446,10 @@ def ingest_host_capture(
         if (
             contract.get("execution") != "host_native"
             or contract.get("durability") != "canonical_package"
-            or contract.get("tier") not in {"medium", "high"}
+            or contract.get("tier") not in {"medium", "high", "ultra"}
         ):
             raise ArtifactPolicyError(
-                "host captures require a host-native canonical-package Medium or High contract"
+                "host captures require a host-native canonical-package Medium, High, or Ultra contract"
             )
         return _ingest_unlocked(
             session_dir,

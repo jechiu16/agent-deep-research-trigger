@@ -22,7 +22,7 @@ from .providers import (
 
 
 POSTURES = frozenset({"lookup", "synthesis", "scientific", "decision"})
-TIERS = frozenset({"low", "medium", "high", "custom"})
+TIERS = frozenset({"low", "medium", "high", "ultra", "custom"})
 EXECUTIONS = frozenset({"host_native", "external_managed"})
 DURABILITIES = frozenset({"chat_only", "canonical_package"})
 ACTION_CATEGORIES = (
@@ -240,8 +240,8 @@ def _reinforcement_errors(tier: Any, mappings: list[Any], errors: list[str]) -> 
         and mapping.get("reserved") is True
         and mapping.get("stage") in {"anti_lock_in", "verification", "coverage_audit"}
     ]
-    if tier in {"medium", "high"} and not reserved_reinforcement:
-        errors.append("medium and high tiers require reserved post-result reinforcement")
+    if tier in {"medium", "high", "ultra"} and not reserved_reinforcement:
+        errors.append("Medium, High, and Ultra tiers require reserved post-result reinforcement")
     context_verifiers = [
         mapping
         for mapping in mappings
@@ -250,8 +250,53 @@ def _reinforcement_errors(tier: Any, mappings: list[Any], errors: list[str]) -> 
         and mapping.get("reserved") is True
         and mapping.get("category") == "organizer_pass"
     ]
-    if tier == "high" and len(context_verifiers) != 1:
-        errors.append("high tier requires reserved context-separated verifier capacity")
+    if tier in {"high", "ultra"} and len(context_verifiers) != 1:
+        errors.append("High and Ultra tiers require reserved context-separated verifier capacity")
+
+
+def _ultra_submission_errors(
+    mappings: list[Any], physical: dict[str, Any], resource: dict[str, Any], errors: list[str]
+) -> None:
+    """Require the bounded one-or-two-shot deep plan for Ultra."""
+
+    deep_mappings = [
+        mapping
+        for mapping in mappings
+        if isinstance(mapping, dict) and mapping.get("category") == "deep"
+    ]
+    deep_count = len(deep_mappings)
+    if deep_count not in {1, 2}:
+        errors.append("Ultra tier requires one or two deep submission mappings")
+        return
+    if physical.get("deep") != deep_count:
+        errors.append("Ultra physical deep ceiling must equal the deep mapping count")
+    metered_deep = resource.get("external", {}).get("metered_ceiling", {}).get("deep")
+    if metered_deep != deep_count:
+        errors.append("Ultra external deep ceiling must equal the deep mapping count")
+
+    for index, mapping in enumerate(deep_mappings, start=1):
+        if mapping.get("invocations") != 1 or mapping.get("count") != 1:
+            errors.append(f"Ultra deep submission {index} requires invocations=1 and count=1")
+        matching_transport = [
+            candidate
+            for candidate in mappings
+            if isinstance(candidate, dict)
+            and candidate.get("category") == "transport"
+            and candidate.get("stage") == mapping.get("stage")
+            and candidate.get("route") == mapping.get("route")
+        ]
+        if len(matching_transport) != 1:
+            errors.append(
+                f"Ultra deep submission {index} requires exactly one matching transport mapping"
+            )
+    if deep_mappings[0].get("stage") != "investigation":
+        errors.append("Ultra first deep submission must use investigation stage")
+    if len(deep_mappings) == 2:
+        second = deep_mappings[1]
+        if second.get("stage") != "anti_lock_in":
+            errors.append("Ultra second deep submission must use anti_lock_in stage")
+        if second.get("reserved") is not True:
+            errors.append("Ultra second deep submission must be reserved")
 
 
 def _validate_contract_core(
@@ -289,8 +334,8 @@ def _validate_contract_core(
             errors.append("contract durability axis is invalid")
         elif contract.get("tier") == "low" and contract.get("durability") != "chat_only":
             errors.append("low tier requires chat_only durability")
-        elif contract.get("tier") in {"medium", "high"} and contract.get("durability") != "canonical_package":
-            errors.append("medium and high tiers require canonical_package durability")
+        elif contract.get("tier") in {"medium", "high", "ultra"} and contract.get("durability") != "canonical_package":
+            errors.append("Medium, High, and Ultra tiers require canonical_package durability")
     _confirmation_errors(contract, registry, resolved_registry_sha256, errors)
 
     resource = contract.get("resource_envelope")
@@ -300,6 +345,8 @@ def _validate_contract_core(
     physical = _envelope_errors(resource, errors)
     mappings = _mapping_errors(contract, registry, physical, errors)
     _reinforcement_errors(contract.get("tier"), mappings, errors)
+    if contract.get("tier") == "ultra":
+        _ultra_submission_errors(mappings, physical, resource, errors)
 
     evidence_floor = contract.get("evidence_floor")
     if not isinstance(evidence_floor, dict) or not _is_positive_count(

@@ -1,0 +1,7 @@
+{
+  "id": "gemini-interaction-fixture-001",
+  "status": "requires_action",
+  "error": {
+    "message": "This interaction requires unsupported user action."
+  }
+}

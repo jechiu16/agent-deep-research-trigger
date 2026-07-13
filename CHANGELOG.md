@@ -3,6 +3,31 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## 2.0.0b7
+
+### Added
+
+- Ultra is a fourth tier: High plus at most two sequential Deep submits, with
+  exact D1 and optional D2 routes authorized upfront. The Organizer may stop or
+  run D2 for a material gap or expansion before one final verifier.
+- A validated Gemini Interactions Deep Research adapter, with preview,
+  estimated-cost, remote-retention, and no-ZDR disclosure plus a discovery-only
+  evidence boundary.
+- Three live adoption observations and an RFC 9110 blind output-level
+  comparison. These observations are explicitly non-ranking and do not establish
+  general superiority.
+
+### Changed
+
+- Full provider reports are consumed with relevant session context and preserved
+  through canonical occurrence pointers. Claims still require direct capture,
+  while `zh-Hant-TW` HTML remains concise.
+
+### Fixed
+
+- Ultra integrity handling, verifier association, contract mapping truth, and
+  fixture chronology false-pass issues.
+
 ## 2.0.0b6
 
 ### Changed

@@ -1,0 +1,62 @@
+{
+  "id": "gemini-interaction-fixture-001",
+  "status": "completed",
+  "agent": "deep-research-preview-04-2026",
+  "steps": [
+    {
+      "type": "model_output",
+      "content": [
+        {
+          "type": "text",
+          "text": "Sanitized live Gemini Deep Research output excerpt.",
+          "annotations": [
+            {
+              "type": "url_citation",
+              "url": "https://example.test/live-gemini-wrapper-a",
+              "title": "Sanitized wrapper citation A"
+            },
+            {
+              "type": "url_citation",
+              "url": "https://example.test/live-gemini-wrapper-b",
+              "title": "Sanitized wrapper citation B"
+            },
+            {
+              "type": "url_citation",
+              "url": " ",
+              "title": "Invalid empty URL"
+            },
+            {
+              "type": "url_citation",
+              "url": "javascript:alert(1)",
+              "title": "Invalid script URL"
+            },
+            {
+              "type": "url_citation",
+              "url": "/relative/path",
+              "title": "Invalid relative URL"
+            },
+            {
+              "type": "url_citation",
+              "url": " https://example.test/live-gemini-wrapper-a ",
+              "title": "Sanitized wrapper citation A normalized duplicate"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "Additional sanitized live report text.",
+          "annotations": [
+            {
+              "type": "url_citation",
+              "url": "https://example.test/live-gemini-wrapper-a",
+              "title": "Sanitized wrapper citation A duplicate"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "total_tokens": 1094159
+  }
+}

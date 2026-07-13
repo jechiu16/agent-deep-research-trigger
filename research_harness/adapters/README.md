@@ -111,3 +111,13 @@ sentinel exists so that never has to happen again.
   Standalone scripts or tests exercising `acquire_permits` must set
   `os.environ` itself (`monkeypatch.setenv`, etc.) — passing a custom dict
   has no effect on this path.
+
+## Gemini Preview Route
+
+Gemini Deep Research is an enabled, validated preview route after one live
+adoption run verified the Interactions response, remote retention disclosure,
+and boundary occurrence. The sanitized fixture is calibrated to that observed
+response shape, not a quality ranking or a promise of provider performance.
+Use `store=true`, do not send local files or content, and do not add the Max
+route. Live payloads remain the source for future calibration of the fixture and
+registry evidence.

@@ -48,6 +48,8 @@ DELIVERY_SHORTFALL_CODES = frozenset(
         "tier.acceptance_tests_missing",
         "tier.high_verifier_missing",
         "tier.high_verifier_invalid",
+        "tier.ultra_deep_completed_missing",
+        "tier.ultra_deep_second_completed_missing",
         "tier.anti_lock_in_missing",
         "tier.coverage_audit_missing",
         "posture.decision_joint_missing",
@@ -820,7 +822,7 @@ def _host_capture_tier_contract(
     if (
         contract.get("execution") != "host_native"
         or contract.get("durability") != "canonical_package"
-        or contract.get("tier") not in {"medium", "high"}
+        or contract.get("tier") not in {"medium", "high", "ultra"}
     ):
         return True
 
@@ -927,7 +929,7 @@ def _host_capture_tier_contract(
             )
             return False
         return not (host_permits or host_attempts)
-    if tier != "high":
+    if tier not in {"high", "ultra"}:
         return True
 
     distinct_pair = any(
@@ -940,7 +942,7 @@ def _host_capture_tier_contract(
         _add(
             issues,
             "tier.high_capture_diversity",
-            "High requires two linked captures with distinct source keys and content hashes",
+            "High and Ultra require two linked captures with distinct source keys and content hashes",
             "/summary/load_bearing_claim_ids",
             "WARNING",
         )
@@ -1089,7 +1091,7 @@ def _canonical_handoff_completeness(
         _add(
             issues,
             "tier.acceptance_tests_missing",
-            "Medium and High canonical packages require at least one acceptance test formatted as 'check => expected' or 'check -> expected'",
+            "Medium, High, and Ultra canonical packages require at least one acceptance test formatted as 'check => expected' or 'check -> expected'",
             "/engineering_handoff/acceptance_tests",
             "WARNING",
         )
@@ -1171,6 +1173,127 @@ def _high_verifier_records(
     return valid, issue_code
 
 
+def _ultra_trace_validator(
+    state: dict[str, Any],
+    events: list[dict[str, Any]],
+    issues: list[Issue],
+    valid_verifiers: list[dict[str, Any]],
+) -> bool:
+    """Apply only the bounded Ultra lifecycle and final-packet gates."""
+
+    contract = state.get("contract", {})
+    mappings = [
+        mapping
+        for mapping in contract.get("stage_permit_map", [])
+        if isinstance(mapping, dict) and mapping.get("category") == "deep"
+    ]
+    status = state.get("summary", {}).get("status")
+    issue_level = "ERROR" if status == "PASS" else "WARNING"
+    permits = [event for event in events if event.get("event") == "permit_acquired"]
+    occurrences = [
+        occurrence
+        for occurrence in state.get("retrieval_occurrences", [])
+        if isinstance(occurrence, dict)
+    ]
+
+    def fail(code: str, message: str) -> bool:
+        _add(issues, code, message, "/events", issue_level)
+        return False
+
+    if not mappings or len(mappings) > 2:
+        return fail(
+            "tier.ultra_deep_completed_missing",
+            "Ultra permits at most two deep submissions and requires D1",
+        )
+
+    def mapped_permits(mapping: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            permit
+            for permit in permits
+            if (permit.get("stage"), permit.get("category"), permit.get("route"))
+            == (mapping.get("stage"), mapping.get("category"), mapping.get("route"))
+        ]
+
+    def terminal_completed(action_id: Any) -> bool:
+        if not isinstance(action_id, str):
+            return False
+        statuses = [
+            event.get("status")
+            for event in events
+            if event.get("event") == "attempt_status"
+            and event.get("action_id") == action_id
+        ]
+        if not statuses or statuses[-1] != "completed":
+            return False
+        return any(
+            occurrence.get("action_id") == action_id
+            and isinstance(occurrence.get("request_action_id"), str)
+            for occurrence in occurrences
+        )
+
+    first_actions = mapped_permits(mappings[0])
+    if len(first_actions) != 1 or not terminal_completed(first_actions[0].get("action_id")):
+        return fail(
+            "tier.ultra_deep_completed_missing",
+            "Ultra D1 requires a completed terminal retrieval occurrence",
+        )
+    final_action_id = first_actions[0].get("action_id")
+
+    if len(mappings) == 2:
+        second_actions = mapped_permits(mappings[1])
+        if len(second_actions) > 1:
+            return fail(
+                "tier.ultra_deep_second_completed_missing",
+                "Ultra permits at most one D2 deep submission",
+            )
+        if second_actions:
+            second_action_id = second_actions[0].get("action_id")
+            first_completed = next(
+                (
+                    index
+                    for index, event in enumerate(events)
+                    if event.get("event") == "attempt_status"
+                    and event.get("action_id") == final_action_id
+                    and event.get("status") == "completed"
+                ),
+                None,
+            )
+            second_started = next(
+                (
+                    index
+                    for index, event in enumerate(events)
+                    if event.get("event") == "permit_acquired"
+                    and event.get("action_id") == second_action_id
+                ),
+                None,
+            )
+            if (
+                first_completed is None
+                or second_started is None
+                or first_completed >= second_started
+            ):
+                return fail(
+                    "tier.ultra_deep_completed_missing",
+                    "Ultra D1 must complete before D2 starts",
+                )
+            if not terminal_completed(second_action_id):
+                return fail(
+                    "tier.ultra_deep_second_completed_missing",
+                    "Ultra D2 cannot pass without a completed terminal occurrence",
+                )
+            final_action_id = second_action_id
+
+    if not any(
+        record.get("final_deep_action_id") == final_action_id
+        for record in valid_verifiers
+    ):
+        return fail(
+            "tier.high_verifier_invalid",
+            "Ultra final verifier must bind the final deep action and claim packet",
+        )
+    return True
+
+
 def _canonical_delivery_tier_contract(
     state: dict[str, Any],
     events: list[dict[str, Any]],
@@ -1179,7 +1302,7 @@ def _canonical_delivery_tier_contract(
     contract = state.get("contract", {})
     if (
         contract.get("durability") != "canonical_package"
-        or contract.get("tier") not in {"medium", "high"}
+        or contract.get("tier") not in {"medium", "high", "ultra"}
     ):
         return True
 
@@ -1189,7 +1312,7 @@ def _canonical_delivery_tier_contract(
         _add_once(
             issues,
             "tier.terminal_status_missing",
-            "Medium and High canonical packages require a terminal summary status",
+            "Medium, High, and Ultra canonical packages require a terminal summary status",
             "/summary/status",
             "WARNING",
         )
@@ -1224,18 +1347,21 @@ def _canonical_delivery_tier_contract(
 
     handoff_met = _canonical_handoff_completeness(state, issues)
     verifier_met = True
-    if contract.get("tier") == "high":
+    if contract.get("tier") in {"high", "ultra"}:
         valid_verifiers, issue_code = _high_verifier_records(state, events)
         verifier_met = bool(valid_verifiers)
         if not verifier_met:
             _add_once(
                 issues,
                 issue_code,
-                "High canonical packages require a valid claim-packet verifier attestation",
+                "High and Ultra canonical packages require a valid claim-packet verifier attestation",
                 "/verification",
                 "ERROR" if status == "PASS" else "WARNING",
             )
-    return load_set_met and handoff_met and verifier_met
+    deep_met = True
+    if contract.get("tier") == "ultra":
+        deep_met = _ultra_trace_validator(state, events, issues, valid_verifiers)
+    return load_set_met and handoff_met and verifier_met and deep_met
 
 
 def _validate_pass(
@@ -1336,13 +1462,13 @@ def _validate_pass(
             claim = claims.get(claim_id, {})
             if not _has_direct_t1_evidence(claim.get("supporting_evidence_ids"), evidence_map, sources):
                 _add(issues, "posture.lookup_primary_missing", "lookup PASS requires a directly fetched T1 source", f"/claims/{claim_id}")
-    if posture in {"scientific", "decision"} and tier in {"medium", "high"}:
+    if posture in {"scientific", "decision"} and tier in {"medium", "high", "ultra"}:
         if not any(item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification):
             _add(issues, "tier.anti_lock_in_missing", "anti-lock-in checkpoint is missing", "/verification")
     # synthesis's posture promise IS a coverage/omissions declaration (see
-    # HARNESS.md's posture table), so it shares this gate at Medium/High even
+    # HARNESS.md's posture table), so it shares this gate at Medium/High/Ultra even
     # though it has no anti-lock-in requirement of its own.
-    if posture in {"scientific", "decision", "synthesis"} and tier in {"medium", "high"}:
+    if posture in {"scientific", "decision", "synthesis"} and tier in {"medium", "high", "ultra"}:
         if not any(
             item.get("kind") == "coverage_audit"
             and item.get("completed") is True

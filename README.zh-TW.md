@@ -17,7 +17,7 @@
 git clone https://github.com/jechiu16/agent-deep-research-trigger.git \
   "$HOME/.agent-deep-research-trigger"
 cd "$HOME/.agent-deep-research-trigger"
-git checkout v2.0.0b6
+git checkout v2.0.0b7
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
@@ -49,12 +49,14 @@ ln -s "$PWD" "$HOME/.agents/skills/deep"
 | Low | 在對話中回答並附上連結；不建立研究套件。 |
 | Medium | 為具名缺口補上直接證據，並交付研究套件。 |
 | High | 取得至少兩份符合門檻的直接來源紀錄，並交付研究套件。 |
+| Ultra | High 加 adaptive Deep loop；卡片列出 exact D1 與 optional D2 route，總上限為 1 或 2 發，由 Organizer 在 envelope 內停止或使用 D2。 |
 
 預設使用 host-native 路徑。只有卡片已揭露時，才使用 optional external provider。
+初始 Ultra 卡片會從 OpenAI、Perplexity、Gemini 中列出 exact D1 與 exact optional D2 route；Organizer 只在該 envelope 內決定停止或執行 D2。Provider synthesis 僅供 discovery，claims 由 direct captures 支持。
 
 ## 輸出
 
-Medium 與 High 交付：
+Medium、High 與 Ultra 交付：
 
 | Output | 用途 |
 |---|---|
@@ -64,20 +66,17 @@ Medium 與 High 交付：
 證據或交付有缺口時仍會交付受阻的研究套件，絕不標為 `PASS`；HTML
 會依情況標示 `EVIDENCE_INSUFFICIENT` 或 `DELIVERY_INCOMPLETE`。
 
-## 一次盲測
+## 兩個有界範例
 
-一個 persistence 題目比較 direct OpenAI Deep Research 與 `/deep High`。
-在準則先凍結且身份隱藏的條件下，reviewer 偏好 `/deep High`；它的
-verifier 先修正四個 draft 問題，final 也避開 baseline 的 durability、
-WAL sidecar 與過時版本敘述錯誤。
+- [SQLite WAL 盲測](examples/paired/2026-07-13-sqlite-wal-blind/)：一次 identity-blind output comparison，不能證明普遍優於其他方案。
+- [RFC 9110 Ultra 盲測](examples/paired/2026-07-13-rfc9110-ultra-blind/)：僅為 output-level integration evidence，不代表 full-runtime、普遍優越性或 provider ranking。
 
-這只代表一題，不能證明普遍優於其他 Deep Research。完整的[題目、兩份
-輸出與 verdict](examples/paired/2026-07-13-sqlite-wal-blind/)均已保留。
+兩套材料均保留 user-visible task、candidate outputs、verdict materials 與 provenance。
 
 ## 專案連結
 
 - [SKILL.md](SKILL.md)：公開 `/deep` protocol
-- [HARNESS.md](HARNESS.md)：Medium/High internal runtime bridge 與 gates
+- [HARNESS.md](HARNESS.md)：Medium/High/Ultra internal runtime bridge 與 gates
 - [examples/v2](examples/v2)：runtime fixture
 - [CONTRIBUTING.md](CONTRIBUTING.md)：開發與 release checks
 - [SECURITY.md](SECURITY.md)：private security reporting
