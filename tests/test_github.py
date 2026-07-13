@@ -9,7 +9,7 @@ from pathlib import Path
 from research_harness.adapters import github
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
 from research_harness.providers import load_provider_registry
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -124,14 +124,17 @@ class GithubBoundaryTests(unittest.TestCase):
         )
         state = new_state(contract, NOW, registry=self.registry, environ=TEST_ENV)
         create_session(self.session, state)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "github", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
@@ -157,7 +160,7 @@ class GithubBoundaryTests(unittest.TestCase):
         expected_synthesis = "\n".join(expected_lines)
 
         result = execute_probe(
-            self.session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            self.session, "A1", 'primary_scout', 'github', "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -185,23 +188,20 @@ class GithubBoundaryTests(unittest.TestCase):
     def test_http_404_consumes_permit_and_preserves_payload(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "jechiu16/does-not-exist-zzz", NOW,
+                self.session, "A1", 'primary_scout', 'github', "jechiu16/does-not-exist-zzz", NOW,
                 transport=fixture_transport("github_not_found.json", status=404),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
         self.assertIn("Not Found", spool.read_text())
-        # The permit stays consumed: the single primary_scout invocation is gone.
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "github", 1, "fp2", NOW
-            )
+        # The boundary request count stays consumed after the failed call.
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
         with self.assertRaises(AdapterParseError):
             execute_probe(
-                self.session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+                self.session, "A1", 'primary_scout', 'github', "jechiu16/agent-deep-research-trigger", NOW,
                 transport=fixture_transport("github_malformed_missing_full_name.json"),
                 environ=TEST_ENV,
             )
@@ -214,19 +214,19 @@ class GithubBoundaryTests(unittest.TestCase):
         # attempt-status lifecycle (unlike a transport/HTTP failure).
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "this-is-not-owner-slash-repo", NOW,
+                self.session, "A1", 'primary_scout', 'github', "this-is-not-owner-slash-repo", NOW,
                 transport=fixture_transport("github_success.json"), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), [])
 
     def test_second_execution_of_same_action_is_refused(self) -> None:
         execute_probe(
-            self.session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            self.session, "A1", 'primary_scout', 'github', "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ=TEST_ENV,
         )
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+                self.session, "A1", 'primary_scout', 'github', "jechiu16/agent-deep-research-trigger", NOW,
                 transport=fixture_transport("github_success.json"), environ=TEST_ENV,
             )
 
@@ -234,7 +234,7 @@ class GithubBoundaryTests(unittest.TestCase):
         # github is keyless: unlike sonar (PERPLEXITY_API_KEY required), an
         # empty environ must not block the route.
         result = execute_probe(
-            self.session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            self.session, "A1", 'primary_scout', 'github', "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ={},
         )
         self.assertEqual(result["occurrence"]["provider_id"], "github")

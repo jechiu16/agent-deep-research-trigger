@@ -42,7 +42,6 @@ from research_harness.providers import (
     referenced_provider_records,
     validate_provider_registry,
 )
-from research_harness.quota import acquire_permits
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -143,27 +142,23 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
         ]
 
-    def _acquire_deep(self, action_id: str = "D1") -> None:
-        acquire_permits(
-            self.session, action_id, "investigation", "deep", "openai-deep", 1, f"fp-{action_id}", NOW,
-        )
-
-    def _acquire_transport(self, action_id: str) -> None:
-        acquire_permits(
-            self.session, action_id, "investigation", "transport", "openai-deep", 1, f"fp-{action_id}", NOW,
-        )
-
     def _submit(
         self, action_id: str = "D1", query: str = "what changed in SMR construction status", now: str = NOW,
     ) -> dict:
-        self._acquire_deep(action_id)
+
         return execute_deep_submit(
-            self.session, action_id, query, now,
+            self.session, action_id, 'investigation', 'openai-deep', query, now,
             transport=fixture_transport("openai_deep_submit_accept.json"), environ=TEST_ENV,
         )
 
@@ -183,9 +178,9 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
 
     def test_poll_still_running_leaves_deep_action_unchanged(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
+
         result = execute_deep_poll(
-            self.session, "D1", "T1", NOW,
+            self.session, "D1", "T1", 'investigation', 'openai-deep', NOW,
             transport=fixture_transport("openai_deep_poll_running.json"), environ=TEST_ENV,
         )
         self.assertEqual(result["status"], "running")
@@ -196,7 +191,7 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
 
     def test_poll_terminal_success_records_occurrence(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
+
         fixture = json.loads((FIXTURES / "openai_deep_poll_terminal_success.json").read_text())
         expected_citations = sum(
             1
@@ -209,11 +204,12 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         self.assertEqual(expected_citations, 3)  # brief calls for 2-3 url_citation annotations
 
         result = execute_deep_poll(
-            self.session, "D1", "T1", NOW,
+            self.session, "D1", "T1", 'investigation', 'openai-deep', NOW,
             transport=fixture_transport("openai_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(occurrence["request_action_id"], "T1")
         self.assertEqual(occurrence["provider_id"], "openai-deep")
         self.assertEqual(occurrence["action_id"], "D1")
         self.assertEqual(occurrence["model"], "o4-mini-deep-research")
@@ -244,14 +240,14 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
 
     def test_poll_terminal_failure_fails_deep_action(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
+
         with self.assertRaises(BoundaryError):
             execute_deep_poll(
-                self.session, "D1", "T1", NOW,
+                self.session, "D1", "T1", 'investigation', 'openai-deep', NOW,
                 transport=fixture_transport("openai_deep_poll_terminal_failure.json"), environ=TEST_ENV,
             )
         # the poll itself succeeded (it correctly learned "failed") -> completed;
-        # only the deep action fails, and the permit stays consumed.
+        # only the deep action fails, and the boundary action stays consumed.
         self.assertEqual(self.attempt_statuses("T1"), ["attempted", "accepted", "completed"])
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "failed"])
         state = load_state(self.session)
@@ -261,10 +257,10 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
 
     def test_poll_malformed_terminal_stays_harvestable(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
+
         with self.assertRaises(AdapterParseError):
             execute_deep_poll(
-                self.session, "D1", "T1", NOW,
+                self.session, "D1", "T1", 'investigation', 'openai-deep', NOW,
                 transport=fixture_transport("openai_deep_poll_malformed_terminal.json"), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses("T1"), ["attempted", "accepted", "failed"])
@@ -272,10 +268,10 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         spool = self.session / "provider_spool" / "T1.raw.json"
         self.assertTrue(spool.exists())  # spooled before extract() ever ran
 
-        # still harvestable at zero marginal cost beyond a fresh transport permit:
-        self._acquire_transport("T2")
+        # still harvestable at zero marginal cost beyond a new boundary poll:
+
         result = execute_deep_poll(
-            self.session, "D1", "T2", NOW,
+            self.session, "D1", "T2", 'investigation', 'openai-deep', NOW,
             transport=fixture_transport("openai_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         self.assertEqual(result["status"], "completed")

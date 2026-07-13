@@ -33,7 +33,7 @@ def build(query: str, env: dict[str, str]) -> RequestSpec:
         headers={"User-Agent": "research-harness-v2"},
         body=b"",
         timeout_s=30.0,
-        fingerprint_url=f"{BASE_URL}?{urllib.parse.urlencode(public_params)}",
+        sensitive_query_keys=("api_key",),
     )
 
 

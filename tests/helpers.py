@@ -308,14 +308,19 @@ def make_complete_pass_session(
 ) -> Path:
     from research_harness.artifacts import ingest_fetched_source
     from research_harness.quota import acquire_permits
-    from research_harness.state import new_state
+    from research_harness.state import CONTRACT_SEMANTICS_V2, new_state
     from research_harness.storage import apply_state_patch, create_session, load_state
 
     root = Path(root)
     registry = load_provider_registry()
     contract = confirmed_contract(tier, posture, registry)
     session = root / f"complete-{tier}-{posture}-{uuid.uuid4().hex[:8]}"
-    create_session(session, new_state(contract, NOW, registry, {}))
+    # Test-only fixture: this helper manually patches legacy host-web evidence,
+    # so it must exercise the v2 evidence/status/artifact contract rather than
+    # pretending that synthetic data has v3 atomic request lineage.
+    state = new_state(contract, NOW, registry, {})
+    state["session"]["contract_semantics"] = CONTRACT_SEMANTICS_V2
+    create_session(session, state)
 
     actions = [
         ("A1", "primary_scout", "host_retrieval", "host-web"),
@@ -333,7 +338,6 @@ def make_complete_pass_session(
             category,
             route,
             1,
-            f"sha256:{action_id.lower()}",
             NOW,
         )
         _complete_action(session, action_id)
@@ -549,8 +553,8 @@ def make_partial_session(root: Path, safe_action: bool) -> Path:
 
 
 def make_session_with_demo_evidence(root: Path) -> Path:
+    from research_harness.boundary import execute_probe
     from research_harness.artifacts import ingest_fetched_source
-    from research_harness.quota import acquire_permits
     from research_harness.state import new_state
     from research_harness.storage import apply_state_patch, create_session, load_state
 
@@ -559,10 +563,7 @@ def make_session_with_demo_evidence(root: Path) -> Path:
     contract = confirmed_demo_contract(registry=registry)
     session = root / f"demo-evidence-{uuid.uuid4().hex[:8]}"
     create_session(session, new_state(contract, NOW, registry, {}))
-    acquire_permits(
-        session, "D1", "primary_scout", "probe", "demo-probe", 1, "sha256:demo", NOW
-    )
-    _complete_action(session, "D1")
+    execute_probe(session, "D1", "primary_scout", "demo-probe", contract["question"], NOW)
     state = load_state(session)
     apply_state_patch(
         session,

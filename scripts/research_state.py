@@ -323,7 +323,6 @@ def command_permit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         args.category,
         args.route,
         args.count,
-        args.fingerprint,
         args.now or _now(),
     )
     return {"permits": permits, "usage": permit_usage(Path(args.session))}, 0
@@ -338,11 +337,10 @@ def command_attempt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     Boundary-executed routes journal their own transitions; host, local,
     organizer-pass, and network-experiment actions (e.g. the High-tier
     context-separated verifier) have no boundary call, so this is their
-    only path to `completed`. Boundary-managed categories are refused:
-    `_permit_for` rejects any already-attempted action, so journaling one
-    here would permanently void its permit without a request. Illegal
-    transitions raise InvalidAttemptTransition from the quota core
-    unchanged."""
+    only path to `completed`. Boundary-managed categories are refused because
+    their initial `attempted` event and transport request are one atomic
+    boundary operation. Illegal transitions raise InvalidAttemptTransition
+    from the quota core unchanged."""
 
     session = Path(args.session)
     with session_lock(session):
@@ -428,27 +426,27 @@ def _demo_contract(registry: dict[str, Any], question: str) -> dict[str, Any]:
 
 
 def command_demo(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    from research_harness.quota import acquire_permits as _acquire
     from research_harness.state import new_state as _new_state
     from research_harness.storage import create_session as _create
 
     registry = _registry(None)
-    question = args.question or "demo: prove the permit->attempt->occurrence->validate->render loop"
+    question = args.question or "demo: deterministic no-network harness check"
     contract = _demo_contract(registry, question)
     now = args.now or _now()
     session = Path(args.session)
     state = _new_state(contract, now, registry, os.environ)
     _create(session, state)
-    _acquire(session, "demo-1", "primary_scout", "probe", "demo-probe", 1, "demo", now)
-    executed = execute_probe(session, "demo-1", contract["question"], now)
+    executed = execute_probe(
+        session, "demo-1", "primary_scout", "demo-probe", contract["question"], now
+    )
     rendered = render_session_result(session)
     return {
         "session_id": state["session"]["id"],
         "occurrence": executed["occurrence"]["id"],
         "report_path": str(rendered.path.resolve()),
         "validation_ok": rendered.validation.ok,
-        "next": "open the report, then read SKILL.md for the real flow "
-                "(prepare -> confirm -> init -> permit -> execute -> validate -> render)",
+        "next": "open the report for the demo, then start a fresh host session "
+                "and invoke /deep",
     }, 0 if rendered.validation.ok else 1
 
 
@@ -456,6 +454,8 @@ def command_execute(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     result = execute_probe(
         Path(args.session),
         args.action_id,
+        args.stage,
+        args.route,
         args.query,
         args.now or _now(),
     )
@@ -466,6 +466,8 @@ def command_deep_submit(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     result = execute_deep_submit(
         Path(args.session),
         args.action_id,
+        args.stage,
+        args.route,
         args.query,
         args.now or _now(),
     )
@@ -477,6 +479,8 @@ def command_deep_poll(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         Path(args.session),
         args.action_id,
         args.poll_action_id,
+        args.stage,
+        args.route,
         args.now or _now(),
     )
     return result, 0
@@ -493,8 +497,9 @@ def command_deep_timeout(args: argparse.Namespace) -> tuple[dict[str, Any], int]
 
 def command_deep_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     """Free (no lock, no permit): scan the journal for deep actions that are
-    accepted or uncertain (submitted but not yet terminal) and print their
-    job tokens so an operator can decide whether to keep polling or resume."""
+    accepted, uncertain, or recovered-attempted actions. A missing token is
+    evidence-insufficient: the request count is consumed, it is not pollable,
+    and it requires manual inspection rather than resubmission."""
 
     events, errors = read_events(Path(args.session))
     if errors:
@@ -504,7 +509,11 @@ def command_deep_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         if event.get("event") == "permit_acquired" and event.get("category") == "deep":
             action_id = event.get("action_id")
             if isinstance(action_id, str):
-                deep_actions[action_id] = {"route": event.get("route"), "status": "acquired", "job": None}
+                deep_actions[action_id] = {
+                    "route": event.get("route"),
+                    "status": event.get("initial_status", "acquired"),
+                    "job": None,
+                }
     for event in events:
         if event.get("event") != "attempt_status":
             continue
@@ -516,11 +525,26 @@ def command_deep_pending(args: argparse.Namespace) -> tuple[dict[str, Any], int]
         job = details.get("job")
         if isinstance(job, str):
             deep_actions[action_id]["job"] = job
-    pending = [
-        {"action_id": action_id, **info}
-        for action_id, info in sorted(deep_actions.items())
-        if info["status"] in {"accepted", "uncertain"}
-    ]
+    pending = []
+    for action_id, info in sorted(deep_actions.items()):
+        if info["status"] not in {"attempted", "accepted", "uncertain"}:
+            continue
+        has_token = isinstance(info.get("job"), str) and bool(info["job"])
+        info = {
+            **info,
+            "consumed": True,
+            "pollable": has_token and info["status"] in {"accepted", "uncertain"},
+        }
+        if not info["pollable"]:
+            info["recovery"] = "manual_inspection"
+            info["message"] = (
+                "consumed=true; no token; pollable=false; manual inspection required; "
+                "never retry or resubmit this action"
+            )
+        else:
+            info["recovery"] = "deep_poll_with_new_action"
+            info["message"] = "request consumed; token present; pollable=true; use a new deep-poll action"
+        pending.append({"action_id": action_id, **info})
     return {"pending": pending}, 0
 
 
@@ -700,13 +724,17 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(providers)
     providers.set_defaults(handler=command_providers)
 
-    prepare = subparsers.add_parser("prepare", help="prepare an unconfirmed contract card")
+    prepare = subparsers.add_parser(
+        "prepare", help="internal runtime: prepare an unconfirmed contract card"
+    )
     prepare.add_argument("--contract", required=True)
     prepare.add_argument("--registry-overlay")
     _add_json_flag(prepare)
     prepare.set_defaults(handler=command_prepare)
 
-    confirm = subparsers.add_parser("confirm", help="bind the exact displayed contract card")
+    confirm = subparsers.add_parser(
+        "confirm", help="internal runtime: bind the exact displayed contract card"
+    )
     confirm.add_argument("--prepared", required=True)
     confirm.add_argument("--card-sha256", required=True)
     confirm.add_argument("--registry-sha256", required=True)
@@ -716,7 +744,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(confirm)
     confirm.set_defaults(handler=command_confirm)
 
-    init = subparsers.add_parser("init", help="create a canonical v2 session")
+    init = subparsers.add_parser(
+        "init", help="internal runtime: create a canonical v2 session"
+    )
     init.add_argument("session")
     init.add_argument(
         "--question",
@@ -740,14 +770,22 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(patch)
     patch.set_defaults(handler=command_patch)
 
-    permit = subparsers.add_parser("permit", help="reserve exact physical requests")
+    permit = subparsers.add_parser(
+        "permit",
+        help="reserve non-network/host-managed physical requests only",
+        description="Reserve non-network/host-managed physical requests only.",
+    )
     permit.add_argument("session")
     permit.add_argument("--action-id", required=True)
     permit.add_argument("--stage", required=True)
-    permit.add_argument("--category", required=True)
+    permit.add_argument(
+        "--category",
+        required=True,
+        choices=["host_retrieval", "local", "organizer_pass"],
+        help="non-network/host-managed category only",
+    )
     permit.add_argument("--route", required=True)
     permit.add_argument("--count", required=True, type=int)
-    permit.add_argument("--fingerprint", required=True)
     permit.add_argument("--now")
     _add_json_flag(permit)
     permit.set_defaults(handler=command_permit)
@@ -767,7 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
     attempt.set_defaults(handler=command_attempt)
 
     demo = subparsers.add_parser(
-        "demo", help="one-command no-network end-to-end session (permit -> occurrence -> report.html)"
+        "demo", help="run a no-network demo session and produce a report"
     )
     demo.add_argument("session", help="directory to create for the demo session")
     demo.add_argument("--question")
@@ -776,10 +814,12 @@ def build_parser() -> argparse.ArgumentParser:
     demo.set_defaults(handler=command_demo)
 
     execute = subparsers.add_parser(
-        "execute", help="run one permitted probe through the v2 request boundary"
+        "execute", help="build, reserve, and run one probe through the v2 request boundary"
     )
     execute.add_argument("session")
-    execute.add_argument("--action-id", required=True, help="an acquired, un-attempted permit action")
+    execute.add_argument("--action-id", required=True, help="stable boundary action identifier")
+    execute.add_argument("--stage", required=True)
+    execute.add_argument("--route", required=True)
     execute.add_argument("--query", required=True)
     execute.add_argument("--now")
     _add_json_flag(execute)
@@ -789,7 +829,9 @@ def build_parser() -> argparse.ArgumentParser:
         "deep-submit", help="submit an async deep-research job (paid POST, never retried)"
     )
     deep_submit.add_argument("session")
-    deep_submit.add_argument("--action-id", required=True, help="an acquired, un-attempted deep permit action")
+    deep_submit.add_argument("--action-id", required=True, help="stable boundary action identifier")
+    deep_submit.add_argument("--stage", required=True)
+    deep_submit.add_argument("--route", required=True)
     deep_submit.add_argument("--query", required=True)
     deep_submit.add_argument("--now")
     _add_json_flag(deep_submit)
@@ -801,8 +843,10 @@ def build_parser() -> argparse.ArgumentParser:
     deep_poll.add_argument("session")
     deep_poll.add_argument("--action-id", required=True, help="the deep action being polled")
     deep_poll.add_argument(
-        "--poll-action-id", required=True, help="a freshly acquired transport permit action"
+        "--poll-action-id", required=True, help="stable boundary poll action identifier"
     )
+    deep_poll.add_argument("--stage", required=True)
+    deep_poll.add_argument("--route", required=True)
     deep_poll.add_argument("--now")
     _add_json_flag(deep_poll)
     deep_poll.set_defaults(handler=command_deep_poll)
@@ -818,7 +862,17 @@ def build_parser() -> argparse.ArgumentParser:
     deep_timeout.set_defaults(handler=command_deep_timeout)
 
     deep_pending = subparsers.add_parser(
-        "deep-pending", help="free: list accepted/uncertain deep actions and their job tokens"
+        "deep-pending",
+        help=(
+            "free recovery: attempted/no-token means consumed=true, pollable=false, manual inspection; "
+            "accepted/uncertain with a token can use a new deep-poll action"
+        ),
+        description=(
+            "List deep actions without spending a request. An attempted action with no token is "
+            "consumed=true and pollable=false: do not resubmit; perform manual inspection. "
+            "An accepted or uncertain action with a token is consumed=true and pollable=true: "
+            "use a new deep-poll action, never repeat the old action."
+        ),
     )
     deep_pending.add_argument("session")
     _add_json_flag(deep_pending)

@@ -29,9 +29,9 @@ A present credential is not execution readiness. No disabled route may be exerci
 ## Non-Negotiables
 
 - Activate only on explicit `/deep`.
-- The user pulls the trigger after seeing the contract card and exact physical call counts.
+- The user selects one tier after seeing the kernel-free seven-line card.
 - Choose exactly one primary scout route.
-- Acquire an exact permit before every action; uncertain attempts remain consumed.
+- Boundary actions derive and reserve their exact request atomically; uncertain attempts remain consumed.
 - Keep one semantic source of truth: canonical `state.json`.
 - Treat model or retrieval agreement as discovery signal, not source-origin independence.
 - Preserve exact raw evidence and offsets for load-bearing claims.
@@ -39,75 +39,24 @@ A present credential is not execution readiness. No disabled route may be exerci
 - Validate before `PASS`; render HTML only as a deterministic projection.
 - Prefer a safe `PARTIAL` or `BLOCKED` over an unsupported conclusion, but do not use abstention to avoid a reachable answer.
 
-## Contract Card
+## Public Protocol
 
-The contract has two scientific axes plus explicit resources.
+`SKILL.md` is the sole public protocol. This optional reference records the
+implementation and recovery boundary; it does not define another user flow.
 
-### Posture
+1. The user types the literal `/deep`.
+2. The Organizer shows the kernel-free seven-line card defined by `SKILL.md`.
+3. The user chooses exactly one tier: `Low`, `Medium`, or `High`.
+4. `Adjust` revises the scope and shows a new card; it does not start research.
+5. The tier choice is the only confirmation for that run.
 
-| Posture | Use when | Required spirit |
-|---|---|---|
-| `lookup` | A source of record defines a bounded fact | Fetch the defining primary source directly; avoid artificial hypotheses |
-| `synthesis` | The task needs a landscape or literature map | Declare coverage dimensions, omissions, shared origins, and dates |
-| `scientific` | Mechanisms are unclear or evidence conflicts | Write alternatives and expected observations before discriminating checks |
-| `decision` | Research will drive architecture or costly action | Expose premises, weakest inference joints, reversibility, and cost of error |
+## Internal Binding
 
-### Tier
-
-| Tier | Default intent | Reinforcement |
-|---|---|---|
-| `low` | Narrow, reversible, one-cycle answer | Targeted verification only when a load-bearing claim needs it |
-| `medium` | Development-grade evidence with bounded challenge capacity | One reserved anti-lock-in or verification action when posture requires it |
-| `high` | Difficult, ambiguous, or hard-to-reverse decision | Additional challenge capacity plus context-separated verifier |
-| `custom` | User-selected exact envelope | Every stage, route, logical invocation, and physical request is explicit |
-
-Tiers do not encode provider dollar prices. The contract controls **counts**: logical invocations, provider-declared physical multiplicity, and category ceilings. Display estimated cost ranges as uncertain information, never as an enforceable dollar cap.
-
-The card also records:
-
-- one `scout_route`;
-- the exact `(stage, category, route)` permit map;
-- reserved versus discovery capacity;
-- external, host-context, and local resource envelopes;
-- raw-storage ceiling and artifact policy;
-- evidence floor;
-- card, resolved-registry, and referenced-provider-record hashes.
-
-## Trigger and Confirmation
-
-1. Infer the target from conversation context. Ask only questions whose answers change scope, posture, tier, route, or cost.
-2. Inspect secret-free capabilities:
-
-```bash
-"$PY" scripts/research_state.py providers --json
-```
-
-3. Draft the card and run:
-
-```bash
-"$PY" scripts/research_state.py prepare --contract draft.json --json
-```
-
-4. Show the user the recommended posture/tier, one scout route, physical counts by stage, reserved calls, host-context class, local/network boundaries, and estimated spend uncertainty. Wait for an explicit choice.
-5. After the user confirms the displayed card, bind it and initialize:
-
-```bash
-"$PY" scripts/research_state.py confirm \
-  --prepared prepared.json \
-  --card-sha256 <displayed-card-hash> \
-  --registry-sha256 <displayed-registry-hash> \
-  --referenced-records-sha256 <displayed-route-records-hash> \
-  --confirmed-at <timestamp> \
-  --confirmed-by user \
-  --json
-
-"$PY" scripts/research_state.py init <session-dir> \
-  --question "<research target>" \
-  --contract confirmed.json \
-  --json
-```
-
-Changing the card, registry, route meaning, or confirmation creates a new session. It is not an in-place patch.
+After tier selection, the Organizer internally derives and binds the canonical
+contract. It may use `prepare`, `confirm`, and `init` as implementation details,
+not as user steps or another confirmation. An external paid-request count or
+local-data egress semantic change requires a new card and a new run, as defined
+by `SKILL.md`.
 
 ## Scientific Organizer Loop
 
@@ -135,18 +84,35 @@ Use the lexicographic rule:
 
 Do not run every cheap tool. Prefer direct source-of-record APIs for canonical facts, local inspection for project truth, and general discovery only when the target is not already known.
 
-### 4. Permit, Execute, Preserve
+### 4. Execute, Reserve, Preserve
 
-Acquire the exact permit before the action:
+Boundary-managed requests build the actual request and reserve their exact
+budget inside the execute command:
 
 ```bash
-"$PY" scripts/research_state.py permit <session-dir> \
-  --action-id A1 --stage primary_scout \
-  --category host_retrieval --route host-web \
-  --count 1 --fingerprint sha256:<request> --json
+"$PY" scripts/research_state.py execute <session-dir> \
+  --action-id A1 --stage primary_scout --route openalex \
+  --query '<question>' --now '<timestamp>' --json
 ```
 
-One composite invocation reserves its full physical multiplicity atomically. A failed or uncertain outbound attempt consumes the permit. Retry only with another predeclared permit.
+Paid async requests use the same boundary-owned choreography; do not run a
+separate paid `permit` command or provide a fingerprint:
+
+```bash
+"$PY" scripts/research_state.py deep-submit <session-dir> \
+  --action-id D1 --stage investigation --route perplexity \
+  --query '<question>' --now '<timestamp>' --json
+
+"$PY" scripts/research_state.py deep-poll <session-dir> \
+  --action-id D1 --poll-action-id T1 \
+  --stage investigation --route perplexity \
+  --now '<timestamp>' --json
+```
+
+One composite invocation reserves its full physical multiplicity atomically. A
+failed or uncertain outbound attempt consumes the boundary action/request
+count. Host, local, and organizer actions may still use the separate legacy
+`permit` command, without a caller-supplied fingerprint.
 
 Persist source or local bytes through typed ingestion. `artifact-add` accepts only `local_output`, `user_file`, or `fetched_source`. Provider and processor payloads require a bound adapter operation and cannot be relabelled through the generic CLI.
 
@@ -245,3 +211,15 @@ The final chat and canonical state should make the next coding session cheaper. 
 ```
 
 Unowned malformed event bytes, conflicting purge metadata, unexpected paths, or missing hashes fail closed. Recovery never invents a deletion target or a research action.
+
+For an async submit or poll, the boundary reserves the request before sending
+it. Therefore an attempted action with no recorded token is always
+`consumed=true` and `pollable=false`: inspect the provider outcome manually and
+never retry or resubmit that same action. It is not safe to invent a token or
+call `deep-poll` without one.
+
+An accepted or uncertain deep action with a recorded token is
+`consumed=true` and `pollable=true`. Run `deep-pending` to confirm the token,
+then use a **new** `deep-poll` action ID. Never retry the failed or uncertain
+poll action itself. Raw provider bytes remain in `provider_spool/` when a
+response was received; validate the session after recovery.

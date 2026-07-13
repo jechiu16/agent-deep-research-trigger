@@ -62,7 +62,6 @@ class ArtifactTests(unittest.TestCase):
             "local",
             "local",
             1,
-            "sha256:local-output",
             NOW,
         )
 
@@ -249,7 +248,7 @@ class ArtifactTests(unittest.TestCase):
     def test_raw_storage_ceiling_is_enforced_before_persistence(self) -> None:
         session = self._make_session("tiny", raw_storage_bytes=4)
         acquire_permits(
-            session, "L1", "local_applicability", "local", "local", 1, "sha256:x", NOW
+            session, "L1", "local_applicability", "local", "local", 1, NOW
         )
         with self.assertRaises(ArtifactPolicyError):
             ingest_local_artifact(
@@ -446,19 +445,15 @@ class PromoteProviderPayloadTests(unittest.TestCase):
         environ: dict[str, str] | None = None,
         query: str = "jechiu16/agent-deep-research-trigger",
     ) -> dict:
-        acquire_permits(
-            session, action_id, "primary_scout", "probe", route, 1, f"fp-{action_id.lower()}", NOW
-        )
-        execute_probe(session, action_id, query, NOW, transport=transport, environ=environ or {})
+        execute_probe(session, action_id, 'primary_scout', route, query, NOW, transport=transport, environ=environ or {})
         return promote_provider_payload(session, action_id, artifact_id, "session", False, NOW)
 
     def test_promote_requires_contract_to_allow_provider_payloads(self) -> None:
         session = self._make_provider_session(
             "no-provider-payloads", "github", allow_provider_payloads=False
         )
-        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
         execute_probe(
-            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            session, "A1", 'primary_scout', "github", "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ={},
         )
         with self.assertRaises(ArtifactPolicyError):
@@ -487,9 +482,8 @@ class PromoteProviderPayloadTests(unittest.TestCase):
         # A real provider_spool/ must already exist on disk for the OS to
         # walk ".." back out of it -- true of any session that has run one
         # legitimate action, so exercise one honestly first.
-        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
         execute_probe(
-            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            session, "A1", 'primary_scout', "github", "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ={},
         )
 
@@ -538,9 +532,8 @@ class PromoteProviderPayloadTests(unittest.TestCase):
         session = self._make_provider_session(
             "traversal-confine-only", "github", allow_provider_payloads=True
         )
-        acquire_permits(session, "A1", "primary_scout", "probe", "github", 1, "fp-a1", NOW)
         execute_probe(
-            session, "A1", "jechiu16/agent-deep-research-trigger", NOW,
+            session, "A1", 'primary_scout', "github", "jechiu16/agent-deep-research-trigger", NOW,
             transport=fixture_transport("github_success.json"), environ={},
         )
 

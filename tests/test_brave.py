@@ -10,7 +10,7 @@ from unittest import mock
 
 from research_harness.adapters import brave
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -214,14 +214,17 @@ class BraveBoundaryTests(unittest.TestCase):
         )
         state = new_state(contract, NOW, registry=self.registry, environ=TEST_ENV)
         create_session(self.session, state)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "brave", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
@@ -241,7 +244,7 @@ class BraveBoundaryTests(unittest.TestCase):
         result = execute_probe(
             self.session,
             "A1",
-            "reliable agent evaluation harness",
+            'primary_scout', 'brave', "reliable agent evaluation harness",
             NOW,
             transport=fixture_transport("brave_success.json"),
             environ=TEST_ENV,
@@ -257,26 +260,26 @@ class BraveBoundaryTests(unittest.TestCase):
         self.assertEqual(Path(result["spool_path"]).read_bytes(), SUCCESS_FIXTURE.read_bytes())
         self.assertEqual(validate_session(self.session, check_report=False).errors, ())
 
-    def test_http_error_consumes_permit_and_spools_payload(self) -> None:
+    def test_http_error_consumes_request_count_and_spools_payload(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_invalid_token.json", status=401),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         self.assertIn("UNAUTHORIZED", (self.session / "provider_spool/A1.raw.json").read_text())
-        self._assert_permit_consumed()
+        self._assert_request_count_consumed()
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
         with self.assertRaises(AdapterParseError):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_missing_results.json"),
                 environ=TEST_ENV,
@@ -284,38 +287,38 @@ class BraveBoundaryTests(unittest.TestCase):
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         self.assertTrue((self.session / "provider_spool/A1.raw.json").exists())
 
-    def test_transport_failure_consumes_permit(self) -> None:
+    def test_transport_failure_consumes_request_count(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=failing_transport(urllib.error.URLError("connection refused")),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "failed"])
-        self._assert_permit_consumed()
+        self._assert_request_count_consumed()
 
-    def test_timeout_is_uncertain_and_consumes_permit(self) -> None:
+    def test_timeout_is_uncertain_and_consumes_request_count(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=failing_transport(socket.timeout("timed out")),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "uncertain"])
-        self._assert_permit_consumed()
+        self._assert_request_count_consumed()
 
     def test_second_execution_is_refused(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_invalid_token.json", status=401),
                 environ=TEST_ENV,
@@ -324,7 +327,7 @@ class BraveBoundaryTests(unittest.TestCase):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_invalid_token.json", status=401),
                 environ=TEST_ENV,
@@ -335,7 +338,7 @@ class BraveBoundaryTests(unittest.TestCase):
             execute_probe(
                 self.session,
                 "missing",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_invalid_token.json", status=401),
                 environ=TEST_ENV,
@@ -346,18 +349,15 @@ class BraveBoundaryTests(unittest.TestCase):
             execute_probe(
                 self.session,
                 "A1",
-                "q",
+                'primary_scout', 'brave', "q",
                 NOW,
                 transport=fixture_transport("brave_invalid_token.json"),
                 environ={},
             )
         self.assertEqual(self.attempt_statuses(), [])
 
-    def _assert_permit_consumed(self) -> None:
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "brave", 1, "fp2", NOW
-            )
+    def _assert_request_count_consumed(self) -> None:
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
 
 if __name__ == "__main__":

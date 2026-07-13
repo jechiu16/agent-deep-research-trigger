@@ -27,7 +27,8 @@ from .providers import (
 SCHEMA_VERSION = "2.0"
 CONTRACT_SEMANTICS_V1 = "pure_trigger_v1"
 CONTRACT_SEMANTICS_V2 = "pure_trigger_v2"
-CONTRACT_SEMANTICS = CONTRACT_SEMANTICS_V2
+CONTRACT_SEMANTICS_V3 = "pure_trigger_v3"
+CONTRACT_SEMANTICS = CONTRACT_SEMANTICS_V3
 REQUIRED_SECTIONS = (
     "schema_version",
     "session",
@@ -249,7 +250,12 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         for field in ("id", "created_at", "updated_at"):
             if not isinstance(session.get(field), str) or not session.get(field):
                 errors.append(f"session {field} is required")
-        if session_semantics not in {None, CONTRACT_SEMANTICS_V1, CONTRACT_SEMANTICS_V2}:
+        if session_semantics not in {
+            None,
+            CONTRACT_SEMANTICS_V1,
+            CONTRACT_SEMANTICS_V2,
+            CONTRACT_SEMANTICS_V3,
+        }:
             errors.append("session contract_semantics is invalid")
 
     capabilities = state.get("capabilities")
@@ -282,7 +288,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         snapshot_registry = {"schema_version": "1.0", "providers": copy.deepcopy(providers)}
         registry_errors = validate_provider_registry(snapshot_registry)
         errors.extend(f"capability snapshot: {error}" for error in registry_errors)
-        if session_semantics == CONTRACT_SEMANTICS_V2:
+        if session_semantics in {CONTRACT_SEMANTICS_V2, CONTRACT_SEMANTICS_V3}:
             contract_errors = validate_contract
         elif session_semantics == CONTRACT_SEMANTICS_V1:
             contract_errors = _validate_persisted_contract_v1
@@ -300,7 +306,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         errors.append("state contract must be an object")
 
     framing = state.get("framing")
-    if session_semantics == CONTRACT_SEMANTICS_V2:
+    if session_semantics in {CONTRACT_SEMANTICS_V2, CONTRACT_SEMANTICS_V3}:
         contract_question = contract.get("question") if isinstance(contract, dict) else None
         if not isinstance(contract_question, str) or not contract_question:
             errors.append("contract question is required")

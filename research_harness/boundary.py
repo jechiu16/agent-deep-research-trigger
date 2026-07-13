@@ -1,4 +1,4 @@
-"""v2 request boundary: turn one acquired permit into one physical request.
+"""v2 request boundary: build and reserve one physical request atomically.
 
 Schema status: LOCKED v1 (2026-07-11). The occurrence shape and the adapter
 protocol (sync build/parse; async submit/job_token/poll/extract) below are
@@ -9,8 +9,8 @@ migration note, not a silent field-list edit.
 
 Design rules (from the v2 decisions ledger):
 
-- One permit, one physical request. A failed or uncertain attempt consumes the
-  permit; nothing here refunds anything.
+- One boundary action, one physical request. A failed or uncertain attempt
+  consumes the boundary action/request count; nothing here refunds anything.
 - Raw provider output is preserved verbatim in the session's provider spool
   before any parsing — parse failures never destroy paid bytes.
 - The boundary writes retrieval occurrences itself (code provenance). Search
@@ -24,15 +24,17 @@ from __future__ import annotations
 import json
 import os
 import socket
+import hashlib
 import urllib.error
 import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ._canon import sha256_hex
-from .quota import _record_attempt_status_unlocked
+from .quota import QuotaError, _record_attempt_status_unlocked, _reserve_boundary_action_unlocked
 from .storage import (
     _apply_boundary_patch_unlocked,
     _atomic_write_bytes_unlocked,
@@ -71,7 +73,7 @@ class RequestSpec:
     headers: dict[str, str]
     body: bytes
     timeout_s: float
-    fingerprint_url: Optional[str] = None
+    sensitive_query_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -98,13 +100,41 @@ Transport = Callable[[RequestSpec], tuple[int, bytes]]
 
 
 def _request_fingerprint(spec: RequestSpec) -> str:
-    """Hash semantic request bytes while excluding credential-bearing URL parts."""
+    """Hash the actual request while excluding credential-bearing values."""
+
+    parsed = urllib.parse.urlsplit(spec.url)
+    sensitive = {key.casefold() for key in spec.sensitive_query_keys}
+    pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    redacted_query = urllib.parse.urlencode(
+        [(key, "[REDACTED]" if key.casefold() in sensitive else value) for key, value in pairs]
+    )
+    redacted_url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, redacted_query, "")
+    )
+
+    def is_secret_header(name: str) -> bool:
+        lowered = name.casefold()
+        return (
+            lowered == "authorization"
+            or lowered in {"cookie", "set-cookie", "proxy-authorization"}
+            or "api-key" in lowered
+            or lowered.endswith("-token")
+            or lowered.endswith("_token")
+        )
+
+    headers = {
+        name.casefold(): "[REDACTED]" if is_secret_header(name) else value
+        for name, value in sorted(spec.headers.items(), key=lambda item: item[0].casefold())
+    }
 
     return sha256_hex(
         {
             "method": spec.method.upper(),
-            "url": spec.fingerprint_url or spec.url,
-            "body": spec.body.decode("utf-8"),
+            "url": redacted_url,
+            "headers": headers,
+            "timeout_s": spec.timeout_s,
+            "sensitive_query_keys": sorted(sensitive),
+            "body_sha256": hashlib.sha256(spec.body).hexdigest(),
         }
     )
 
@@ -140,39 +170,13 @@ def _spool_raw(session_dir: Path, action_id: str, payload: bytes) -> Path:
     return path
 
 
-def _permit_for(events: list[dict[str, Any]], action_id: str) -> dict[str, Any]:
-    """Look up a FRESH permit: acquired exactly once, never yet attempted.
-
-    Used for actions about to make their first physical request: a probe, a
-    deep submit, or one poll's transport permit. Not for the deep action on a
-    poll call, which is deliberately re-attempted across many polls — see
-    _deep_action_lookup.
-    """
-
-    permits = [
-        event
-        for event in events
-        if event.get("event") == "permit_acquired" and event.get("action_id") == action_id
-    ]
-    if len(permits) != 1:
-        raise BoundaryError(f"action {action_id} has no unique acquired permit")
-    statuses = [
-        event
-        for event in events
-        if event.get("event") == "attempt_status" and event.get("action_id") == action_id
-    ]
-    if statuses:
-        raise BoundaryError(f"action {action_id} was already attempted")
-    return permits[0]
-
-
 def _deep_action_lookup(events: list[dict[str, Any]], action_id: str) -> tuple[dict[str, Any], str]:
     """Look up an already-submitted deep action and its current attempt status.
 
-    Unlike _permit_for, this requires the action to already carry at least
-    one attempt_status event (it must have gone through execute_deep_submit),
-    and returns the latest status instead of refusing a re-visit — a deep
-    action is legitimately revisited by every poll and by deep-timeout.
+    This requires the action to already be marked attempted (it must have gone
+    through execute_deep_submit), and returns the latest status instead of
+    refusing a re-visit. A deep action is legitimately revisited by every poll
+    and by deep-timeout.
     """
 
     permits = [
@@ -187,9 +191,20 @@ def _deep_action_lookup(events: list[dict[str, Any]], action_id: str) -> tuple[d
         for event in events
         if event.get("event") == "attempt_status" and event.get("action_id") == action_id
     ]
-    if not statuses:
-        raise BoundaryError(f"action {action_id} has not been submitted yet")
-    return permits[0], statuses[-1]
+    permit = permits[0]
+    current = statuses[-1] if statuses else permit.get("initial_status", "acquired")
+    if current == "acquired":
+        raise BoundaryError(
+            f"deep action {action_id} has not been submitted; "
+            "no poll request count was consumed; do not resubmit the deep action"
+        )
+    if current == "attempted":
+        raise BoundaryError(
+            f"deep action {action_id} consumed=true; request count={permit.get('count')}; "
+            "pollable=false; no token; manual inspection required; "
+            "never retry or resubmit the same action"
+        )
+    return permit, current
 
 
 def _job_token_for(events: list[dict[str, Any]], action_id: str) -> str:
@@ -209,7 +224,10 @@ def _job_token_for(events: list[dict[str, Any]], action_id: str) -> str:
             job = details.get("job")
             if isinstance(job, str) and ":" in job:
                 return job.partition(":")[2]
-    raise BoundaryError(f"deep action {action_id} has no recorded job token")
+    raise BoundaryError(
+        f"deep action {action_id} has no recorded job token; no poll request count was consumed; "
+        "manual inspection required; never resubmit the same deep action"
+    )
 
 
 def _deep_query_hash(events: list[dict[str, Any]], action_id: str) -> str:
@@ -218,12 +236,11 @@ def _deep_query_hash(events: list[dict[str, Any]], action_id: str) -> str:
 
     for event in events:
         if (
-            event.get("event") == "attempt_status"
+            event.get("event") == "permit_acquired"
             and event.get("action_id") == action_id
-            and event.get("status") == "attempted"
+            and event.get("initial_status") == "attempted"
         ):
-            details = event.get("details") or {}
-            query_hash = details.get("query_hash")
+            query_hash = event.get("query_hash")
             if isinstance(query_hash, str) and query_hash:
                 return query_hash
     raise BoundaryError(f"deep action {action_id} has no recorded query hash")
@@ -292,6 +309,67 @@ def _bound_route(state: dict[str, Any], route: str, *, mode: str) -> dict[str, A
     return {**provider, "_adapter_key": adapter_key}
 
 
+def _ensure_new_action(events: list[dict[str, Any]], action_id: str) -> None:
+    if any(
+        event.get("event") == "permit_acquired" and event.get("action_id") == action_id
+        for event in events
+    ):
+        permit = next(
+            event for event in events
+            if event.get("event") == "permit_acquired" and event.get("action_id") == action_id
+        )
+        raise BoundaryError(
+            f"boundary action {action_id} already exists; consumed=true; "
+            f"request count={permit.get('count')}; same action must never be retried or resubmitted"
+        )
+
+
+def _failure_message(
+    phase: str,
+    action_id: str,
+    count: int,
+    outcome: str,
+    recovery: str,
+    detail: str = "",
+) -> str:
+    suffix = f"; detail: {detail}" if detail else ""
+    return (
+        f"{phase} {outcome}; boundary action {action_id} consumed=true; "
+        f"request count={count}; same action must never be retried or resubmitted; "
+        f"recovery: {recovery}{suffix}"
+    )
+
+
+def _reserve_request(
+    session_dir: Path,
+    action_id: str,
+    stage: str,
+    category: str,
+    route: str,
+    spec: RequestSpec,
+    count: int,
+    now: str,
+    *,
+    query_hash: Optional[str] = None,
+) -> str:
+    fingerprint = _request_fingerprint(spec)
+    try:
+        _reserve_boundary_action_unlocked(
+            session_dir,
+            action_id,
+            stage,
+            category,
+            route,
+            count,
+            fingerprint,
+            now,
+            query_hash=query_hash,
+        )
+    except QuotaError as exc:
+        raise BoundaryError(str(exc)) from exc
+    return fingerprint
+
+
 def _demo_result(query: str) -> ParsedResult:
     """Deterministic no-network result: exercises the full lifecycle honestly.
 
@@ -319,15 +397,17 @@ def _demo_result(query: str) -> ParsedResult:
 def execute_probe(
     session_dir: Path,
     action_id: str,
+    stage: str,
+    route: str,
     query: str,
     now: str,
     transport: Optional[Transport] = None,
     environ: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
-    """Execute one already-permitted probe request end to end.
+    """Build, reserve, and execute one probe request atomically.
 
     Lifecycle written to the event journal: attempted, then exactly one of
-    completed (occurrence recorded), failed (terminal, permit consumed), or
+    completed (occurrence recorded), failed (terminal, boundary action consumed), or
     uncertain (timeout after send — the provider may have processed it).
     """
 
@@ -343,14 +423,30 @@ def execute_probe(
         events, errors = _read_events_unlocked(session_dir)
         if errors:
             raise BoundaryError("event history is malformed")
-        permit = _permit_for(events, action_id)
-        if permit.get("category") != "probe":
-            raise BoundaryError("execute_probe only handles probe permits")
-        provider = _bound_route(state, permit.get("route"), mode="sync")
+        _ensure_new_action(events, action_id)
+        provider = _bound_route(state, route, mode="sync")
+        count = provider.get("request_multiplicity", {}).get("probe")
+        if not isinstance(count, int) or count <= 0:
+            raise BoundaryError(f"route {route} has invalid probe multiplicity")
 
         if provider["_adapter_key"] is None:  # no_network_demo route
-            _record_attempt_status_unlocked(
-                session_dir, action_id, "attempted", now, {"demo": True}
+            spec = RequestSpec(
+                "DEMO",
+                f"demo://{route}/probe",
+                {"X-Research-Mode": "no-network"},
+                query.encode("utf-8"),
+                0.0,
+            )
+            fingerprint = _reserve_request(
+                session_dir,
+                action_id,
+                stage,
+                "probe",
+                route,
+                spec,
+                count,
+                now,
+                query_hash=sha256_hex(query.strip()),
             )
             parsed = _demo_result(query.strip())
             payload = json.dumps(
@@ -362,21 +458,33 @@ def execute_probe(
                 session_dir, action_id, "accepted", now, {"demo": True, "spool": spool_path.name}
             )
             return _record_occurrence(
-                session_dir, state, provider, action_id, sha256_hex(query.strip()),
-                sha256_hex({"demo": query.strip()}), parsed, spool_path, now,
+                session_dir, state, provider, action_id, action_id, sha256_hex(query.strip()),
+                fingerprint, parsed, spool_path, now,
             )
 
         adapter = _adapters()[provider["_adapter_key"]]
 
         spec = adapter["build"](query.strip(), env)
-        # Fingerprint binds the attempt to the exact request without leaking auth.
-        fingerprint = _request_fingerprint(spec)
         wall_cap = state["contract"]["resource_envelope"]["external"].get("max_wall_time_seconds")
         timeout = min(spec.timeout_s, wall_cap) if isinstance(wall_cap, int) else spec.timeout_s
-        spec = RequestSpec(spec.method, spec.url, spec.headers, spec.body, float(timeout))
-
-        _record_attempt_status_unlocked(
-            session_dir, action_id, "attempted", now, {"fingerprint": fingerprint}
+        spec = RequestSpec(
+            spec.method,
+            spec.url,
+            spec.headers,
+            spec.body,
+            float(timeout),
+            spec.sensitive_query_keys,
+        )
+        fingerprint = _reserve_request(
+            session_dir,
+            action_id,
+            stage,
+            "probe",
+            route,
+            spec,
+            count,
+            now,
+            query_hash=sha256_hex(query.strip()),
         )
         try:
             status, payload = transport(spec)
@@ -385,14 +493,26 @@ def execute_probe(
                 session_dir, action_id, "uncertain", now,
                 {"error": f"timeout after send: {exc}"},
             )
-            raise BoundaryError(f"request timed out; attempt recorded uncertain: {exc}") from exc
+            raise BoundaryError(
+                _failure_message(
+                    "sync request", action_id, count, "timed out and is uncertain",
+                    "inspect the recorded lifecycle and provider outcome; do not replay this action",
+                    str(exc),
+                )
+            ) from exc
         except urllib.error.HTTPError as exc:  # response with error status
             status, payload = exc.code, exc.read()
         except (urllib.error.URLError, OSError) as exc:
             _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now, {"error": f"transport: {exc}"}
             )
-            raise BoundaryError(f"transport failed; permit consumed: {exc}") from exc
+            raise BoundaryError(
+                _failure_message(
+                    "sync request", action_id, count, "transport failed",
+                    "inspect the recorded lifecycle; do not replay this action",
+                    str(exc),
+                )
+            ) from exc
 
         spool_path = _spool_raw(session_dir, action_id, payload)
         _record_attempt_status_unlocked(
@@ -404,7 +524,12 @@ def execute_probe(
                 session_dir, action_id, "failed", now,
                 {"http_status": status, "spool": spool_path.name},
             )
-            raise BoundaryError(f"provider returned HTTP {status}; raw payload spooled")
+            raise BoundaryError(
+                _failure_message(
+                    "sync request", action_id, count, f"returned HTTP {status}",
+                    f"inspect provider spool {spool_path.name}; do not replay this action",
+                )
+            )
         try:
             parsed = adapter["parse"](payload)
         except AdapterParseError as exc:
@@ -412,21 +537,27 @@ def execute_probe(
                 session_dir, action_id, "failed", now,
                 {"error": str(exc)[:300], "spool": spool_path.name},
             )
-            raise
+            raise AdapterParseError(
+                _failure_message(
+                    "sync response", action_id, count, "parse failed",
+                    f"inspect provider spool {spool_path.name}; do not replay this action",
+                    str(exc),
+                )
+            ) from exc
 
         return _record_occurrence(
-            session_dir, state, provider, action_id, sha256_hex(query.strip()),
+            session_dir, state, provider, action_id, action_id, sha256_hex(query.strip()),
             fingerprint, parsed, spool_path, now,
         )
 
 
 # ── Async deep-engine boundary ──────────────────────────────────────────────
 #
-# submit is the paid POST: it consumes the already-acquired `deep` permit's
-# action and is NEVER retried by this boundary. poll is one physical GET per
-# call, consuming a separately-acquired `transport` permit each time — the
-# caller (Organizer/CLI) drives the backoff cadence between calls, since the
-# session lock must never be held across a sleep. deep-timeout is a free,
+# submit is the paid POST: this boundary owns the `deep` reservation and is
+# NEVER retried. poll is one physical GET per call, with this boundary owning
+# each `transport` reservation — the caller (Organizer/CLI) drives the backoff
+# cadence between calls, since the session lock must never be held across a
+# sleep. deep-timeout is a free,
 # no-network wall-clock check that moves a stuck `accepted` action to
 # `uncertain`; the next poll call journals a resume and continues.
 
@@ -434,18 +565,20 @@ def execute_probe(
 def execute_deep_submit(
     session_dir: Path,
     action_id: str,
+    stage: str,
+    route: str,
     query: str,
     now: str,
     transport: Optional[Transport] = None,
     environ: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
-    """Submit one already-permitted deep-research job. The paid POST is sent
+    """Build, reserve, and submit one deep-research job atomically. The paid POST is sent
     at most once: on any ambiguity after the bytes go out (timeout) this
     records `uncertain` and raises rather than retrying.
 
     Lifecycle written to the event journal: attempted, then exactly one of
     accepted (details include the provider job token), failed (terminal HTTP
-    error or malformed accept body; permit consumed), or uncertain (timeout
+    error or malformed accept body; boundary action consumed), or uncertain (timeout
     after send).
     """
 
@@ -462,20 +595,18 @@ def execute_deep_submit(
         events, errors = _read_events_unlocked(session_dir)
         if errors:
             raise BoundaryError("event history is malformed")
-        permit = _permit_for(events, action_id)
-        if permit.get("category") != "deep":
-            raise BoundaryError("execute_deep_submit only handles deep permits")
-        provider = _bound_route(state, permit.get("route"), mode="async")
+        _ensure_new_action(events, action_id)
+        provider = _bound_route(state, route, mode="async")
+        count = provider.get("request_multiplicity", {}).get("deep")
+        if not isinstance(count, int) or count <= 0:
+            raise BoundaryError(f"route {route} has invalid deep multiplicity")
         adapter = _adapters()[provider["_adapter_key"]]
 
         spec = adapter["submit"](query, env)
-        # Fingerprint binds the attempt to the exact paid request without leaking auth.
-        fingerprint = _request_fingerprint(spec)
         query_hash = sha256_hex(query)
-
-        _record_attempt_status_unlocked(
-            session_dir, action_id, "attempted", now,
-            {"fingerprint": fingerprint, "query_hash": query_hash},
+        _reserve_request(
+            session_dir, action_id, stage, "deep", route, spec, count, now,
+            query_hash=query_hash,
         )
         try:
             status, payload = transport(spec)
@@ -485,7 +616,11 @@ def execute_deep_submit(
                 {"error": f"timeout after send: {exc}"},
             )
             raise BoundaryError(
-                f"submit timed out; attempt recorded uncertain (never retried): {exc}"
+                _failure_message(
+                    "deep submit", action_id, count, "timed out and is uncertain",
+                    "run deep-pending; with no token, perform manual inspection; do not resubmit",
+                    str(exc),
+                )
             ) from exc
         except urllib.error.HTTPError as exc:  # response with error status
             status, payload = exc.code, exc.read()
@@ -493,7 +628,13 @@ def execute_deep_submit(
             _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now, {"error": f"transport: {exc}"}
             )
-            raise BoundaryError(f"submit transport failed; permit consumed: {exc}") from exc
+            raise BoundaryError(
+                _failure_message(
+                    "deep submit", action_id, count, "transport failed",
+                    "inspect the provider outcome manually; do not resubmit",
+                    str(exc),
+                )
+            ) from exc
 
         # Raw accept payload spooled before any parsing: a malformed accept
         # body never loses the paid bytes.
@@ -501,27 +642,30 @@ def execute_deep_submit(
 
         if status != 200:
             _record_attempt_status_unlocked(
-                session_dir, action_id, "accepted", now,
-                {"http_status": status, "spool": spool_path.name},
-            )
-            _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now,
                 {"http_status": status, "spool": spool_path.name},
             )
-            raise BoundaryError(f"provider returned HTTP {status} on submit; raw payload spooled")
+            raise BoundaryError(
+                _failure_message(
+                    "deep submit", action_id, count, f"returned HTTP {status}",
+                    f"inspect provider spool {spool_path.name} and the provider outcome manually; do not resubmit",
+                )
+            )
 
         try:
             token = adapter["job_token"](payload)
         except AdapterParseError as exc:
             _record_attempt_status_unlocked(
-                session_dir, action_id, "accepted", now,
-                {"http_status": status, "spool": spool_path.name},
-            )
-            _record_attempt_status_unlocked(
-                session_dir, action_id, "failed", now,
+                session_dir, action_id, "uncertain", now,
                 {"error": str(exc)[:300], "spool": spool_path.name},
             )
-            raise
+            raise AdapterParseError(
+                _failure_message(
+                    "deep submit response", action_id, count, "job-token parse failed; no token recorded",
+                    "run deep-pending; because no token is available, perform manual inspection; do not resubmit",
+                    str(exc),
+                )
+            ) from exc
 
         job_ref = f"{provider['id']}:{token}"
         _record_attempt_status_unlocked(
@@ -540,12 +684,14 @@ def execute_deep_poll(
     session_dir: Path,
     deep_action_id: str,
     poll_action_id: str,
+    stage: str,
+    route: str,
     now: str,
     transport: Optional[Transport] = None,
     environ: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     """Execute exactly ONE physical poll GET against an accepted or uncertain
-    deep action, consuming a separately-acquired `transport` permit.
+    deep action, reserving the transport action inside this boundary.
 
     Outcomes:
     - still running: the poll action's own attempt completes (details
@@ -579,32 +725,31 @@ def execute_deep_poll(
         deep_permit, deep_status = _deep_action_lookup(events, deep_action_id)
         if deep_permit.get("category") != "deep":
             raise BoundaryError("execute_deep_poll deep_action_id must be a deep action")
+        if deep_permit.get("route") != route:
+            raise BoundaryError("poll route must match the deep action's route")
+        if deep_permit.get("stage") != stage:
+            raise BoundaryError("poll stage must match the deep action's stage")
         if deep_status not in {"accepted", "uncertain"}:
             raise BoundaryError(
                 f"deep action {deep_action_id} is not pollable from status {deep_status!r}"
             )
 
-        poll_permit = _permit_for(events, poll_action_id)
-        if poll_permit.get("category") != "transport":
-            raise BoundaryError("execute_deep_poll poll_action_id must be a fresh transport permit")
-        if poll_permit.get("route") != deep_permit.get("route"):
-            raise BoundaryError("poll permit route must match the deep action's route")
-
-        provider = _bound_route(state, deep_permit["route"], mode="async")
+        _ensure_new_action(events, poll_action_id)
+        provider = _bound_route(state, route, mode="async")
+        count = provider.get("request_multiplicity", {}).get("transport")
+        if not isinstance(count, int) or count <= 0:
+            raise BoundaryError(f"route {route} has invalid transport multiplicity")
         adapter = _adapters()[provider["_adapter_key"]]
 
+        token = _job_token_for(events, deep_action_id)
+        spec = adapter["poll"](token, env)
+        poll_fingerprint = _reserve_request(
+            session_dir, poll_action_id, stage, "transport", route, spec, count, now,
+        )
         if deep_status == "uncertain":
             _record_attempt_status_unlocked(
                 session_dir, deep_action_id, "accepted", now, {"resume": True}
             )
-
-        token = _job_token_for(events, deep_action_id)
-        spec = adapter["poll"](token, env)
-        poll_fingerprint = _request_fingerprint(spec)
-
-        _record_attempt_status_unlocked(
-            session_dir, poll_action_id, "attempted", now, {"fingerprint": poll_fingerprint}
-        )
         try:
             status, payload = transport(spec)
         except (socket.timeout, TimeoutError) as exc:
@@ -612,14 +757,26 @@ def execute_deep_poll(
                 session_dir, poll_action_id, "uncertain", now,
                 {"error": f"timeout after send: {exc}"},
             )
-            raise BoundaryError(f"poll timed out; attempt recorded uncertain: {exc}") from exc
+            raise BoundaryError(
+                _failure_message(
+                    "deep poll", poll_action_id, count, "timed out and is uncertain",
+                    "run deep-pending to confirm the token, then use a new deep-poll action",
+                    str(exc),
+                )
+            ) from exc
         except urllib.error.HTTPError as exc:
             status, payload = exc.code, exc.read()
         except (urllib.error.URLError, OSError) as exc:
             _record_attempt_status_unlocked(
                 session_dir, poll_action_id, "failed", now, {"error": f"transport: {exc}"}
             )
-            raise BoundaryError(f"poll transport failed; permit consumed: {exc}") from exc
+            raise BoundaryError(
+                _failure_message(
+                    "deep poll", poll_action_id, count, "transport failed",
+                    "run deep-pending to confirm the token, then use a new deep-poll action",
+                    str(exc),
+                )
+            ) from exc
 
         poll_spool_path = _spool_raw(session_dir, poll_action_id, payload)
         _record_attempt_status_unlocked(
@@ -632,7 +789,12 @@ def execute_deep_poll(
                 session_dir, poll_action_id, "failed", now,
                 {"http_status": status, "spool": poll_spool_path.name},
             )
-            raise BoundaryError(f"provider returned HTTP {status} on poll; raw payload spooled")
+            raise BoundaryError(
+                _failure_message(
+                    "deep poll", poll_action_id, count, f"returned HTTP {status}",
+                    f"inspect provider spool {poll_spool_path.name}, run deep-pending, then use a new deep-poll action",
+                )
+            )
 
         try:
             parsed = adapter["extract"](payload)
@@ -646,8 +808,25 @@ def execute_deep_poll(
                 session_dir, deep_action_id, "failed", now,
                 {"error": str(exc)[:300], "spool": poll_spool_path.name},
             )
-            raise BoundaryError(f"deep job terminal failure: {exc}") from exc
-        except AdapterParseError:
+            terminal_status = "failed"
+            try:
+                terminal_payload = json.loads(payload.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                terminal_payload = {}
+            if isinstance(terminal_payload, dict) and isinstance(terminal_payload.get("status"), str):
+                terminal_status = terminal_payload["status"].lower()
+            raise BoundaryError(
+                _failure_message(
+                    "deep poll",
+                    poll_action_id,
+                    count,
+                    f"terminal failure (deep status={terminal_status})",
+                    f"inspect provider spool {poll_spool_path.name}; "
+                    "start a fresh /deep run if the research must be repeated",
+                    str(exc),
+                )
+            ) from exc
+        except AdapterParseError as exc:
             # Genuinely unreadable payload: the poll attempt itself failed.
             # The deep action is deliberately left untouched (still accepted
             # or freshly resumed) so a later poll can harvest at zero cost.
@@ -655,7 +834,13 @@ def execute_deep_poll(
                 session_dir, poll_action_id, "failed", now,
                 {"error": "malformed terminal payload", "spool": poll_spool_path.name},
             )
-            raise
+            raise AdapterParseError(
+                _failure_message(
+                    "deep poll response", poll_action_id, count, "parse failed",
+                    f"inspect provider spool {poll_spool_path.name}, run deep-pending, then use a new deep-poll action",
+                    str(exc),
+                )
+            ) from exc
 
         if parsed is None:
             _record_attempt_status_unlocked(
@@ -668,14 +853,15 @@ def execute_deep_poll(
                 "poll_spool_path": str(poll_spool_path),
             }
 
-        _record_attempt_status_unlocked(
+        terminal_poll_event = _record_attempt_status_unlocked(
             session_dir, poll_action_id, "completed", now,
             {"job_status": "completed", "spool": poll_spool_path.name},
         )
         query_hash = _deep_query_hash(events, deep_action_id)
         result = _record_occurrence(
-            session_dir, state, provider, deep_action_id, query_hash,
+            session_dir, state, provider, deep_action_id, poll_action_id, query_hash,
             poll_fingerprint, parsed, poll_spool_path, now,
+            terminal_poll_event_hash=terminal_poll_event["event_hash"],
         )
         result["status"] = "completed"
         result["poll_action_id"] = poll_action_id
@@ -736,11 +922,14 @@ def _record_occurrence(
     state: dict[str, Any],
     provider: dict[str, Any],
     action_id: str,
+    request_action_id: str,
     query_hash: str,
     fingerprint: str,
     parsed: ParsedResult,
     spool_path: Path,
     now: str,
+    *,
+    terminal_poll_event_hash: Optional[str] = None,
 ) -> dict[str, Any]:
     """Write the occurrence patch and complete the attempt. Caller holds the lock.
 
@@ -754,6 +943,7 @@ def _record_occurrence(
         "id": f"occ-{action_id}",
         "provider_id": provider["id"],
         "action_id": action_id,
+        "request_action_id": request_action_id,
         "kind": parsed.kind,
         "query_hash": query_hash,
         "fingerprint": fingerprint,
@@ -766,6 +956,8 @@ def _record_occurrence(
         "synthesis_truncated": len(parsed.synthesis_text) > SYNTHESIS_EXCERPT_LIMIT,
         "spool": spool_path.name,
     }
+    if terminal_poll_event_hash is not None:
+        occurrence["terminal_poll_event_hash"] = terminal_poll_event_hash
     updated = _apply_boundary_patch_unlocked(
         session_dir,
         [{"op": "add", "path": "/retrieval_occurrences/-", "value": occurrence}],

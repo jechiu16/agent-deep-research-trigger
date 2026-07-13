@@ -7,7 +7,7 @@ from pathlib import Path
 
 from research_harness.adapters import ietf
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -118,14 +118,17 @@ class IetfBoundaryTests(unittest.TestCase):
         )
         state = new_state(contract, NOW, registry=self.registry, environ=TEST_ENV)
         create_session(self.session, state)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "ietf", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
@@ -153,7 +156,7 @@ class IetfBoundaryTests(unittest.TestCase):
         expected_url = f"https://www.rfc-editor.org/rfc/{doc_id.lower()}"
 
         result = execute_probe(
-            self.session, "A1", "9110", NOW,
+            self.session, "A1", 'primary_scout', 'ietf', "9110", NOW,
             transport=fixture_transport("ietf_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -181,23 +184,20 @@ class IetfBoundaryTests(unittest.TestCase):
     def test_http_404_consumes_permit_and_preserves_payload(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "99999", NOW,
+                self.session, "A1", 'primary_scout', 'ietf', "99999", NOW,
                 transport=fixture_transport("ietf_not_found.json", status=404),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
         self.assertIn("Not found", spool.read_text())
-        # The permit stays consumed: the single primary_scout invocation is gone.
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "ietf", 1, "fp2", NOW
-            )
+        # The boundary request count stays consumed after the failed call.
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
         with self.assertRaises(AdapterParseError):
             execute_probe(
-                self.session, "A1", "9110", NOW,
+                self.session, "A1", 'primary_scout', 'ietf', "9110", NOW,
                 transport=fixture_transport("ietf_malformed_missing_doc_id.json"),
                 environ=TEST_ENV,
             )
@@ -210,19 +210,19 @@ class IetfBoundaryTests(unittest.TestCase):
         # attempt-status lifecycle (unlike a transport/HTTP failure).
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "not-an-rfc-number", NOW,
+                self.session, "A1", 'primary_scout', 'ietf', "not-an-rfc-number", NOW,
                 transport=fixture_transport("ietf_success.json"), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), [])
 
     def test_second_execution_of_same_action_is_refused(self) -> None:
         execute_probe(
-            self.session, "A1", "9110", NOW,
+            self.session, "A1", 'primary_scout', 'ietf', "9110", NOW,
             transport=fixture_transport("ietf_success.json"), environ=TEST_ENV,
         )
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "9110", NOW,
+                self.session, "A1", 'primary_scout', 'ietf', "9110", NOW,
                 transport=fixture_transport("ietf_success.json"), environ=TEST_ENV,
             )
 

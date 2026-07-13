@@ -7,7 +7,7 @@ from pathlib import Path
 
 from research_harness.adapters import osv
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -123,14 +123,17 @@ class OsvBoundaryTests(unittest.TestCase):
         )
         state = new_state(contract, NOW, registry=self.registry, environ=TEST_ENV)
         create_session(self.session, state)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "osv", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
@@ -149,7 +152,7 @@ class OsvBoundaryTests(unittest.TestCase):
         expected_synthesis = "\n".join(_expected_line(v) for v in vulns)
 
         result = execute_probe(
-            self.session, "A1", "PyPI/requests", NOW,
+            self.session, "A1", 'primary_scout', 'osv', "PyPI/requests", NOW,
             transport=fixture_transport("osv_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -178,7 +181,7 @@ class OsvBoundaryTests(unittest.TestCase):
         # {} shape for "nothing found" is a VALID complete result, not an
         # error — the attempt must still reach "completed", not "failed".
         result = execute_probe(
-            self.session, "A1", "PyPI/cowsay", NOW,
+            self.session, "A1", 'primary_scout', 'osv', "PyPI/cowsay", NOW,
             transport=fixture_transport("osv_empty.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -199,23 +202,20 @@ class OsvBoundaryTests(unittest.TestCase):
         # error, not a malformed/parse-failure payload.
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "PyPI/requests", NOW,
+                self.session, "A1", 'primary_scout', 'osv', "PyPI/requests", NOW,
                 transport=fixture_transport("osv_invalid_ecosystem.json", status=400),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
         self.assertIn("Invalid ecosystem", spool.read_text())
-        # The permit stays consumed: the single primary_scout invocation is gone.
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "osv", 1, "fp2", NOW
-            )
+        # The boundary request count stays consumed after the failed call.
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
         with self.assertRaises(AdapterParseError):
             execute_probe(
-                self.session, "A1", "PyPI/requests", NOW,
+                self.session, "A1", 'primary_scout', 'osv', "PyPI/requests", NOW,
                 transport=fixture_transport("osv_malformed_vulns_not_list.json"),
                 environ=TEST_ENV,
             )
@@ -229,19 +229,19 @@ class OsvBoundaryTests(unittest.TestCase):
         # failure).
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "this-has-no-slash", NOW,
+                self.session, "A1", 'primary_scout', 'osv', "this-has-no-slash", NOW,
                 transport=fixture_transport("osv_success.json"), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), [])
 
     def test_second_execution_of_same_action_is_refused(self) -> None:
         execute_probe(
-            self.session, "A1", "PyPI/requests", NOW,
+            self.session, "A1", 'primary_scout', 'osv', "PyPI/requests", NOW,
             transport=fixture_transport("osv_success.json"), environ=TEST_ENV,
         )
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "PyPI/requests", NOW,
+                self.session, "A1", 'primary_scout', 'osv', "PyPI/requests", NOW,
                 transport=fixture_transport("osv_success.json"), environ=TEST_ENV,
             )
 

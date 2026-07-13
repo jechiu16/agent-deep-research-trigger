@@ -43,9 +43,11 @@ sentinel exists so that never has to happen again.
    tests), plus HTTP-error, parse-failure, and permit-consumption checks.
    Build sessions with `confirmed_demo_contract(route="<provider>", ...)`.
 6. Full suite green: `python -m unittest discover -s tests -q`.
-7. A live end-to-end evidence run in a scratch directory (NOT committed):
-   contract → `init` → `permit` → `execute` → `validate` returns `ok=true`.
-   Record its cost, citation/record count, and occurrence id in your report.
+7. A live end-to-end evidence run in a scratch directory (NOT committed): a
+   confirmed v3 contract → `init` → boundary `execute` → `validate` returns
+   `ok=true`. Paid/network requests have no separate `permit` step; the
+   boundary reserves and executes them atomically. Record its cost,
+   citation/record count, and occurrence id in your report.
 
 ## Rules that are not negotiable
 

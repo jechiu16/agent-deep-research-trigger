@@ -7,9 +7,9 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from .contracts import ACTION_CATEGORIES, contract_card_sha256
+from .contracts import ACTION_CATEGORIES, METERED_CATEGORIES, contract_card_sha256
 from .providers import preflight_contract_routes, provider_records_sha256
-from .state import validate_state_document
+from .state import CONTRACT_SEMANTICS_V3, validate_state_document
 from .storage import (
     _append_event_unlocked,
     _load_state_unlocked,
@@ -31,6 +31,8 @@ from .storage import (
 # action_id from a retrieval occurrence instead of a permit (occurrences can
 # be patched directly), so it independently re-checks this same pattern.
 ACTION_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+HASH64_RE = re.compile(r"^[0-9a-f]{64}$")
+BOUNDARY_CATEGORIES = frozenset({"probe", "deep", "transport"})
 
 
 class QuotaError(RuntimeError):
@@ -112,10 +114,9 @@ def acquire_permits(
     category: str,
     route: str,
     count: int,
-    fingerprint: str,
     now: str,
 ) -> list[dict[str, Any]]:
-    """Reserve `count` physical requests for one action, or raise.
+    """Reserve a legacy non-boundary action, or raise.
 
     Unlike `new_state`/`execute_probe`, the confirmed-and-bound preflight
     here (`_assert_confirmed_and_bound`) reads the live `os.environ`
@@ -134,8 +135,10 @@ def acquire_permits(
             )
         if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
             raise QuotaExceeded("permit count must be a positive integer")
-        if not isinstance(fingerprint, str) or not fingerprint:
-            raise QuotaExceeded("fingerprint must be a non-empty string")
+        if category in METERED_CATEGORIES:
+            raise QuotaExceeded(
+                f"{category} actions require an implemented request boundary"
+            )
         events, errors = _read_events_unlocked(session_dir)
         if errors:
             raise QuotaError("event history is malformed")
@@ -180,30 +183,165 @@ def acquire_permits(
         if usage[category] + count > ceiling:
             raise QuotaExceeded(f"physical ceiling exhausted for {category}")
 
-        event = _append_event_unlocked(
-            session_dir,
-            {
-                "event": "permit_acquired",
-                "at": now,
-                "action_id": action_id,
-                "stage": stage,
-                "category": category,
-                "route": route,
-                "invocation_index": len(matching) + 1,
-                "count": count,
-                "fingerprint": fingerprint,
-            },
+        return _append_permit_unlocked(
+            session_dir, action_id, stage, category, route, count,
+            len(matching) + 1, now,
         )
-        return [
-            {
-                "action_id": action_id,
-                "permit_index": index + 1,
-                "category": category,
-                "route": route,
-                "event_hash": event["event_hash"],
-            }
-            for index in range(count)
-        ]
+
+
+def _append_permit_unlocked(
+    session_dir: Path,
+    action_id: str,
+    stage: str,
+    category: str,
+    route: str,
+    count: int,
+    invocation_index: int,
+    now: str,
+    *,
+    fingerprint: Optional[str] = None,
+    initial_status: Optional[str] = None,
+    query_hash: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Append one permit event after quota checks have passed."""
+
+    if category in BOUNDARY_CATEGORIES:
+        if initial_status != "attempted":
+            raise QuotaExceeded("boundary permits must start with initial_status=attempted")
+        if not isinstance(fingerprint, str) or HASH64_RE.fullmatch(fingerprint) is None:
+            raise QuotaExceeded("boundary fingerprint must be 64 lowercase hex characters")
+        if category in {"probe", "deep"}:
+            if not isinstance(query_hash, str) or HASH64_RE.fullmatch(query_hash) is None:
+                raise QuotaExceeded("probe/deep query_hash must be 64 lowercase hex characters")
+        elif query_hash is not None:
+            raise QuotaExceeded("non-deep boundary actions cannot carry query_hash")
+    elif category in METERED_CATEGORIES:
+        raise QuotaExceeded(f"{category} actions require an implemented request boundary")
+    elif (
+        initial_status is not None
+        or fingerprint is not None
+        or query_hash is not None
+    ):
+        raise QuotaExceeded("legacy permits cannot carry boundary-only fields")
+
+    event_data: dict[str, Any] = {
+        "event": "permit_acquired",
+        "at": now,
+        "action_id": action_id,
+        "stage": stage,
+        "category": category,
+        "route": route,
+        "invocation_index": invocation_index,
+        "count": count,
+    }
+    if fingerprint is not None:
+        event_data["fingerprint"] = fingerprint
+    if initial_status is not None:
+        event_data["initial_status"] = initial_status
+    if query_hash is not None:
+        event_data["query_hash"] = query_hash
+    event = _append_event_unlocked(session_dir, event_data)
+    return [
+        {
+            "action_id": action_id,
+            "permit_index": index + 1,
+            "category": category,
+            "route": route,
+            "event_hash": event["event_hash"],
+        }
+        for index in range(count)
+    ]
+
+
+def _reserve_boundary_action_unlocked(
+    session_dir: Path,
+    action_id: str,
+    stage: str,
+    category: str,
+    route: str,
+    count: int,
+    fingerprint: str,
+    now: str,
+    *,
+    query_hash: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Reserve a boundary request and mark it attempted in one journal event.
+
+    The caller must hold the session lock and must have already built the
+    actual RequestSpec. This function deliberately has no public caller path.
+    """
+
+    if category not in BOUNDARY_CATEGORIES:
+        raise QuotaExceeded(f"{category} is not a boundary-managed category")
+    if not isinstance(action_id, str) or ACTION_ID_RE.fullmatch(action_id) is None:
+        raise QuotaExceeded(
+            "action_id must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$ (non-empty, no path separators)"
+        )
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        raise QuotaExceeded("permit count must be a positive integer")
+    if not isinstance(fingerprint, str) or HASH64_RE.fullmatch(fingerprint) is None:
+        raise QuotaExceeded("boundary fingerprint must be 64 lowercase hex characters")
+    if category in {"probe", "deep"}:
+        if not isinstance(query_hash, str) or HASH64_RE.fullmatch(query_hash) is None:
+            raise QuotaExceeded("probe/deep query_hash must be 64 lowercase hex characters")
+    elif query_hash is not None:
+        raise QuotaExceeded("non-deep boundary actions cannot carry query_hash")
+    state = _load_state_unlocked(session_dir)
+    if state.get("session", {}).get("contract_semantics") != CONTRACT_SEMANTICS_V3:
+        raise QuotaExceeded(f"boundary actions require contract_semantics={CONTRACT_SEMANTICS_V3}")
+    _assert_confirmed_and_bound(state)
+    events, errors = _read_events_unlocked(session_dir)
+    if errors:
+        raise QuotaError("event history is malformed")
+    permits = _permit_events(events)
+    if any(event.get("action_id") == action_id for event in permits):
+        raise DuplicateAction(f"action {action_id} already exists")
+    mappings = [
+        mapping for mapping in state["contract"]["stage_permit_map"]
+        if mapping.get("stage") == stage
+        and mapping.get("category") == category
+        and mapping.get("route") == route
+    ]
+    if len(mappings) != 1:
+        raise QuotaExceeded(f"no exact stage mapping for {stage}/{category}/{route}")
+    matching = [
+        event for event in permits
+        if event.get("stage") == stage
+        and event.get("category") == category
+        and event.get("route") == route
+    ]
+    mapping = mappings[0]
+    if len(matching) >= mapping["invocations"]:
+        raise QuotaExceeded(f"stage invocation capacity exhausted for {stage}/{category}/{route}")
+    used_for_mapping = sum(event["count"] for event in matching)
+    if used_for_mapping + count > mapping["count"]:
+        raise QuotaExceeded(f"stage request capacity exhausted for {stage}/{category}/{route}")
+    usage = _usage_from_events(events)
+    ceiling = state["contract"]["resource_envelope"]["physical_ceiling"][category]
+    if usage[category] + count > ceiling:
+        raise QuotaExceeded(f"physical ceiling exhausted for {category}")
+    provider = next(
+        (provider for provider in state["capabilities"]["providers"] if provider.get("id") == route),
+        None,
+    )
+    if provider is None or provider.get("enabled") is not True:
+        raise QuotaExceeded(f"route {route} is not enabled")
+    multiplicity = provider.get("request_multiplicity", {}).get(category)
+    if count != multiplicity:
+        raise QuotaExceeded(f"route {route} requires {multiplicity} physical requests per invocation")
+    return _append_permit_unlocked(
+        session_dir,
+        action_id,
+        stage,
+        category,
+        route,
+        count,
+        len(matching) + 1,
+        now,
+        fingerprint=fingerprint,
+        initial_status="attempted",
+        query_hash=query_hash,
+    )
 
 
 # Keys are the CURRENT status; values are the statuses a transition may
@@ -213,13 +351,13 @@ def acquire_permits(
 # after-send, or an async submit/poll transport timeout — never retried,
 # ambiguous whether the provider processed it) and accepted -> uncertain
 # (async wall-clock exhaustion: execute_deep_timeout, no physical request).
-# In both cases the permit stays consumed; nothing here refunds.
+# In both cases the boundary action/request count stays consumed; nothing here refunds.
 #
 # uncertain -> accepted is the resume transition: the ONLY way out of
 # uncertain. It is journaled with details {"resume": true} by
 # execute_deep_poll itself (there is no separate resume verb) the moment a
 # poll is attempted against an uncertain deep action, then normal polling
-# continues under a freshly acquired transport permit.
+# continues under a newly reserved boundary transport action.
 ATTEMPT_TRANSITIONS = {
     "acquired": {"attempted"},
     "attempted": {"accepted", "failed", "uncertain"},
@@ -245,12 +383,16 @@ def _record_attempt_status_unlocked(
         for event in events
     ):
         raise InvalidAttemptTransition(f"unknown action {action_id}")
+    permit = next(
+        event for event in events
+        if event.get("event") == "permit_acquired" and event.get("action_id") == action_id
+    )
     statuses = [
         event["status"]
         for event in events
         if event.get("event") == "attempt_status" and event.get("action_id") == action_id
     ]
-    current = statuses[-1] if statuses else "acquired"
+    current = statuses[-1] if statuses else permit.get("initial_status", "acquired")
     if status not in ATTEMPT_TRANSITIONS.get(current, set()):
         raise InvalidAttemptTransition(f"cannot transition action {action_id} from {current} to {status}")
     event: dict[str, Any] = {

@@ -60,6 +60,75 @@ class DocumentationTests(unittest.TestCase):
         self.assertNotIn("complete default host interaction protocol", harness.lower())
         self.assertNotIn("executable protocol", harness.lower())
 
+    def test_harness_public_protocol_has_one_tier_confirmation(self) -> None:
+        text = (ROOT / "HARNESS.md").read_text(encoding="utf-8")
+        start = text.index("## Public Protocol")
+        end = text.index("## Internal Binding", start)
+        protocol = text[start:end]
+        normalized = " ".join(protocol.split()).lower()
+
+        self.assertIn("sole public protocol", normalized)
+        self.assertIn("literal `/deep`", protocol)
+        self.assertIn("kernel-free seven-line card", normalized)
+        self.assertIn("exactly one tier", normalized)
+        for tier in ("low", "medium", "high"):
+            with self.subTest(tier=tier):
+                self.assertIn(tier, normalized)
+        self.assertIn("adjust", normalized)
+        self.assertIn("new card", normalized)
+        self.assertIn("only confirmation", normalized)
+
+        for term in ("custom", "posture", "route", "hash", "permit map"):
+            with self.subTest(forbidden=term):
+                self.assertNotIn(term, normalized)
+        for command in ("prepare", "confirm", "init"):
+            with self.subTest(command=command):
+                self.assertNotRegex(protocol, rf"`{command}`|\b{command}\b")
+
+    def test_harness_keeps_contract_binding_and_semantic_change_boundary_internal(self) -> None:
+        text = (ROOT / "HARNESS.md").read_text(encoding="utf-8")
+        start = text.index("## Internal Binding")
+        end = text.index("## Scientific Organizer Loop", start)
+        binding = " ".join(text[start:end].split()).lower()
+
+        self.assertIn("derives and binds the canonical contract", binding)
+        self.assertIn("after tier selection", binding)
+        for operation in ("prepare", "confirm", "init"):
+            with self.subTest(operation=operation):
+                self.assertIn(f"`{operation}`", binding)
+        self.assertIn("external paid-request count", binding)
+        self.assertIn("local-data egress semantic change", binding)
+        self.assertIn("new card and a new run", binding)
+
+    def test_beta5_changelog_names_the_three_release_areas(self) -> None:
+        text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        beta5 = text.split("## 2.0.0b5", 1)[1].split("## 2.0.0b4", 1)[0]
+        bullets: list[str] = []
+        for line in beta5.splitlines():
+            if line.startswith("- "):
+                bullets.append(line[2:].lower())
+            elif bullets and line.strip():
+                bullets[-1] += f" {line.strip().lower()}"
+
+        self.assertTrue(
+            any(
+                all(term in bullet for term in ("/deep", "low", "medium", "high", "canonical json", "zh-hant-tw", "blocked", "evidence-insufficient"))
+                for bullet in bullets
+            )
+        )
+        self.assertTrue(
+            any(
+                all(term in bullet for term in ("question-bound", "actual-request", "atomic reservation", "v3 occurrence lineage", "legacy-marker"))
+                for bullet in bullets
+            )
+        )
+        self.assertTrue(
+            any(
+                all(term in bullet for term in ("async", "no-token", "terminal-poll", "at-most-once", "resubmission"))
+                for bullet in bullets
+            )
+        )
+
     def test_progress_uses_natural_traditional_chinese_user_phases(self) -> None:
         text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         phases = ("界定問題", "蒐集資料", "交叉檢查", "形成結論", "交付結果")
@@ -111,40 +180,111 @@ class DocumentationTests(unittest.TestCase):
             json.dumps(registry, ensure_ascii=False),
         )
 
-    def test_readmes_document_one_real_first_use_path(self) -> None:
-        expected_session_copy = {
-            "README.md": "start a new Claude Code or Codex session",
-            "README.zh-TW.md": "開啟新的 Claude Code 或 Codex session",
+    def test_readmes_put_four_step_happy_path_before_optional_details(self) -> None:
+        expected = {
+            "README.md": {
+                "heading": "## Quickstart",
+                "steps": (
+                    "1. **Install the skill.**",
+                    "2. **Link it to one host.**",
+                    "3. **Start a fresh session.**",
+                    "4. **Type `/deep` and choose a tier.**",
+                ),
+                "next": "## Why this exists",
+                "no_key": "no provider key",
+                "native": "host-native",
+                "low": "Chat-only answer with links; no package",
+                "medium": "Adaptive research that always delivers the canonical package",
+                "high": "Multiple direct sources that always deliver the canonical package",
+            },
+            "README.zh-TW.md": {
+                "heading": "## 快速開始",
+                "steps": (
+                    "1. **安裝 skill。**",
+                    "2. **連結到一個 host。**",
+                    "3. **開啟新的 session。**",
+                    "4. **輸入 `/deep` 並選擇 tier。**",
+                ),
+                "next": "## 為什麼需要它",
+                "no_key": "不需要 provider key",
+                "native": "Host-native",
+                "low": "只在 chat 中回答並附上連結；不建立 package",
+                "medium": "Adaptive research 一律交付包含 JSON 與",
+                "high": "取得多個直接來源，一律交付包含 JSON 與",
+            },
         }
-        for relative, session_copy in expected_session_copy.items():
-            text = (ROOT / relative).read_text(encoding="utf-8")
-            self.assertIn("deep-research-state providers", text)
-            self.assertIn("/deep", text)
-            self.assertIn(session_copy, text)
-            self.assertNotIn("golden transcript", text.lower())
-
-    def test_quickstarts_keep_first_use_steps_in_order(self) -> None:
-        expected_session_copy = {
-            "README.md": ("## Quickstart", "start a new Claude Code or Codex session"),
-            "README.zh-TW.md": ("## 快速開始", "開啟新的 Claude Code 或 Codex session"),
-        }
-        for relative, (heading, session_copy) in expected_session_copy.items():
+        for relative, values in expected.items():
             with self.subTest(path=relative):
                 text = (ROOT / relative).read_text(encoding="utf-8")
-                start = text.index(heading)
-                end = text.find("\n## ", start + len(heading))
-                quickstart = text[start:] if end == -1 else text[start:end]
-                markers = (
-                    "git clone",
-                    "deep-research-state demo",
-                    "deep-research-state providers",
-                    "cp .env.example .env",
-                    'ln -s "$PWD" "$HOME/.claude/skills/deep"',
-                    session_copy,
-                    "/deep <question>",
-                )
-                positions = [quickstart.index(marker) for marker in markers]
+                start = text.index(values["heading"])
+                end = text.index(values["next"], start)
+                quickstart = text[start:end]
+                positions = [quickstart.index(step) for step in values["steps"]]
                 self.assertEqual(positions, sorted(positions))
+                self.assertIn(values["no_key"], quickstart)
+                self.assertIn(values["native"], quickstart)
+                self.assertIn(values["low"], quickstart)
+                self.assertIn(values["medium"], quickstart)
+                self.assertIn(values["high"], quickstart)
+
+                self.assertIn('ln -s "$PWD" "$HOME/.claude/skills/deep"', quickstart)
+                self.assertIn('ln -s "$PWD" "$HOME/.agents/skills/deep"', quickstart)
+                self.assertNotIn(
+                    'mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"',
+                    quickstart,
+                )
+
+    def test_current_public_docs_do_not_teach_first_use_ceremony(self) -> None:
+        forbidden = (
+            "hash-bound",
+            "binding hash",
+            "contract card",
+            "custom request envelope",
+            "custom envelope",
+            "route-record hash",
+            "before spend",
+            "exact contract confirmation",
+            "permit per physical request",
+            "separate paid `permit` command",
+        )
+        for relative in (
+            "README.md",
+            "README.zh-TW.md",
+            "SCENARIOS.md",
+            "CONTRIBUTING.md",
+        ):
+            with self.subTest(path=relative):
+                text = (ROOT / relative).read_text(encoding="utf-8").lower()
+                for phrase in forbidden:
+                    with self.subTest(phrase=phrase):
+                        self.assertNotIn(phrase, text)
+
+    def test_docs_preserve_delivery_adapter_and_async_recovery_semantics(self) -> None:
+        readmes = {
+            "README.md": "Medium and High always deliver the canonical package",
+            "README.zh-TW.md": "Medium 與 High 一律交付 canonical package",
+        }
+        for relative, delivery_phrase in readmes.items():
+            with self.subTest(document=relative):
+                text = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertIn(delivery_phrase, " ".join(text.split()))
+                self.assertIn("evidence-insufficient", text)
+                self.assertNotIn("no report", text.lower())
+                self.assertNotIn("擋下（不出報告）", text)
+                self.assertIn("request-boundary provider adapters", text)
+                self.assertNotIn("Permit-bound provider adapters", text)
+
+        scenarios = (ROOT / "SCENARIOS.md").read_text(encoding="utf-8")
+        for phrase in (
+            "accepted or uncertain job has a provider token",
+            "new poll action",
+            "attempted job without a token is consumed",
+            "non-pollable",
+            "manual inspection",
+            "must never be resubmitted",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, scenarios)
 
     def test_bindings_use_posture_and_tier(self) -> None:
         for relative in ("SKILL.md", "AGENTS.md", "HARNESS.md"):

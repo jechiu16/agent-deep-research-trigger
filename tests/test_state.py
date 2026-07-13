@@ -59,7 +59,7 @@ class StateTests(unittest.TestCase):
             "artifact_index",
         }
         self.assertEqual(set(state), expected)
-        self.assertEqual(state["session"]["contract_semantics"], "pure_trigger_v2")
+        self.assertEqual(state["session"]["contract_semantics"], "pure_trigger_v3")
         self.assertEqual(state["session"]["revision"], 0)
         self.assertEqual(validate_state_document(state), [])
 

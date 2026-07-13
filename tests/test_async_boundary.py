@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import copy
 import json
+import socket
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from research_harness import boundary
 from research_harness.boundary import (
     AdapterParseError,
     BoundaryError,
@@ -40,9 +42,8 @@ from research_harness.providers import (
     provider_registry_sha256,
     referenced_provider_records,
 )
-from research_harness.quota import acquire_permits
 from research_harness.state import new_state
-from research_harness.storage import create_session, load_state, read_events
+from research_harness.storage import apply_state_patch, create_session, load_state, read_events
 from research_harness.validation import validate_session
 from tests.helpers import NOW, enabled_registry_copy
 
@@ -142,10 +143,25 @@ class AsyncBoundaryTests(unittest.TestCase):
         events, errors = read_events(session or self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
         ]
+
+    def assert_failure_copy(self, raised, *phrases: str) -> None:
+        message = str(raised.exception).lower()
+        self.assertIn("consumed=true", message)
+        self.assertIn("never", message)
+        self.assertTrue("retry" in message or "retried" in message)
+        self.assertIn("resubmit", message)
+        for phrase in phrases:
+            self.assertIn(phrase.lower(), message)
 
     def _new_session(self, name: str, contract: dict, registry: dict) -> Path:
         session = Path(self._tempdir.name) / name
@@ -153,25 +169,12 @@ class AsyncBoundaryTests(unittest.TestCase):
         create_session(session, state)
         return session
 
-    def _acquire_deep(self, action_id: str = "D1", session: Path | None = None, now: str = NOW) -> None:
-        acquire_permits(
-            session or self.session, action_id, "investigation", "deep", "perplexity", 1,
-            f"fp-{action_id}", now,
-        )
-
-    def _acquire_transport(self, action_id: str, session: Path | None = None, now: str = NOW) -> None:
-        acquire_permits(
-            session or self.session, action_id, "investigation", "transport", "perplexity", 1,
-            f"fp-{action_id}", now,
-        )
-
     def _submit(
         self, action_id: str = "D1", query: str = "what changed in async retrieval boundaries",
         now: str = NOW, session: Path | None = None,
     ) -> dict:
-        self._acquire_deep(action_id, session=session, now=now)
         return execute_deep_submit(
-            session or self.session, action_id, query, now,
+            session or self.session, action_id, 'investigation', 'perplexity', query, now,
             transport=fixture_transport("perplexity_deep_submit_accept.json"), environ=TEST_ENV,
         )
 
@@ -191,50 +194,100 @@ class AsyncBoundaryTests(unittest.TestCase):
         self._submit()
         with self.assertRaises(BoundaryError):
             execute_deep_submit(
-                self.session, "D1", "q", NOW,
+                self.session, "D1", 'investigation', 'perplexity', "q", NOW,
                 transport=fixture_transport("perplexity_deep_submit_accept.json"), environ=TEST_ENV,
             )
 
-    def test_submit_requires_deep_category_permit(self) -> None:
-        acquire_permits(self.session, "P1", "primary_scout", "probe", "demo-probe", 1, "fp-p1", NOW)
+    def test_submit_crash_after_reservation_cannot_send_or_retry(self) -> None:
+        sent: list[object] = []
+        payload = (FIXTURES / "perplexity_deep_submit_accept.json").read_bytes()
+
+        def transport(spec):
+            sent.append(spec)
+            return 200, payload
+
+        original = boundary._reserve_boundary_action_unlocked
+
+        def crash_after_reservation(*args, **kwargs):
+            original(*args, **kwargs)
+            raise RuntimeError("simulated submit crash")
+
+        with mock.patch.object(boundary, "_reserve_boundary_action_unlocked", crash_after_reservation):
+            with self.assertRaises(RuntimeError):
+                execute_deep_submit(
+                    self.session,
+                    "D-crash",
+                    "investigation",
+                    "perplexity",
+                    "crash submit",
+                    NOW,
+                    transport=transport,
+                    environ=TEST_ENV,
+                )
         with self.assertRaises(BoundaryError):
             execute_deep_submit(
-                self.session, "P1", "q", NOW,
+                self.session,
+                "D-crash",
+                "investigation",
+                "perplexity",
+                "crash submit",
+                NOW,
+                transport=transport,
+                environ=TEST_ENV,
+            )
+        self.assertEqual(sent, [])
+
+    def test_submit_requires_deep_category_permit(self) -> None:
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "P1", "primary_scout", "perplexity", "q", NOW,
                 transport=fixture_transport("perplexity_deep_submit_accept.json"), environ=TEST_ENV,
             )
-        # the wrongly-typed action never even reaches "attempted"
+        # The wrong stage is rejected before reservation or transport.
         self.assertEqual(self.attempt_statuses("P1"), [])
 
     def test_submit_http_error_fails_without_job_token(self) -> None:
-        acquire_permits(self.session, "D1", "investigation", "deep", "perplexity", 1, "fp-d1", NOW)
-        with self.assertRaises(BoundaryError):
+        with self.assertRaises(BoundaryError) as raised:
             execute_deep_submit(
-                self.session, "D1", "q", NOW,
+                self.session, "D1", 'investigation', 'perplexity', "q", NOW,
                 transport=fixture_transport("sonar_rate_limited.json", status=429), environ=TEST_ENV,
             )
-        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "failed"])
+        self.assert_failure_copy(raised, "provider spool", "manual")
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "failed"])
         spool = self.session / "provider_spool" / "D1.raw.json"
         self.assertIn("rate_limit_exceeded", spool.read_text())
 
     def test_submit_malformed_accept_body_fails_after_spooling(self) -> None:
-        acquire_permits(self.session, "D1", "investigation", "deep", "perplexity", 1, "fp-d1", NOW)
-        with self.assertRaises(AdapterParseError):
+        with self.assertRaises(AdapterParseError) as raised:
             execute_deep_submit(
-                self.session, "D1", "q", NOW,
+                self.session, "D1", 'investigation', 'perplexity', "q", NOW,
                 transport=fixture_transport("perplexity_deep_submit_malformed.json"), environ=TEST_ENV,
             )
-        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "failed"])
+        self.assert_failure_copy(raised, "deep-pending", "manual")
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "uncertain"])
         spool = self.session / "provider_spool" / "D1.raw.json"
         self.assertTrue(spool.exists())
         self.assertIn("CREATED", spool.read_text())
+
+    def test_submit_timeout_is_uncertain_and_requires_deep_pending(self) -> None:
+        def timeout_transport(spec):
+            raise socket.timeout("submit timed out")
+
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_submit(
+                self.session, "D1", "investigation", "perplexity", "q", NOW,
+                transport=timeout_transport, environ=TEST_ENV,
+            )
+        self.assert_failure_copy(raised, "deep-pending", "manual")
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "uncertain"])
 
     # -- poll: still running ----------------------------------------------
 
     def test_poll_still_running_leaves_deep_action_unchanged(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
+
         result = execute_deep_poll(
-            self.session, "D1", "T1", NOW,
+            self.session, "D1", "T1", 'investigation', 'perplexity', NOW,
             transport=fixture_transport("perplexity_deep_poll_running.json"), environ=TEST_ENV,
         )
         self.assertEqual(result["status"], "running")
@@ -252,17 +305,28 @@ class AsyncBoundaryTests(unittest.TestCase):
         # re-recorded later. terminal_failure and malformed_terminal are
         # synthetic (a real failure was not deliberately induced).
         self._submit()
-        self._acquire_transport("T1")
+
         fixture = json.loads((FIXTURES / "perplexity_deep_poll_terminal_success.json").read_text())
         expected_cost = round(fixture["response"]["usage"]["cost"]["total_cost"], 4)
         expected_citations = len(fixture["response"].get("search_results", []))
 
         result = execute_deep_poll(
-            self.session, "D1", "T1", NOW,
+            self.session, "D1", "T1", 'investigation', 'perplexity', NOW,
             transport=fixture_transport("perplexity_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(occurrence["request_action_id"], "T1")
+        events, errors = read_events(self.session)
+        self.assertEqual(errors, [])
+        terminal_event = next(
+            event for event in events
+            if event.get("event") == "attempt_status"
+            and event.get("action_id") == "T1"
+            and event.get("status") == "completed"
+            and event.get("details", {}).get("job_status") == "completed"
+        )
+        self.assertEqual(occurrence["terminal_poll_event_hash"], terminal_event["event_hash"])
         self.assertEqual(occurrence["provider_id"], "perplexity")
         self.assertEqual(occurrence["action_id"], "D1")
         self.assertEqual(occurrence["model"], "sonar-deep-research")
@@ -278,22 +342,85 @@ class AsyncBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
+        self.assertTrue(report.integrity_ok)
+
+    def test_terminal_occurrence_cannot_rebind_to_running_poll_lineage(self) -> None:
+        self._submit()
+        self.assertEqual(
+            execute_deep_poll(
+                self.session, "D1", "T-running", "investigation", "perplexity", NOW,
+                transport=fixture_transport("perplexity_deep_poll_running.json"), environ=TEST_ENV,
+            )["status"],
+            "running",
+        )
+        execute_deep_poll(
+            self.session, "D1", "T-terminal", "investigation", "perplexity", NOW,
+            transport=fixture_transport("perplexity_deep_poll_terminal_success.json"), environ=TEST_ENV,
+        )
+
+        events, errors = read_events(self.session)
+        self.assertEqual(errors, [])
+        running_permit = next(
+            event for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == "T-running"
+        )
+        state = load_state(self.session)
+        apply_state_patch(
+            self.session,
+            [
+                {"op": "replace", "path": "/retrieval_occurrences/0/request_action_id", "value": "T-running"},
+                {"op": "replace", "path": "/retrieval_occurrences/0/fingerprint", "value": running_permit["fingerprint"]},
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+        report = validate_session(self.session, check_report=False)
+        self.assertFalse(report.integrity_ok, report.to_dict())
+        self.assertIn("occurrence.terminal_poll_event", {issue.code for issue in report.errors})
+
+        running_event = next(
+            event for event in events
+            if event.get("event") == "attempt_status"
+            and event.get("action_id") == "T-running"
+            and event.get("status") == "completed"
+        )
+        state = load_state(self.session)
+        apply_state_patch(
+            self.session,
+            [{"op": "replace", "path": "/retrieval_occurrences/0/terminal_poll_event_hash", "value": running_event["event_hash"]}],
+            state["session"]["revision"],
+            NOW,
+        )
+        report = validate_session(self.session, check_report=False)
+        self.assertFalse(report.integrity_ok, report.to_dict())
+        self.assertIn("occurrence.terminal_poll_event", {issue.code for issue in report.errors})
 
     # -- poll: terminal failure ---------------------------------------------
 
     def test_poll_terminal_failure_fails_deep_action(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
-        with self.assertRaises(BoundaryError):
+
+        with self.assertRaises(BoundaryError) as raised:
             execute_deep_poll(
-                self.session, "D1", "T1", NOW,
+                self.session, "D1", "T1", 'investigation', 'perplexity', NOW,
                 transport=fixture_transport("perplexity_deep_poll_terminal_failure.json"), environ=TEST_ENV,
             )
+        message = str(raised.exception).lower()
+        for phrase in (
+            "consumed=true",
+            "request count=1",
+            "same action must never be retried or resubmitted",
+            "provider spool t1.raw.json",
+            "deep status=failed",
+            "start a fresh /deep run if the research must be repeated",
+        ):
+            self.assertIn(phrase, message)
         # the poll itself succeeded (it correctly learned FAILED) -> completed;
         # only the deep action fails.
         self.assertEqual(self.attempt_statuses("T1"), ["attempted", "accepted", "completed"])
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "failed"])
-        # permit stays consumed: no occurrence, no way to resubmit under D1
+        # boundary action stays consumed: no occurrence, no way to resubmit under D1
         state = load_state(self.session)
         self.assertEqual(state["retrieval_occurrences"], [])
 
@@ -301,42 +428,107 @@ class AsyncBoundaryTests(unittest.TestCase):
 
     def test_poll_malformed_terminal_stays_harvestable(self) -> None:
         self._submit()
-        self._acquire_transport("T1")
-        with self.assertRaises(AdapterParseError):
+
+        with self.assertRaises(AdapterParseError) as raised:
             execute_deep_poll(
-                self.session, "D1", "T1", NOW,
+                self.session, "D1", "T1", 'investigation', 'perplexity', NOW,
                 transport=fixture_transport("perplexity_deep_poll_malformed_terminal.json"), environ=TEST_ENV,
             )
+        self.assert_failure_copy(raised, "provider spool", "deep-pending", "new deep-poll")
         self.assertEqual(self.attempt_statuses("T1"), ["attempted", "accepted", "failed"])
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted"])  # untouched
         spool = self.session / "provider_spool" / "T1.raw.json"
         self.assertTrue(spool.exists())  # spooled before extract() ever ran
 
-        # still harvestable at zero marginal cost beyond a fresh transport permit:
-        self._acquire_transport("T2")
+        # still harvestable at zero marginal cost beyond a new boundary poll:
+
         result = execute_deep_poll(
-            self.session, "D1", "T2", NOW,
+            self.session, "D1", "T2", 'investigation', 'perplexity', NOW,
             transport=fixture_transport("perplexity_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         self.assertEqual(result["status"], "completed")
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "completed"])
 
+    def test_poll_timeout_is_uncertain_and_requires_new_deep_poll(self) -> None:
+        self._submit()
+
+        def timeout_transport(spec):
+            raise socket.timeout("poll timed out")
+
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_poll(
+                self.session, "D1", "T1", "investigation", "perplexity", NOW,
+                transport=timeout_transport, environ=TEST_ENV,
+            )
+        self.assert_failure_copy(raised, "deep-pending", "new deep-poll")
+        self.assertEqual(self.attempt_statuses("T1"), ["attempted", "uncertain"])
+
+    def test_poll_http_error_requires_new_deep_poll(self) -> None:
+        self._submit()
+
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_poll(
+                self.session, "D1", "T1", "investigation", "perplexity", NOW,
+                transport=fixture_transport("sonar_rate_limited.json", status=429), environ=TEST_ENV,
+            )
+        self.assert_failure_copy(raised, "provider spool", "deep-pending", "new deep-poll")
+        self.assertEqual(self.attempt_statuses("T1"), ["attempted", "accepted", "failed"])
+
     # -- poll: permit-shape guards --------------------------------------------
 
-    def test_poll_requires_transport_category_permit(self) -> None:
+    def test_poll_boundary_mints_transport_action(self) -> None:
         self._submit()
-        acquire_permits(self.session, "PX", "primary_scout", "probe", "demo-probe", 1, "fp-px", NOW)
+        result = execute_deep_poll(
+            self.session, "D1", "PX", 'investigation', 'perplexity', NOW,
+            transport=fixture_transport("perplexity_deep_poll_running.json"), environ=TEST_ENV,
+        )
+        self.assertEqual(result["status"], "running")
+
+    def test_poll_crash_after_reservation_cannot_send_or_retry(self) -> None:
+        self._submit()
+        sent: list[object] = []
+        payload = (FIXTURES / "perplexity_deep_poll_running.json").read_bytes()
+
+        def transport(spec):
+            sent.append(spec)
+            return 200, payload
+
+        original = boundary._reserve_boundary_action_unlocked
+
+        def crash_after_reservation(*args, **kwargs):
+            original(*args, **kwargs)
+            raise RuntimeError("simulated poll crash")
+
+        with mock.patch.object(boundary, "_reserve_boundary_action_unlocked", crash_after_reservation):
+            with self.assertRaises(RuntimeError):
+                execute_deep_poll(
+                    self.session,
+                    "D1",
+                    "T-crash",
+                    "investigation",
+                    "perplexity",
+                    NOW,
+                    transport=transport,
+                    environ=TEST_ENV,
+                )
         with self.assertRaises(BoundaryError):
             execute_deep_poll(
-                self.session, "D1", "PX", NOW,
-                transport=fixture_transport("perplexity_deep_poll_running.json"), environ=TEST_ENV,
+                self.session,
+                "D1",
+                "T-crash",
+                "investigation",
+                "perplexity",
+                NOW,
+                transport=transport,
+                environ=TEST_ENV,
             )
+        self.assertEqual(sent, [])
 
     def test_poll_unknown_deep_action_is_refused(self) -> None:
-        self._acquire_transport("T1")
+
         with self.assertRaises(BoundaryError):
             execute_deep_poll(
-                self.session, "missing-deep", "T1", NOW,
+                self.session, "missing-deep", "T1", 'investigation', 'perplexity', NOW,
                 transport=fixture_transport("perplexity_deep_poll_running.json"), environ=TEST_ENV,
             )
 
@@ -358,9 +550,9 @@ class AsyncBoundaryTests(unittest.TestCase):
         self.assertEqual(self.attempt_statuses("D1", session), ["attempted", "accepted", "uncertain"])
 
         # a later poll journals the resume, then completes in one call
-        self._acquire_transport("T1", session=session, now="2026-07-10T12:01:10Z")
+
         result = execute_deep_poll(
-            session, "D1", "T1", "2026-07-10T12:01:12Z",
+            session, "D1", "T1", 'investigation', 'perplexity', "2026-07-10T12:01:12Z",
             transport=fixture_transport("perplexity_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         self.assertEqual(result["status"], "completed")
@@ -383,9 +575,9 @@ class AsyncBoundaryTests(unittest.TestCase):
         # calling deep-timeout on an action that never reached "accepted"
         # (e.g. still "attempted", or already terminal) must not raise.
         self._submit()
-        self._acquire_transport("T1")
+
         execute_deep_poll(
-            self.session, "D1", "T1", NOW,
+            self.session, "D1", "T1", 'investigation', 'perplexity', NOW,
             transport=fixture_transport("perplexity_deep_poll_terminal_success.json"), environ=TEST_ENV,
         )
         result = execute_deep_timeout(self.session, "D1", NOW)
@@ -403,10 +595,9 @@ class AsyncBoundaryTests(unittest.TestCase):
                 provider["request_multiplicity"] = {**provider["request_multiplicity"], "probe": 1}
         contract = _deep_contract(registry, primary_scout_route="perplexity")
         session = self._new_session("session-cross-sync", contract, registry)
-        acquire_permits(session, "PX", "primary_scout", "probe", "perplexity", 1, "fp-px", NOW)
         with self.assertRaises(BoundaryError) as ctx:
             execute_probe(
-                session, "PX", "q", NOW,
+                session, "PX", 'primary_scout', 'perplexity', "q", NOW,
                 transport=fixture_transport("perplexity_deep_submit_accept.json"), environ=TEST_ENV,
             )
         self.assertIn("transport mode", str(ctx.exception))
@@ -422,10 +613,9 @@ class AsyncBoundaryTests(unittest.TestCase):
                 }
         contract = _deep_contract(registry, deep_route="sonar")
         session = self._new_session("session-cross-async", contract, registry)
-        acquire_permits(session, "D1", "investigation", "deep", "sonar", 1, "fp-d1", NOW)
         with self.assertRaises(BoundaryError) as ctx:
             execute_deep_submit(
-                session, "D1", "q", NOW,
+                session, "D1", 'investigation', 'sonar', "q", NOW,
                 transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
             )
         self.assertIn("transport mode", str(ctx.exception))

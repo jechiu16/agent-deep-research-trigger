@@ -9,7 +9,7 @@ from pathlib import Path
 
 from research_harness.adapters import crossref
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -53,14 +53,17 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         )
         state = new_state(contract, NOW, registry=self.registry, environ=TEST_ENV)
         create_session(self.session, state)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "crossref", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
@@ -86,7 +89,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(first_item["issued"]["date-parts"], [[None]])
 
         result = execute_probe(
-            self.session, "A1", "dynamic factor model nowcasting", NOW,
+            self.session, "A1", 'primary_scout', 'crossref', "dynamic factor model nowcasting", NOW,
             transport=fixture_transport("crossref_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -126,23 +129,20 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         # body has "message" as a LIST, not an object.
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'crossref', "q", NOW,
                 transport=fixture_transport("crossref_bad_request.json", status=400),
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
         self.assertIn("validation-failure", spool.read_text())
-        # The permit stays consumed: the single primary_scout invocation is gone.
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "crossref", 1, "fp2", NOW
-            )
+        # The boundary request count stays consumed after the failed call.
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
         with self.assertRaises(AdapterParseError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'crossref', "q", NOW,
                 transport=fixture_transport("crossref_missing_items.json"), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
@@ -151,7 +151,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
     def test_transport_failure_fails_attempt(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'crossref', "q", NOW,
                 transport=failing_transport(urllib.error.URLError("connection refused")),
                 environ=TEST_ENV,
             )
@@ -160,26 +160,26 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
     def test_timeout_marks_attempt_uncertain(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'crossref', "q", NOW,
                 transport=failing_transport(socket.timeout("timed out")), environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "uncertain"])
 
     def test_second_execution_of_same_action_is_refused(self) -> None:
         execute_probe(
-            self.session, "A1", "dynamic factor model nowcasting", NOW,
+            self.session, "A1", 'primary_scout', 'crossref', "dynamic factor model nowcasting", NOW,
             transport=fixture_transport("crossref_success.json"), environ=TEST_ENV,
         )
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "dynamic factor model nowcasting", NOW,
+                self.session, "A1", 'primary_scout', 'crossref', "dynamic factor model nowcasting", NOW,
                 transport=fixture_transport("crossref_success.json"), environ=TEST_ENV,
             )
 
     def test_unknown_action_is_refused(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "missing", "q", NOW,
+                self.session, "missing", 'primary_scout', 'crossref', "q", NOW,
                 transport=fixture_transport("crossref_bad_request.json", status=400),
                 environ=TEST_ENV,
             )
@@ -188,7 +188,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         # crossref is keyless: unlike sonar (PERPLEXITY_API_KEY required), an
         # empty environ must not block the route.
         result = execute_probe(
-            self.session, "A1", "dynamic factor model nowcasting", NOW,
+            self.session, "A1", 'primary_scout', 'crossref', "dynamic factor model nowcasting", NOW,
             transport=fixture_transport("crossref_success.json"), environ={},
         )
         self.assertEqual(result["occurrence"]["provider_id"], "crossref")

@@ -12,8 +12,10 @@ from typing import Any
 
 from ._canon import RETENTION_RANK, canonical_source_key, indexed, sha256_hex
 from .artifacts import MEDIA_EXTENSIONS, SCANNER_VERSION
-from .quota import ATTEMPT_TRANSITIONS
+from .contracts import METERED_CATEGORIES
+from .quota import ATTEMPT_TRANSITIONS, BOUNDARY_CATEGORIES, HASH64_RE
 from .state import state_sha256, validate_state_document
+from .state import CONTRACT_SEMANTICS_V3
 from .storage import (
     _event_chain_errors,
     _load_state_unlocked,
@@ -114,7 +116,9 @@ def _validate_event_lineage(
         _add(issues, "state.hash_mismatch", "latest revision hash does not match canonical state", "/state")
 
 
-def _validate_attempt_lifecycle(events: list[dict[str, Any]], issues: list[Issue]) -> None:
+def _validate_attempt_lifecycle(
+    events: list[dict[str, Any]], issues: list[Issue], *, strict_atomic: bool
+) -> None:
     """Independently re-derive every action's attempt state machine.
 
     The writer enforces ATTEMPT_TRANSITIONS at append time, but validation is
@@ -122,12 +126,17 @@ def _validate_attempt_lifecycle(events: list[dict[str, Any]], issues: list[Issue
     can still contain forged from_status values or transitions appended by
     other tooling."""
 
-    permits = {
-        event.get("action_id")
+    current = {
+        event.get("action_id"): event.get("initial_status", "acquired")
         for event in events
-        if event.get("event") == "permit_acquired" and isinstance(event.get("action_id"), str)
+        if event.get("event") == "permit_acquired"
+        and isinstance(event.get("action_id"), str)
     }
-    current = {action_id: "acquired" for action_id in permits}
+    if not strict_atomic:
+        current = {
+            action_id: "acquired"
+            for action_id in current
+        }
     index = 0
     for event in events:
         if event.get("event") != "attempt_status":
@@ -149,7 +158,7 @@ def _validate_attempt_lifecycle(events: list[dict[str, Any]], issues: list[Issue
 
 
 def _validate_quota(
-    state: dict[str, Any], events: list[dict[str, Any]], issues: list[Issue]
+    state: dict[str, Any], events: list[dict[str, Any]], issues: list[Issue], *, strict_atomic: bool
 ) -> None:
     contract = state.get("contract", {})
     mappings = contract.get("stage_permit_map", [])
@@ -178,6 +187,75 @@ def _validate_quota(
         category = permit.get("category")
         route = permit.get("route")
         stage = permit.get("stage")
+        initial_status = permit.get("initial_status")
+        is_boundary_category = isinstance(category, str) and category in BOUNDARY_CATEGORIES
+        if strict_atomic and category in METERED_CATEGORIES and not is_boundary_category:
+            _add(
+                issues,
+                "quota.metered_boundary_missing",
+                "metered categories require an implemented request boundary",
+                path,
+            )
+        if strict_atomic and is_boundary_category and initial_status != "attempted":
+            _add(
+                issues,
+                "quota.boundary_initial_status",
+                "boundary permits must journal initial_status=attempted",
+                path,
+            )
+        fingerprint = permit.get("fingerprint")
+        if strict_atomic and is_boundary_category and (
+            not isinstance(fingerprint, str) or HASH64_RE.fullmatch(fingerprint) is None
+        ):
+            _add(
+                issues,
+                "quota.boundary_fingerprint",
+                "boundary permits must carry a 64-character lowercase hexadecimal fingerprint",
+                path,
+            )
+        query_hash = permit.get("query_hash")
+        if strict_atomic and category in {"probe", "deep"} and (
+            not isinstance(query_hash, str) or HASH64_RE.fullmatch(query_hash) is None
+        ):
+            _add(
+                issues,
+                "quota.deep_query_hash",
+                "probe/deep permits must carry a 64-character lowercase hexadecimal query_hash",
+                path,
+            )
+        if strict_atomic and category not in {"probe", "deep"} and query_hash is not None:
+            _add(
+                issues,
+                "quota.non_deep_query_hash",
+                "non-deep permits must not carry query_hash",
+                path,
+            )
+        if strict_atomic and not is_boundary_category and (
+            initial_status is not None
+            or "fingerprint" in permit
+            or "query_hash" in permit
+        ):
+            _add(
+                issues,
+                "quota.boundary_category_mismatch",
+                "boundary fields do not match the permit category",
+                path,
+            )
+        if strict_atomic and is_boundary_category:
+            base_fields = {
+                "event", "at", "action_id", "stage", "category", "route",
+                "invocation_index", "count", "seq", "prev_hash", "event_hash",
+            }
+            expected_fields = base_fields | {"initial_status", "fingerprint"}
+            if category in {"probe", "deep"}:
+                expected_fields.add("query_hash")
+            if set(permit) != expected_fields:
+                _add(
+                    issues,
+                    "quota.boundary_shape",
+                    "boundary permit fields are missing or contain forbidden fields",
+                    path,
+                )
         key = (stage, category, route)
         matching = [
             mapping
@@ -225,6 +303,147 @@ def _confined_artifact_path(session_dir: Path, relative_path: Any) -> Path | Non
     if path.parent != session_dir / "raw":
         return None
     return path
+
+
+def _validate_atomic_occurrences(
+    state: dict[str, Any], events: list[dict[str, Any]], issues: list[Issue]
+) -> None:
+    """Bind each v3 occurrence to its exact logical and physical actions."""
+
+    permits = [event for event in events if event.get("event") == "permit_acquired"]
+    permits_by_id: dict[str, list[dict[str, Any]]] = {}
+    for permit in permits:
+        action_id = permit.get("action_id")
+        if isinstance(action_id, str):
+            permits_by_id.setdefault(action_id, []).append(permit)
+    statuses: dict[str, list[str]] = {}
+    for event in events:
+        if event.get("event") == "attempt_status" and isinstance(event.get("action_id"), str):
+            statuses.setdefault(event["action_id"], []).append(event.get("status"))
+
+    seen_request_ids: set[str] = set()
+    seen_logical_ids: set[str] = set()
+    providers = {
+        provider.get("id"): provider
+        for provider in state.get("capabilities", {}).get("providers", [])
+        if isinstance(provider, dict)
+    }
+    for index, occurrence in enumerate(state.get("retrieval_occurrences", [])):
+        path = f"/retrieval_occurrences/{index}"
+        if not isinstance(occurrence, dict):
+            _add(issues, "occurrence.shape", "occurrence must be an object", path)
+            continue
+        logical_id = occurrence.get("action_id")
+        request_id = occurrence.get("request_action_id")
+        if not isinstance(logical_id, str) or not logical_id:
+            _add(issues, "occurrence.action_id", "occurrence logical action_id is required", path)
+            continue
+        logical_permits = permits_by_id.get(logical_id, [])
+        if not isinstance(request_id, str) or not request_id:
+            _add(issues, "occurrence.request_action_id", "occurrence request_action_id is required", path)
+            continue
+        if request_id in seen_request_ids:
+            _add(issues, "occurrence.request_duplicate", "request_action_id may have only one occurrence", path)
+        seen_request_ids.add(request_id)
+        if logical_id in seen_logical_ids:
+            _add(issues, "occurrence.logical_duplicate", "logical action_id may have only one terminal occurrence", path)
+        seen_logical_ids.add(logical_id)
+
+        request_permits = permits_by_id.get(request_id, [])
+        if len(request_permits) != 1:
+            _add(issues, "occurrence.request_action_missing", "request_action_id must reference one permit", path)
+            continue
+        if len(logical_permits) != 1:
+            _add(issues, "occurrence.logical_action_missing", "occurrence action_id must reference one permit", path)
+            continue
+        request_permit = request_permits[0]
+        logical_permit = logical_permits[0]
+        provider = providers.get(occurrence.get("provider_id"))
+        if not isinstance(provider, dict):
+            _add(issues, "occurrence.provider", "occurrence provider is not in the capability snapshot", path)
+        fingerprint = occurrence.get("fingerprint")
+        if not isinstance(fingerprint, str) or HASH64_RE.fullmatch(fingerprint) is None:
+            _add(issues, "occurrence.fingerprint", "occurrence fingerprint must be a 64-character lowercase hexadecimal hash", path)
+        elif request_permit.get("fingerprint") != fingerprint:
+            _add(issues, "occurrence.fingerprint", "occurrence fingerprint does not match request permit", path)
+        query_hash = occurrence.get("query_hash")
+        if not isinstance(query_hash, str) or HASH64_RE.fullmatch(query_hash) is None:
+            _add(issues, "occurrence.query_hash", "occurrence query_hash must be a 64-character lowercase hexadecimal hash", path)
+        elif logical_permit.get("query_hash") != query_hash:
+            _add(issues, "occurrence.query_hash", "occurrence query_hash does not match logical permit", path)
+        if logical_permit.get("route") != occurrence.get("provider_id"):
+            _add(issues, "occurrence.route", "occurrence provider does not match logical permit route", path)
+
+        request_statuses = statuses.get(request_id, [])
+        logical_statuses = statuses.get(logical_id, [])
+        if not request_statuses or request_statuses[-1] != "completed":
+            _add(issues, "occurrence.request_lifecycle", "request permit is not terminal completed", path)
+        if not logical_statuses or logical_statuses[-1] != "completed":
+            _add(issues, "occurrence.logical_lifecycle", "logical permit is not terminal completed", path)
+
+        request_category = request_permit.get("category")
+        logical_category = logical_permit.get("category")
+        if request_category == "probe":
+            if (
+                logical_id != request_id
+                or logical_category != "probe"
+                or request_permit.get("route") != logical_permit.get("route")
+            ):
+                _add(issues, "occurrence.category", "sync occurrence must reference its probe action", path)
+            if "terminal_poll_event_hash" in occurrence:
+                _add(
+                    issues,
+                    "occurrence.terminal_poll_event_hash",
+                    "sync occurrence must not carry terminal_poll_event_hash",
+                    path,
+                )
+        elif request_category == "transport":
+            if (
+                logical_category != "deep"
+                or logical_id == request_id
+                or request_permit.get("stage") != logical_permit.get("stage")
+                or request_permit.get("route") != logical_permit.get("route")
+            ):
+                _add(issues, "occurrence.category", "async occurrence must reference a deep logical action and terminal poll", path)
+            terminal_hash = occurrence.get("terminal_poll_event_hash")
+            if not isinstance(terminal_hash, str) or HASH64_RE.fullmatch(terminal_hash) is None:
+                _add(
+                    issues,
+                    "occurrence.terminal_poll_event_hash",
+                    "v3 async occurrence must carry a valid terminal_poll_event_hash",
+                    path,
+                )
+            else:
+                terminal_events = [
+                    event for event in events if event.get("event_hash") == terminal_hash
+                ]
+                if len(terminal_events) != 1:
+                    _add(
+                        issues,
+                        "occurrence.terminal_poll_event_missing",
+                        "terminal_poll_event_hash must resolve to exactly one event",
+                        path,
+                    )
+                else:
+                    terminal_event = terminal_events[0]
+                    details = terminal_event.get("details")
+                    if (
+                        terminal_event.get("event") != "attempt_status"
+                        or terminal_event.get("action_id") != request_id
+                        or terminal_event.get("from_status") != "accepted"
+                        or terminal_event.get("status") != "completed"
+                        or not isinstance(details, dict)
+                        or details.get("job_status") != "completed"
+                        or details.get("spool") != occurrence.get("spool")
+                    ):
+                        _add(
+                            issues,
+                            "occurrence.terminal_poll_event",
+                            "terminal_poll_event_hash must bind the completed terminal poll",
+                            path,
+                        )
+        else:
+            _add(issues, "occurrence.category", "occurrence must reference a sync probe or async transport action", path)
 
 
 def _validate_artifacts(
@@ -1023,11 +1242,14 @@ def _validate_loaded_session(
     session_dir = Path(session_dir)
     issues: list[Issue] = []
     current_hash = state_sha256(state)
+    strict_atomic = state.get("session", {}).get("contract_semantics") == CONTRACT_SEMANTICS_V3
     for message in validate_state_document(state):
         _add(issues, "state.structural", message, "/state")
     _validate_event_lineage(state, events, event_errors, current_hash, issues)
-    _validate_quota(state, events, issues)
-    _validate_attempt_lifecycle(events, issues)
+    _validate_quota(state, events, issues, strict_atomic=strict_atomic)
+    _validate_attempt_lifecycle(events, issues, strict_atomic=strict_atomic)
+    if strict_atomic:
+        _validate_atomic_occurrences(state, events, issues)
     artifacts, raw_payloads = _validate_artifacts(session_dir, state, events, issues)
     evidence_map = _validate_evidence(state, artifacts, raw_payloads, issues)
 
@@ -1046,6 +1268,7 @@ def _validate_loaded_session(
         "event.",
         "quota.",
         "attempt.",
+        "occurrence.",
         "artifact.",
         "evidence.",
         "capture.",

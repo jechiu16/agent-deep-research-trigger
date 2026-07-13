@@ -10,14 +10,26 @@ Semantic Versioning once the v2 runtime leaves development status.
 - A deterministic human readiness table for `deep-research-state providers`
   that hides contract-test and test-only routes while keeping `providers --json`
   machine-compatible.
-- A single real first-use path in the English and Traditional Chinese READMEs,
-  covering the optional demo, readiness, host discovery, session restart,
-  `/deep`, and contract confirmation.
+- A progressive-disclosure first-use path in the English and Traditional Chinese
+  READMEs: install, link one host, start a fresh session, then type `/deep` and
+  choose Low, Medium, or High. It makes host-native use and no provider key the
+  default, and documents the chat-only Low result plus Medium/High package
+  delivery.
 
 ### Changed
 
+- The pure `/deep` trigger now offers one `Low`/`Medium`/`High` choice; Medium
+  and High deliver canonical JSON plus a `zh-Hant-TW` package, including
+  `blocked` and `evidence-insufficient` outcomes.
+- Authorization is question-bound; the boundary owns actual-request
+  construction and atomic reservation, v3 occurrence lineage, and legacy-marker
+  compatibility.
+- Async no-token and terminal-poll recovery now preserves at-most-once
+  semantics and forbids resubmission.
 - Traditional Chinese deterministic HTML report chrome now preserves the
   `zh-Hant-TW` presentation contract.
+- The public trigger/adoption guidance now keeps optional providers, credentials,
+  CLI checks, and a second host after the four-step happy path.
 - Permit/action-id traversal hardening now validates request identity and refuses
   redirects that could create an unapproved physical request.
 

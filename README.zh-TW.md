@@ -14,62 +14,18 @@
 
 ## 目錄
 
-- [為什麼需要它](#為什麼需要它)
-- [關鍵術語](#關鍵術語)
-- [Host 相容性](#host-相容性)
 - [快速開始](#快速開始)
+- [為什麼需要它](#為什麼需要它)
 - [運作方式](#運作方式)
-- [Provider routes](#provider-routes)
-- [CLI](#cli)
-- [Credential 與安全](#credential-與安全)
+- [Optional setup](#optional-setup)
 - [開發與 release 品質](#開發與-release-品質)
 - [專案地圖](#專案地圖)
 
-## 為什麼需要它
-
-一般 research orchestration 常把重要限制留在 prompt prose：誰批准費用、哪一個
-request 被授權、retry 是否重複付費、claim 從哪裡來，以及最後的 `PASS` 是否真的
-通過 evidence floor。
-
-Agent Deep Research Trigger 把這些限制做成可執行規則：
-
-- 使用者先確認精確 research contract，外部 spend 才能開始；
-- 每個 physical request 都消耗指定 stage／route 的 permit；
-- 付費 async submission 絕不靜默重送；
-- provider bytes 一律先 spool 再 parse；
-- state update 有 revision check 並可在 crash 後恢復；
-- claim 必須連回 evidence 與 source origin；
-- 最終 verdict 只有在 fail-closed validation 通過 evidence floor 後才會 PASS；
-- HTML 只從唯一 canonical JSON state deterministic render。
-
-## 關鍵術語
-
-後面的內容會固定使用這幾個精確術語，而不是「步驟」「呼叫」這類模糊說法：
-
-| 術語 | 意義 |
-|---|---|
-| Organizer | 負責提出、確認並執行 research contract 的 agent 角色 |
-| Contract | 使用者在任何 spend 發生前確認的精確、hash-bound research 計畫 |
-| Posture | 研究模式：`lookup`、`synthesis`、`scientific` 或 `decision` |
-| Tier | 成本／深度預算：`low`、`medium`、`high` 或 custom request envelope |
-| Permit | 針對單一 physical request 的一次性授權 |
-| Physical request | permit 授權、quota 計數的最小單位——一次 boundary execution，可能是 provider 網路呼叫，也可能是 deterministic 的 no-network route |
-
-## Host 相容性
-
-| Host | Discovery | Binding |
-|---|---|---|
-| [Claude Code](https://code.claude.com/docs/en/skills) | `SKILL.md`、`.claude/skills/deep/SKILL.md` | Permit 後使用 native search/fetch 與 local tools |
-| [OpenAI Codex](https://developers.openai.com/codex/build-skills/) | `AGENTS.md`、`.agents/skills/deep/SKILL.md` | Permit 後使用 native web 與 shell/file tools |
-| 其他 Agent Skills host | Root `SKILL.md` | `HARNESS.md` 的 host-neutral protocol |
-
-研究 protocol 只有一份。Host files 只負責 native tool mapping，不定義另一套流程。
-
 ## 快速開始
 
-從 clone repository 到確認一個 `/deep` request，請依序完成以下步驟：
+預設流程不需要 provider key：先使用 host-native search/fetch 與 local tools。
 
-1. Clone repository 並完成安裝：
+1. **安裝 skill。** Clone repository 並安裝 package：
 
 ```bash
 git clone https://github.com/jechiu16/agent-deep-research-trigger.git \
@@ -80,80 +36,68 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-2. 可選地跑 no-network health check，不需要 API key 或成本：
+2. **連結到一個 host。** 擇一使用 Claude Code 或 Codex：
 
 ```bash
-.venv/bin/deep-research-state demo /tmp/agent-deep-demo --json
-```
-
-預期結果：
-
-```json
-{"validation_ok": true}
-```
-
-Demo 會走完 permit -> request boundary -> occurrence -> validation -> report；它的
-no-network route 在結構上無法支援真實 claim。
-
-3. 在設定 spend 前檢查 route readiness：
-
-```bash
-.venv/bin/deep-research-state providers
-```
-
-這個 deterministic human view 顯示 `ready`、`missing-key`、`disabled` 或
-`unbound`，不會印出 credential。Machine consumer 請用
-`.venv/bin/deep-research-state providers --json`。
-
-4. 只設定預計使用的 key：
-
-```bash
-cp .env.example .env
-# 編輯 .env，只加入預計使用的 provider key。
-```
-
-5. 將同一份 repository 連結到一個或兩個 host 的 skill 目錄：
-
-```bash
-mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"
+# Claude Code
+mkdir -p "$HOME/.claude/skills"
 ln -s "$PWD" "$HOME/.claude/skills/deep"
+
+# 或 OpenAI Codex
+mkdir -p "$HOME/.agents/skills"
 ln -s "$PWD" "$HOME/.agents/skills/deep"
 ```
 
-Repo 已包含 `.claude/skills` 與 `.agents/skills` 的 project-local discovery wrapper。
+3. **開啟新的 session。** 開啟新的 Claude Code 或 Codex session，讓 host
+   discovery 載入這個 skill。
 
-6. 建立連結後，開啟新的 Claude Code 或 Codex session，讓 host discovery 載入這個 skill。
-
-7. 輸入 `/deep <question>`：
+4. **輸入 `/deep` 並選擇 tier。** 例如：
 
 ```text
 /deep 比較 SQLite 與 DuckDB，哪個更適合當本機分析引擎預設值？
 ```
 
-先檢視完整的 contract card，確認 card 與 binding hashes 後，才會執行 spend。Card 會顯示：
+只選一個 tier：
 
-- posture：`lookup`、`synthesis`、`scientific` 或 `decision`；
-- tier：`low`、`medium`、`high` 或 custom request envelope；
-- route 與 physical request ceiling；
-- challenge／verification reserve；
-- storage class、latency 與 cost uncertainty。
+| Tier | 結果 |
+|---|---|
+| Low | 只在 chat 中回答並附上連結；不建立 package。 |
+| Medium | Adaptive research 一律交付包含 JSON 與 `zh-Hant-TW` HTML 的 canonical package。 |
+| High | 取得多個直接來源，一律交付包含 JSON 與 `zh-Hant-TW` HTML 的 canonical package。 |
 
-精確 card 未確認前，不會執行 research request。Registry、route record 或 card 有任何
-變動，都必須重新確認。
+Medium 與 High 一律交付 canonical package。若 validation 或 evidence floor
+失敗，仍會交付帶有 `blocked/evidence-insufficient` status 的 package，不會省略。
+
+Host-native 是預設。只有在特定外部 route 需要時，才加入 provider credential。
+
+## 為什麼需要它
+
+一般 research orchestration 常把 evidence、source lineage 與交付品質留在
+prompt prose 中。
+
+Agent Deep Research Trigger 把這些限制做成可執行規則：
+
+- `/deep` 是明確 trigger，選定的 tier 決定研究深度；
+- 優先使用 host-native retrieval 與 local inspection，再考慮 optional provider route；
+- Paid request 在 request boundary 內 atomically reserve 精確的 physical multiplicity；
+- 付費 async submission 絕不靜默重送；
+- provider bytes 一律先 spool 再 parse；
+- state update 有 revision check 並可在 crash 後恢復；
+- claim 必須連回 evidence 與 source origin；
+- 最終 verdict 只有在 fail-closed validation 通過 evidence floor 後才會 PASS；
+- HTML 只從唯一 canonical JSON state deterministic render。
 
 ## 運作方式
 
 ```mermaid
 flowchart TD
-    T["/deep 觸發"]:::start --> C["雜湊綁定契約"]:::step
-    C --> U["使用者確認？"]:::gate
-    U -- 否 --> X["不產生花費"]:::stop
-    U -- 是 --> P["每個實體請求一份授權"]:::step
-    P --> B["同步／非同步邊界"]:::step
-    B --> S["正規狀態＋事件鏈"]:::step
+    T["/deep 觸發"]:::start --> U["選擇 Low / Medium / High"]:::gate
+    U -- Low --> L["Chat answer + links<br/>No package"]:::done
+    U -- Medium / High --> B["Research work"]:::step
+    B --> S["Canonical JSON package state"]:::step
     S --> V["預設拒絕驗證"]:::gate
-    V -- 通過 --> R["確定性 HTML 報告"]:::done
-    V -- 失敗 --> H["擋下（不出報告）"]:::stop
+    V -- 通過 --> R["Canonical package 內的 HTML report"]:::done
+    V -- 失敗 --> H["Blocked canonical package<br/>包含 HTML report"]:::stop
 
     classDef start fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b;
     classDef step fill:#eef2f7,stroke:#475569,color:#0f172a;
@@ -162,22 +106,26 @@ flowchart TD
     classDef done fill:#dcfce7,stroke:#16a34a,color:#052e16;
 ```
 
-每個 session 只有四類 artifact：
+Medium 與 High delivery 即使 validation 失敗，也一律包含 canonical package。
+Validation 或 evidence floor 失敗時，只將 status 設為
+`blocked/evidence-insufficient`，不會省略任何 artifact：
 
 | Artifact | 用途 |
 |---|---|
 | `state.json` | Canonical semantic state |
-| `events.jsonl` | Append-only、sequence-numbered hash chain |
+| `events.jsonl` | Append-only operational journal |
 | `raw/` | Immutable、provenance-bound provider／local bytes |
-| `report.html` | 與 canonical state hash 綁定的人類報告；宣告 `zh-Hant-TW`、使用 Traditional Chinese 介面文案，並保留 source/evidence text 的原始語言 |
+| `report.html` | 宣告 `zh-Hant-TW` 的人類報告，使用 Traditional Chinese 介面文案、保留 source/evidence text 原文，並包含 package status |
 
-完整 host-neutral protocol 見 [HARNESS.md](HARNESS.md)。
+[HARNESS.md](HARNESS.md) 是 optional implementation and recovery reference。
 
-## Provider routes
+## Optional setup
+
+### Provider routes
 
 [Provider registry](research_harness/provider_registry.json) 是 versioned policy
-ledger，不是固定 fan-out pipeline。Organizer 只選一個 primary scout，並在 confirmed
-contract 允許時才 escalation。
+ledger，不是固定 fan-out pipeline。Host-native search/fetch 是預設；provider
+route 是 optional，只有 adapter 已 v2-bound 才會啟用。
 
 Enabled route 類型包括：
 
@@ -195,25 +143,37 @@ Exa 經 bounded paired-index benchmark 後，作為 anti-lock-in／verification 
 後才能支持 claim。其他 external worker route 維持 disabled，直到 registry 標記
 enabled 且 v2-bound；只有 credential 存在，不代表 execution readiness。
 
-## CLI
+### Demo and CLI
 
-已安裝的 `deep-research-state` entry point 涵蓋 provider readiness、no-network demo、
-contract/permit execution、state／artifact operation，以及 validation/rendering。完整
-介面用 `.venv/bin/deep-research-state --help`；`.venv/bin/deep-research-state providers`
-是人類使用的 secret-free readiness view，`.venv/bin/deep-research-state providers --json`
-供 machine consumer 使用。
+可選的 no-network demo 不需要 API key 或成本：
 
-## Credential 與安全
+```bash
+.venv/bin/deep-research-state demo /tmp/agent-deep-demo --json
+```
 
-複製 `.env.example` 成 `.env`，只填實際要使用的 provider。Process environment
-優先於最近的 `.env`。Credential 不會進入 state、event、request fingerprint、
-fixture 或 artifact filename。
+它只是 health check，不能支援真實 claim。Route readiness 可用
+`.venv/bin/deep-research-state providers`；machine consumer 使用
+`providers --json`。已安裝的 `deep-research-state` 也涵蓋 state、artifact、
+validation 與 rendering operation。
 
-Spend authority 來自 confirmed physical request count，不是 key 是否存在。金額只能
-估算；provider 有回報 cost 時才保存實際數值。
+### Credential 與安全
 
-Threat model、storage rights、recovery rule 與限制見 [HARNESS.md](HARNESS.md) 和
-[adapter guide](research_harness/adapters/README.md)。
+Provider credential 是 optional。需要 external route 時，才複製 `.env.example` 成
+`.env`，並只填實際要使用的 provider。Process environment 優先於最近的 `.env`。
+Credential 不會進入 state、event、request fingerprint、fixture 或 artifact filename。
+
+Paid request 在 request boundary 內 atomically reserve 精確的 physical multiplicity；
+失敗或 uncertain 的 outbound attempt 仍會消耗。只有 host、local 與 Organizer action
+可以使用 legacy local `permit` command。金額只能估算；provider 有回報 cost 時才保存
+實際數值。
+
+Threat model、storage rights、recovery rule 與限制見 optional implementation and
+recovery reference [HARNESS.md](HARNESS.md) 和 [adapter guide](research_harness/adapters/README.md)。
+
+### 加入第二個 host
+
+之後若要加入另一個 host，再將同一份 checkout 連結到
+`$HOME/.claude/skills/deep` 或 `$HOME/.agents/skills/deep` 即可。
 
 ## 開發與 release 品質
 
@@ -238,9 +198,9 @@ hosted runner 通過相同 gate 後，才會發布 prerelease。
 |---|---|
 | [SKILL.md](SKILL.md) | Canonical Agent Skills workflow |
 | [AGENTS.md](AGENTS.md) | Codex repository guidance |
-| [HARNESS.md](HARNESS.md) | Host-neutral Organizer protocol |
+| [HARNESS.md](HARNESS.md) | Optional implementation and recovery reference |
 | [research_harness](research_harness) | Contract、state、storage、quota、validation、rendering runtime |
-| [research_harness/adapters](research_harness/adapters) | Permit-bound provider adapters |
+| [research_harness/adapters](research_harness/adapters) | request-boundary provider adapters（受 request boundary 約束） |
 | [scripts/research_state.py](scripts/research_state.py) | Main JSON-first CLI |
 | [docs/benchmarks](docs/benchmarks) | Provider adoption evidence |
 | [examples](examples) | Demo artifacts、v2 fixtures，與 calibration eval 種子題組 |

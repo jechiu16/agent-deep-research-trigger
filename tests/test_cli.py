@@ -91,8 +91,6 @@ class CliTests(unittest.TestCase):
             "local",
             "--count",
             "1",
-            "--fingerprint",
-            "sha256:local",
             "--now",
             NOW,
             "--json",
@@ -113,8 +111,6 @@ class CliTests(unittest.TestCase):
             "host-web",
             "--count",
             "1",
-            "--fingerprint",
-            "sha256:test",
             "--now",
             NOW,
             "--json",
@@ -135,6 +131,27 @@ class CliTests(unittest.TestCase):
         validated = self.run_cli("validate", str(session), "--json", check=False)
         self.assertEqual(validated.returncode, 0, validated.stderr)
         self.assertTrue(json.loads(validated.stdout)["ok"])
+
+    def test_demo_and_adapter_guide_use_current_user_path(self) -> None:
+        demo_session = self.root / "demo-session"
+        demo = self.run_cli("demo", str(demo_session), "--now", NOW, "--json")
+        demo_next = json.loads(demo.stdout)["next"]
+        self.assertEqual(
+            demo_next,
+            "open the report for the demo, then start a fresh host session and invoke /deep",
+        )
+        for internal_step in ("prepare", "confirm", "permit", "execute"):
+            self.assertNotIn(internal_step, demo_next)
+
+        adapter_guide = (self.repo / "research_harness" / "adapters" / "README.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "confirmed v3 contract → `init` → boundary `execute` → `validate`",
+            adapter_guide,
+        )
+        self.assertIn("no separate `permit` step", adapter_guide)
+        self.assertNotIn("contract → `init` → `permit` → `execute` → `validate`", adapter_guide)
 
     def _assert_deprecated_question_migration(self, question_args: list[str]) -> None:
         session = self.root / f"deprecated-question-{uuid.uuid4().hex}"
@@ -216,8 +233,6 @@ class CliTests(unittest.TestCase):
             "host",
             "--count",
             "1",
-            "--fingerprint",
-            "sha256:verifier",
             "--now",
             NOW,
             "--json",
@@ -269,10 +284,9 @@ class CliTests(unittest.TestCase):
         self.assertIn("cannot transition action L1 from acquired to completed", result.stderr)
 
     def test_attempt_refuses_boundary_managed_categories(self) -> None:
-        # Journaling "attempted" on a probe permit would permanently void it:
-        # the boundary's _permit_for refuses any already-attempted action.
-        # The medium contract has no probe mapping, so this uses a demo
-        # contract in its own session.
+        # Boundary actions journal their initial "attempted" status together
+        # with reservation, so the generic attempt command refuses them. The
+        # medium contract has no probe mapping, so this uses a demo contract.
         probe_session = self.root / "probe-session"
         probe_contract = self._write_json(confirmed_demo_contract(), "probe-contract.json")
         self.run_cli(
@@ -282,7 +296,7 @@ class CliTests(unittest.TestCase):
             str(probe_contract),
             "--json",
         )
-        self.run_cli(
+        result = self.run_cli(
             "permit",
             str(probe_session),
             "--action-id",
@@ -295,33 +309,20 @@ class CliTests(unittest.TestCase):
             "demo-probe",
             "--count",
             "1",
-            "--fingerprint",
-            "sha256:probe",
-            "--now",
-            NOW,
-            "--json",
-        )
-        result = self.run_cli(
-            "attempt",
-            str(probe_session),
-            "--action-id",
-            "P1",
-            "--status",
-            "attempted",
             "--now",
             NOW,
             "--json",
             check=False,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("boundary-managed", result.stderr)
+        self.assertIn("invalid choice", result.stderr)
         events, errors = read_events(probe_session)
         self.assertEqual(errors, [])
         self.assertEqual(
             [
                 event
                 for event in events
-                if event.get("event") == "attempt_status" and event.get("action_id") == "P1"
+                if event.get("action_id") == "P1"
             ],
             [],
         )
@@ -495,8 +496,6 @@ class CliTests(unittest.TestCase):
             "host-web",
             "--count",
             "not-an-int",
-            "--fingerprint",
-            "sha256:test",
             "--json",
             check=False,
         )
@@ -781,17 +780,6 @@ class CliTests(unittest.TestCase):
             "--contract", str(contract_path),
             "--json",
         )
-        self.run_cli(
-            "permit", str(session),
-            "--action-id", "A1",
-            "--stage", "primary_scout",
-            "--category", "probe",
-            "--route", "github",
-            "--count", "1",
-            "--fingerprint", "sha256:a1",
-            "--now", NOW,
-            "--json",
-        )
         spool_dir = session / "provider_spool"
         spool_dir.mkdir(mode=0o700)
         (spool_dir / "A1.raw.json").write_bytes(
@@ -853,17 +841,6 @@ class CliTests(unittest.TestCase):
         self.run_cli(
             "init", str(session),
             "--contract", str(contract_path),
-            "--json",
-        )
-        self.run_cli(
-            "permit", str(session),
-            "--action-id", "A1",
-            "--stage", "primary_scout",
-            "--category", "probe",
-            "--route", "github",
-            "--count", "1",
-            "--fingerprint", "sha256:a1",
-            "--now", NOW,
             "--json",
         )
         spool_dir = session / "provider_spool"

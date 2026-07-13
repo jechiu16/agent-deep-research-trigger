@@ -17,9 +17,9 @@ from research_harness.boundary import (
     _urllib_transport,
     execute_probe,
 )
-from research_harness.quota import QuotaExceeded, acquire_permits
+from research_harness.quota import permit_usage
 from research_harness.state import new_state
-from research_harness.storage import create_session, load_state, read_events
+from research_harness.storage import apply_state_patch, create_session, load_state, read_events
 from research_harness.validation import validate_session
 from tests.helpers import NOW, confirmed_demo_contract
 
@@ -42,7 +42,7 @@ class RedirectHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"followed")
 
     def log_message(self, format: str, *args: object) -> None:
-        pass
+        return None
 
 
 def fixture_transport(name: str, status: int = 200):
@@ -72,18 +72,28 @@ class BoundaryTests(unittest.TestCase):
         patcher = mock.patch.dict("os.environ", TEST_ENV)
         patcher.start()
         self.addCleanup(patcher.stop)
-        acquire_permits(
-            self.session, "A1", "primary_scout", "probe", "sonar", 1, "fp-test", NOW
-        )
 
     def attempt_statuses(self, action_id: str = "A1") -> list[str]:
         events, errors = read_events(self.session)
         self.assertEqual(errors, [])
         return [
+            event.get("initial_status")
+            for event in events
+            if event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("initial_status")
+        ] + [
             event["status"]
             for event in events
             if event.get("event") == "attempt_status" and event.get("action_id") == action_id
         ]
+
+    def assert_failure_copy(self, raised, *phrases: str) -> None:
+        message = str(raised.exception).lower()
+        self.assertIn("consumed=true", message)
+        self.assertIn("same action", message)
+        for phrase in phrases:
+            self.assertIn(phrase.lower(), message)
 
     def test_success_records_occurrence_and_completes_attempt(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
@@ -94,7 +104,7 @@ class BoundaryTests(unittest.TestCase):
             [item for item in fixture.get("search_results", []) if isinstance(item.get("url"), str)]
         )
         result = execute_probe(
-            self.session, "A1", "current fed funds target range", NOW,
+            self.session, "A1", 'primary_scout', 'sonar', "current fed funds target range", NOW,
             transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
         )
         occurrence = result["occurrence"]
@@ -112,71 +122,92 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(json.loads(spool.read_text())["model"], "sonar-pro")
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
+        self.assertTrue(report.integrity_ok)
+
+    def test_sync_occurrence_rejects_forged_terminal_poll_hash(self) -> None:
+        execute_probe(
+            self.session, "A1", "primary_scout", "sonar", "sync hash guard", NOW,
+            transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
+        )
+        state = load_state(self.session)
+        apply_state_patch(
+            self.session,
+            [{"op": "add", "path": "/retrieval_occurrences/0/terminal_poll_event_hash", "value": "0" * 64}],
+            state["session"]["revision"],
+            NOW,
+        )
+        report = validate_session(self.session, check_report=False)
+        self.assertFalse(report.integrity_ok, report.to_dict())
+        self.assertIn(
+            "occurrence.terminal_poll_event_hash",
+            {issue.code for issue in report.errors},
+        )
 
     def test_http_error_consumes_permit_and_preserves_payload(self) -> None:
-        with self.assertRaises(BoundaryError):
+        with self.assertRaises(BoundaryError) as raised:
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=fixture_transport("sonar_rate_limited.json", status=429),
                 environ=TEST_ENV,
             )
+        self.assert_failure_copy(raised, "returned http", "provider spool", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
         self.assertIn("rate_limit_exceeded", spool.read_text())
-        # The permit stays consumed: the single primary_scout invocation is gone.
-        with self.assertRaises(QuotaExceeded):
-            acquire_permits(
-                self.session, "A2", "primary_scout", "probe", "sonar", 1, "fp2", NOW
-            )
+        # The boundary request count stays consumed after the failed call.
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
-        with self.assertRaises(AdapterParseError):
+        with self.assertRaises(AdapterParseError) as raised:
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=fixture_transport("sonar_missing_content.json"), environ=TEST_ENV,
             )
+        self.assert_failure_copy(raised, "parse failed", "provider spool", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         self.assertTrue((self.session / "provider_spool" / "A1.raw.json").exists())
 
     def test_transport_failure_fails_attempt(self) -> None:
-        with self.assertRaises(BoundaryError):
+        with self.assertRaises(BoundaryError) as raised:
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=failing_transport(urllib.error.URLError("connection refused")),
                 environ=TEST_ENV,
             )
+        self.assert_failure_copy(raised, "transport failed", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "failed"])
 
     def test_timeout_marks_attempt_uncertain(self) -> None:
-        with self.assertRaises(BoundaryError):
+        with self.assertRaises(BoundaryError) as raised:
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=failing_transport(socket.timeout("timed out")), environ=TEST_ENV,
             )
+        self.assert_failure_copy(raised, "timed out", "recorded lifecycle", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "uncertain"])
 
     def test_second_execution_of_same_action_is_refused(self) -> None:
         execute_probe(
-            self.session, "A1", "q", NOW,
+            self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
             transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
         )
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
             )
 
     def test_unknown_action_is_refused(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "missing", "q", NOW,
+                self.session, "missing", "primary_scout", "not-a-route", "q", NOW,
                 transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
             )
 
     def test_missing_key_refuses_before_any_attempt(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_probe(
-                self.session, "A1", "q", NOW,
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
                 transport=fixture_transport("sonar_success.json"), environ={},
             )
         self.assertEqual(self.attempt_statuses(), [])
