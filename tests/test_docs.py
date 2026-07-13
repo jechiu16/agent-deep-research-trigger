@@ -228,8 +228,30 @@ class DocumentationTests(unittest.TestCase):
 
     def test_readmes_keep_product_surface_and_hide_runtime_armor(self) -> None:
         required_headings = {
-            "README.md": ("## Quickstart", "## Tiers", "## Outputs", "## Project Links", "## License"),
-            "README.zh-TW.md": ("## 快速開始", "## Tiers", "## 輸出", "## 專案連結", "## License"),
+            "README.md": (
+                "## Why This Exists",
+                "## What You Get",
+                "## How Quality Is Earned",
+                "## Architecture",
+                "## Glossary",
+                "## Quickstart",
+                "## Tiers",
+                "## Outputs",
+                "## Project Links",
+                "## License",
+            ),
+            "README.zh-TW.md": (
+                "## 為什麼需要它",
+                "## 產出長什麼樣",
+                "## 品質怎麼來",
+                "## Architecture",
+                "## Glossary",
+                "## 快速開始",
+                "## Tiers",
+                "## 輸出",
+                "## 專案連結",
+                "## License",
+            ),
         }
         engineering_terms = (
             "summary.status",
@@ -238,7 +260,6 @@ class DocumentationTests(unittest.TestCase):
             "deep-research-release-gate",
             "wheel",
             "sdist",
-            "```mermaid",
         )
 
         for relative, headings in required_headings.items():
@@ -247,13 +268,53 @@ class DocumentationTests(unittest.TestCase):
                 for heading in headings:
                     with self.subTest(heading=heading):
                         self.assertIn(heading, text)
-                self.assertLessEqual(len(text.splitlines()), 90)
+                self.assertLessEqual(len(text.splitlines()), 180)
                 for term in engineering_terms:
                     with self.subTest(term=term):
                         self.assertNotIn(term, text.lower())
                 self.assertIn("HARNESS.md", text)
                 self.assertIn("CONTRIBUTING.md", text)
                 self.assertIn("SECURITY.md", text)
+
+    def test_readmes_share_native_architecture_and_define_product_terms(self) -> None:
+        diagrams = []
+        diagram_terms = (
+            "SKILL.md",
+            "HARNESS.md",
+            "deep-research-state CLI",
+            "research_harness/",
+            "state.json",
+            "events.jsonl",
+            "raw/",
+            "report.html",
+            "Direct capture",
+            "source_origin",
+            "evidence + exact excerpt",
+            "load-bearing claim",
+        )
+        glossary_terms = (
+            "Organizer",
+            "D1 / D2",
+            "Anti-lock-in",
+            "Direct capture",
+            "Source-origin independence",
+            "Context-separated verifier",
+        )
+
+        for relative in ("README.md", "README.zh-TW.md"):
+            with self.subTest(path=relative):
+                text = self.read(relative)
+                matches = re.findall(r"```mermaid\n(.*?)\n```", text, re.DOTALL)
+                self.assertEqual(len(matches), 1)
+                diagram = matches[0]
+                diagrams.append(diagram)
+                for term in diagram_terms:
+                    self.assertIn(term, diagram)
+                glossary = self.section(text, "## Glossary", "## Quickstart" if relative == "README.md" else "## 快速開始")
+                for term in glossary_terms:
+                    self.assertIn(term, glossary)
+
+        self.assertEqual(diagrams[0], diagrams[1])
 
     def test_readmes_link_to_bounded_examples(self) -> None:
         examples = (
