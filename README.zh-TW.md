@@ -64,6 +64,16 @@ Medium 與 High 交付：
 證據或交付有缺口時仍會交付受阻的研究套件，絕不標為 `PASS`；HTML
 會依情況標示 `EVIDENCE_INSUFFICIENT` 或 `DELIVERY_INCOMPLETE`。
 
+## 一次盲測
+
+一個 persistence 題目比較 direct OpenAI Deep Research 與 `/deep High`。
+在準則先凍結且身份隱藏的條件下，reviewer 偏好 `/deep High`；它的
+verifier 先修正四個 draft 問題，final 也避開 baseline 的 durability、
+WAL sidecar 與過時版本敘述錯誤。
+
+這只代表一題，不能證明普遍優於其他 Deep Research。完整的[題目、兩份
+輸出與 verdict](examples/paired/2026-07-13-sqlite-wal-blind/)均已保留。
+
 ## 專案連結
 
 - [SKILL.md](SKILL.md)：公開 `/deep` protocol

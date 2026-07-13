@@ -220,6 +220,29 @@ class DocumentationTests(unittest.TestCase):
                 self.assertIn("CONTRIBUTING.md", text)
                 self.assertIn("SECURITY.md", text)
 
+    def test_readmes_link_to_bounded_blind_comparison(self) -> None:
+        example = "examples/paired/2026-07-13-sqlite-wal-blind/"
+        boundaries = {
+            "README.md": "not evidence of general superiority",
+            "README.zh-TW.md": "不能證明普遍優於",
+        }
+        for relative, boundary in boundaries.items():
+            with self.subTest(path=relative):
+                text = self.read(relative)
+                self.assertIn(example, text)
+                self.assertIn(boundary, text)
+
+        artifacts = (
+            "task.md",
+            "adjudication.md",
+            "direct-deep-research.md",
+            "deep-high.md",
+            "blind-verdict.md",
+        )
+        for name in artifacts:
+            with self.subTest(artifact=name):
+                self.assertTrue((ROOT / example / name).is_file())
+
     def test_version_and_release_note_are_b6(self) -> None:
         pyproject = self.read("pyproject.toml")
         changelog = self.read("CHANGELOG.md")

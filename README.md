@@ -65,6 +65,16 @@ Medium and High deliver:
 Evidence or delivery gaps still produce a blocked package, never `PASS`. The
 HTML identifies `EVIDENCE_INSUFFICIENT` or `DELIVERY_INCOMPLETE` as applicable.
 
+## One Blind Comparison
+
+One exploratory persistence task compared direct OpenAI Deep Research with
+`/deep High`. A frozen, identity-blind reviewer preferred `/deep High`: its
+verifier fixed four draft issues, and its final answer avoided the baseline's
+durability, WAL-sidecar, and obsolete-version errors.
+
+This is one task, not evidence of general superiority. See the [task, both
+outputs, and verdict](examples/paired/2026-07-13-sqlite-wal-blind/).
+
 ## Project Links
 
 - [SKILL.md](SKILL.md): public `/deep` protocol
