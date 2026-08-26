@@ -73,10 +73,30 @@ def _boolean_label(value: Any) -> str:
     return "未記錄"
 
 
+def _list_entry_text(value: Any) -> str:
+    """Render one list entry, whether it is a bare string or an id-carrying record.
+
+    Sections listed in state.ID_SECTIONS (open_questions among them) must hold
+    objects, while engineering_handoff's lists hold plain strings. Both reach
+    this helper, so stringifying blindly would print a dict repr at the reader.
+    """
+
+    if isinstance(value, dict):
+        for key in ("text", "question", "description"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
+    return str(value)
+
+
 def _text_list(values: Any, empty_label: str = "尚未記錄") -> str:
     if not isinstance(values, list) or not values:
         return _empty(empty_label)
-    return "<ul>" + "".join(f"<li>{_escape(value)}</li>" for value in values) + "</ul>"
+    return (
+        "<ul>"
+        + "".join(f"<li>{_escape(_list_entry_text(value))}</li>" for value in values)
+        + "</ul>"
+    )
 
 
 def _render_safe_action(action: dict[str, Any]) -> str:

@@ -12,6 +12,7 @@ import research_harness.rendering as rendering
 from research_harness.artifacts import ingest_host_capture
 from research_harness.contracts import contract_card_sha256
 from research_harness.rendering import (
+    _text_list,
     finalize_session_result,
     finalize_state_result,
     record_host_report_result,
@@ -740,3 +741,16 @@ class RenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenQuestionRenderingTests(unittest.TestCase):
+    """open_questions is an ID section, so its entries are records, not strings."""
+
+    def test_id_carrying_records_render_their_text_not_a_dict_repr(self) -> None:
+        rendered = _text_list([{"id": "Q1", "text": "這個 tag 是否真實存在？"}])
+        self.assertIn("這個 tag 是否真實存在？", rendered)
+        self.assertNotIn("Q1", rendered)
+        self.assertNotIn("{", rendered)
+
+    def test_plain_strings_still_render_unchanged(self) -> None:
+        self.assertIn("純字串限制", _text_list(["純字串限制"]))
