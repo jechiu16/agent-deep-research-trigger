@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from research_harness.boundary import BoundaryError, execute_probe
 from research_harness.contracts import contract_card_sha256, normalize_contract
@@ -156,6 +157,110 @@ class QuotaTests(unittest.TestCase):
         with self.assertRaises(BoundaryError):
             execute_probe(self.session, "A2", "primary_scout", "demo-probe", "q", NOW)
         self._acquire_legacy(self.session)
+
+    def _make_rejected_unbilled_session(self) -> Path:
+        """A "sonar" session with a tight search=1 cost budget, mirroring
+        _make_cost_limited_session's shape (primary_scout + reserved
+        verification, both against the same paid route) -- exactly the shape
+        needed to prove a rejected_unbilled action returns its permit for a
+        genuinely new action id, not merely that the aggregate counter looks
+        right in isolation. sonar already supports the "verification" stage
+        (see provider_registry.json), so no registry override is needed."""
+
+        registry = copy.deepcopy(self.registry)
+        contract = draft_host_led_contract()
+        contract["scout_route"] = "sonar"
+        physical = contract["resource_envelope"]["physical_ceiling"]
+        physical.update({category: 0 for category in physical})
+        physical.update({"probe": 2, "organizer_pass": 1})
+        contract["resource_envelope"]["external"]["metered_ceiling"].update(
+            {category: 0 for category in contract["resource_envelope"]["external"]["metered_ceiling"]}
+        )
+        contract["resource_envelope"]["cost_budget"] = {
+            "profile": "light",
+            "deep": 0,
+            "search": 1,
+            "free": "unlimited",
+        }
+        contract["stage_permit_map"] = [
+            {
+                "stage": "primary_scout",
+                "category": "probe",
+                "route": "sonar",
+                "invocations": 1,
+                "count": 1,
+                "reserved": False,
+            },
+            {
+                "stage": "verification",
+                "category": "probe",
+                "route": "sonar",
+                "invocations": 1,
+                "count": 1,
+                "reserved": True,
+            },
+            {
+                "stage": "final_inference_review",
+                "category": "organizer_pass",
+                "route": "host",
+                "invocations": 1,
+                "count": 1,
+                "reserved": True,
+            },
+        ]
+        contract = normalize_contract(contract)
+        records = referenced_provider_records(contract, registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        session = self.root / "rejected-unbilled"
+        create_session(session, new_state(contract, NOW, registry, {"PERPLEXITY_API_KEY": "test-key"}))
+        return session
+
+    def test_rejected_unbilled_permit_is_available_to_a_new_action_id(self) -> None:
+        session = self._make_rejected_unbilled_session()
+        rejection_body = json.dumps(
+            {
+                "error": {
+                    "message": "synthetic request-validation error",
+                    "type": "invalid_request_error",
+                    "param": "model",
+                    "code": None,
+                }
+            }
+        ).encode("utf-8")
+        with mock.patch.dict("os.environ", {"PERPLEXITY_API_KEY": "test-key"}):
+            with self.assertRaises(BoundaryError):
+                execute_probe(
+                    session, "A1", "primary_scout", "sonar", "q1", NOW,
+                    transport=lambda spec: (400, rejection_body),
+                )
+            # returned: the tight search=1 ceiling shows zero usage
+            self.assertEqual(cost_usage(session), {"deep": 0, "search": 0, "free": 0})
+
+            # a brand new action id reserves a fresh permit normally and
+            # succeeds within the SAME tight search=1 budget -- without the
+            # fix this would raise "cost budget exhausted for search", since
+            # the first (rejected, zero-work) call would have wrongly
+            # consumed the only unit of budget.
+            fixture = (Path(__file__).with_name("fixtures") / "sonar_success.json").read_bytes()
+            execute_probe(
+                session, "A2", "verification", "sonar", "q2", NOW,
+                transport=lambda spec: (200, fixture),
+            )
+        self.assertEqual(cost_usage(session)["search"], 1)
+        self.assertEqual(permit_usage(session)["probe"], 2)
+
+        # the FIRST action id is still permanently burned
+        with self.assertRaises(BoundaryError):
+            execute_probe(
+                session, "A1", "primary_scout", "sonar", "q1-retry", NOW,
+                transport=lambda spec: (200, fixture),
+            )
 
     def test_cost_budget_stops_second_external_call_without_consuming_it(self) -> None:
         session = self._make_cost_limited_session()

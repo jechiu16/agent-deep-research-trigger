@@ -23,6 +23,7 @@ parallel async-adapter test file creates.
 from __future__ import annotations
 
 import json
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -42,6 +43,7 @@ from research_harness.providers import (
     referenced_provider_records,
     validate_provider_registry,
 )
+from research_harness.quota import cost_usage, permit_usage, rejected_unbilled_actions
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -56,6 +58,20 @@ def fixture_transport(name: str, status: int = 200):
 
     def transport(spec):
         return status, payload
+
+    return transport
+
+
+def raw_transport(status: int, payload: bytes):
+    def transport(spec):
+        return status, payload
+
+    return transport
+
+
+def failing_transport(exc: Exception):
+    def transport(spec):
+        raise exc
 
     return transport
 
@@ -277,6 +293,103 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted", "completed"])
 
+    # -- rejected_unbilled classification (real incident, real evidence) -----
+    #
+    # tests/fixtures/openai_deep_submit_rejected_invalid_model.json is a
+    # verbatim copy of the upstream body recorded in provider_spool/D2.raw.json
+    # from the real Heavy run that motivated this classification: a 404 whose
+    # body is {"error": {"type": "invalid_request_error", ...}}. That request
+    # did zero research work, so it must return the "deep" permit while still
+    # permanently burning the action id (never resubmit).
+
+    def test_invalid_request_error_is_rejected_unbilled_and_burns_action_id(self) -> None:
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=fixture_transport("openai_deep_submit_rejected_invalid_model.json", status=404),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertIn("must still never be retried or resubmitted", message)
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "rejected_unbilled"])
+
+        # the permit is returned: the paid deep budget shows zero usage
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        # the physical request count stays consumed: one HTTP round trip did happen
+        self.assertEqual(permit_usage(self.session)["deep"], 1)
+        # the classification and its upstream evidence are inspectable after the fact
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["action_id"], "D1")
+        self.assertEqual(rejected[0]["route"], "openai-deep")
+        self.assertEqual(rejected[0]["details"]["http_status"], 404)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "invalid_request_error")
+        self.assertIn("Model not found", rejected[0]["details"]["provider_error_message"])
+
+        # the action id is still permanently burned -- never resubmit
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep", "retry attempt", NOW,
+                transport=fixture_transport("openai_deep_submit_accept.json"),
+                environ=TEST_ENV,
+            )
+
+    def test_server_error_stays_consumed(self) -> None:
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=fixture_transport("openai_deep_submit_server_error.json", status=500),
+                environ=TEST_ENV,
+            )
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "failed"])
+        self.assertEqual(cost_usage(self.session), {"deep": 1, "search": 0, "free": 0})
+        self.assertEqual(rejected_unbilled_actions(self.session), [])
+
+    def test_timeout_stays_consumed(self) -> None:
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=failing_transport(socket.timeout("timed out")),
+                environ=TEST_ENV,
+            )
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "uncertain"])
+        self.assertEqual(cost_usage(self.session), {"deep": 1, "search": 0, "free": 0})
+        self.assertEqual(rejected_unbilled_actions(self.session), [])
+
+    def test_rate_limited_429_stays_consumed_even_with_a_qualifying_body_shape(self) -> None:
+        # This fixture deliberately reuses the SAME "invalid_request_error"
+        # type as the qualifying rejection above, isolating that it is the
+        # 429 status code alone -- not the body shape -- that keeps a rate
+        # limit consumed. A 429 may follow work the provider already started
+        # and billed for.
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=fixture_transport("openai_deep_submit_rate_limited.json", status=429),
+                environ=TEST_ENV,
+            )
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "failed"])
+        self.assertEqual(cost_usage(self.session), {"deep": 1, "search": 0, "free": 0})
+        self.assertEqual(rejected_unbilled_actions(self.session), [])
+
+    def test_unparseable_4xx_body_stays_consumed(self) -> None:
+        with self.assertRaises(BoundaryError):
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=raw_transport(400, b"not a json body {"),
+                environ=TEST_ENV,
+            )
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "failed"])
+        self.assertEqual(cost_usage(self.session), {"deep": 1, "search": 0, "free": 0})
+        self.assertEqual(rejected_unbilled_actions(self.session), [])
+
     # -- registry schema ------------------------------------------------------
 
     def test_openai_deep_registry_record_validates(self) -> None:
@@ -285,6 +398,7 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         provider = next(p for p in registry["providers"] if p["id"] == "openai-deep")
         self.assertEqual(provider["adapter"], "openai-deep-responses")
         self.assertEqual(provider["adapter_version"], "v1")
+        self.assertEqual(provider["model"], "o4-mini-deep-research")
         self.assertEqual(provider["execution_binding"], "v2_request_boundary")
         self.assertEqual(provider["action_categories"], ["deep", "transport"])
         self.assertEqual(provider["stage_capabilities"], ["investigation", "anti_lock_in"])
@@ -300,6 +414,19 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         self.assertIn(provider["adoption_status"], {"baseline", "validated"})
         self.assertTrue(provider["adoption_evidence"])
         self.assertTrue(any("live-occurrence" in item for item in provider["adoption_evidence"]))
+
+    def test_model_id_is_registry_data_snapshotted_into_state(self) -> None:
+        """The pinned model id lives in provider_registry.json, not in
+        openai_deep.py, and the registry is snapshotted into state.json at
+        session init -- so the exact model used by a session is part of its
+        own audit record, not something you have to go read the adapter
+        source to discover."""
+
+        state = load_state(self.session)
+        provider = next(
+            p for p in state["capabilities"]["providers"] if p["id"] == "openai-deep"
+        )
+        self.assertEqual(provider["model"], "o4-mini-deep-research")
 
 
 if __name__ == "__main__":

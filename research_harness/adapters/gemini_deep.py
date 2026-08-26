@@ -21,7 +21,6 @@ from ..boundary import (
 )
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
-AGENT = "deep-research-preview-04-2026"
 
 
 def _require_key(env: dict[str, str]) -> str:
@@ -31,12 +30,22 @@ def _require_key(env: dict[str, str]) -> str:
     return key
 
 
-def submit(query: str, env: dict[str, str]) -> RequestSpec:
+def _require_model(model: str | None) -> str:
+    if not model:
+        raise BoundaryError(
+            "gemini-deep provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
+    return model
+
+
+def submit(query: str, env: dict[str, str], *, model: str | None = None) -> RequestSpec:
     key = _require_key(env)
+    resolved_model = _require_model(model)
     body = json.dumps(
         {
             "input": query,
-            "agent": AGENT,
+            "agent": resolved_model,
             "background": True,
             "store": True,
             "agent_config": {
@@ -91,7 +100,7 @@ def _terminal_failure_message(data: dict[str, Any]) -> str:
     return f"gemini deep job ended with status {data.get('status')!r}"
 
 
-def extract(payload: bytes) -> ParsedResult | None:
+def extract(payload: bytes, *, model: str | None = None) -> ParsedResult | None:
     try:
         data = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -162,13 +171,18 @@ def extract(payload: bytes) -> ParsedResult | None:
         raise AdapterParseError("gemini completed payload has no model output text")
 
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-    returned_model = data.get("model") or data.get("agent") or AGENT
-    model = returned_model if isinstance(returned_model, str) and returned_model else AGENT
+    returned_model = data.get("model") or data.get("agent") or model
+    resolved_model = returned_model if isinstance(returned_model, str) and returned_model else None
+    if not resolved_model:
+        raise AdapterParseError(
+            "gemini-deep provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
     return ParsedResult(
         synthesis_text=synthesis_text,
         citations=citations,
         cost_usd=None,
         usage=usage,
-        model=model,
+        model=resolved_model,
         kind="search_synthesis",
     )

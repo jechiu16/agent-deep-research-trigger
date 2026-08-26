@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -143,6 +144,10 @@ def validate_provider_registry(registry: dict[str, Any]) -> list[str]:
 
         if not isinstance(provider.get("enabled"), bool):
             errors.append(f"provider {provider_id} enabled must be boolean")
+        if "model" in provider and (
+            not isinstance(provider.get("model"), str) or not provider.get("model")
+        ):
+            errors.append(f"provider {provider_id} model must be a non-empty string when present")
         cost_class = provider.get("cost_class")
         if cost_class not in COST_CLASSES | {"unclassified"}:
             errors.append(f"provider {provider_id} cost_class is invalid")
@@ -272,6 +277,7 @@ def _merge_overlay(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, A
     immutable_fields = (
         "adapter",
         "adapter_version",
+        "model",
         "request_multiplicity",
         "execution_binding",
         "index_family",
@@ -421,3 +427,69 @@ def preflight_contract_routes(
             }
         )
     return records, errors
+
+
+# ── Honest readiness signals for CLI display only ──────────────────────────
+#
+# Neither helper below is part of preflight_contract_routes's return shape:
+# that shape is snapshotted verbatim into a session's state.json at init
+# (see state.py's frozen _PREFLIGHT_FIELDS contract, validated against
+# already-persisted historical sessions), so it cannot grow a field without
+# breaking every session package written before this change. These two
+# checks stay purely local and no-network -- "A present credential is not
+# execution readiness" (HARNESS.md) -- and exist to make the pre-confirmation
+# card's "ready" claim narrower and more honest: adapter actually registered,
+# plus adoption evidence not stale, in addition to the credential-presence
+# check preflight_contract_routes already does. Neither can prove a paid call
+# will be accepted -- the 2026-08-26 openai-deep incident is proof of that:
+# the route was enabled, bound, credentialed, and fresh, and the call was
+# still refused upstream. Phrase any use of these as "locally verified",
+# never "will work".
+
+ADOPTION_STALE_DAYS = 42  # ~6 weeks: adoption_status is a point-in-time claim
+
+
+def adapter_is_bound(provider: dict[str, Any]) -> bool:
+    """Whether provider's adapter/adapter_version is actually registered.
+
+    Only v2_request_boundary routes ever look themselves up in ADAPTERS (see
+    boundary._bound_route); no_network_demo, host_native_observed, local, and
+    legacy_unbound routes never do, so they are trivially "bound" here. The
+    import is function-local to avoid the providers -> adapters -> boundary
+    -> quota -> providers cycle (the same reason boundary._adapters lazily
+    imports .adapters instead of importing it at module load time).
+    """
+
+    if provider.get("execution_binding") != "v2_request_boundary":
+        return True
+    from .adapters import ADAPTERS
+
+    key = f"{provider.get('adapter')}@{provider.get('adapter_version')}"
+    return key in ADAPTERS
+
+
+def effective_adoption_status(provider: dict[str, Any], now: str) -> str:
+    """provider's adoption_status, downgraded to "stale" once docs_verified_at
+    is more than ADOPTION_STALE_DAYS before `now`.
+
+    Purely a derived display value: it never mutates the registry record and
+    is never written into a session's persisted capability snapshot, which
+    keeps the raw, historically-accurate adoption_status/docs_verified_at
+    pair exactly as confirmed at session init. An adoption_status outside
+    {"baseline", "validated"} (e.g. "not_tested") or an unparseable
+    docs_verified_at is returned unchanged -- staleness only ever narrows an
+    existing positive claim, it never invents one.
+    """
+
+    status = provider.get("adoption_status")
+    verified_at = provider.get("docs_verified_at")
+    if status not in {"baseline", "validated"} or not isinstance(verified_at, str):
+        return str(status)
+    try:
+        verified_date = date.fromisoformat(verified_at)
+        now_date = date.fromisoformat(now[:10])
+    except ValueError:
+        return str(status)
+    if (now_date - verified_date).days > ADOPTION_STALE_DAYS:
+        return "stale"
+    return str(status)

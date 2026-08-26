@@ -161,7 +161,7 @@ class GeminiDeepAdapterTests(unittest.TestCase):
         )
 
     def test_submit_request_shape_and_secret_boundary(self) -> None:
-        spec = gemini_deep.submit("research question", TEST_ENV)
+        spec = gemini_deep.submit("research question", TEST_ENV, model="deep-research-preview-04-2026")
         body = json.loads(spec.body)
         self.assertEqual(spec.method, "POST")
         self.assertEqual(spec.url, "https://generativelanguage.googleapis.com/v1beta/interactions")
@@ -179,7 +179,12 @@ class GeminiDeepAdapterTests(unittest.TestCase):
             },
         )
         with self.assertRaises(BoundaryError):
-            gemini_deep.submit("research question", {})
+            gemini_deep.submit("research question", {}, model="deep-research-preview-04-2026")
+        # a registry that omits the model is also refused, distinctly from a
+        # missing credential -- the adapter must not silently keep an
+        # internal default now that the model id is registry-owned data.
+        with self.assertRaisesRegex(BoundaryError, "no model configured"):
+            gemini_deep.submit("research question", TEST_ENV)
 
     def test_poll_and_job_token_shape(self) -> None:
         accept = (FIXTURES / "gemini_deep_submit_accept.json").read_bytes()

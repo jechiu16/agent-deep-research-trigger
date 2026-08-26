@@ -20,6 +20,16 @@ Async adapters (registry transport.mode "async") expose four:
 
 Keep every adapter stdlib-only. Credentials come in through ``env`` and must
 never appear in fixtures, occurrences, or fingerprints.
+
+A pinned upstream model id is registry data, not a Python constant: an
+adapter that needs one (currently sonar, perplexity_deep, gemini_deep,
+openai_deep) declares a keyword-only ``model`` parameter on the function(s)
+that use it. boundary._model_kwargs forwards the provider record's "model"
+field automatically when present; when the registry omits it the adapter is
+called with no model kwarg at all, and the adapter's own guard raises a
+clear BoundaryError/AdapterParseError rather than falling back to a stale
+hardcoded default. Adapters with no registry "model" field are unaffected
+and take no such parameter.
 """
 
 from __future__ import annotations

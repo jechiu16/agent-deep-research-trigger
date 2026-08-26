@@ -33,7 +33,6 @@ from ..boundary import (
 )
 
 BASE_URL = "https://api.openai.com/v1/responses"
-MODEL = "o4-mini-deep-research"
 
 # Non-terminal statuses: the job is still queued or running.
 _RUNNING_STATUSES = frozenset({"queued", "in_progress"})
@@ -46,11 +45,21 @@ def _require_key(env: dict[str, str]) -> str:
     return key
 
 
-def submit(query: str, env: dict[str, str]) -> RequestSpec:
+def _require_model(model: str | None) -> str:
+    if not model:
+        raise BoundaryError(
+            "openai-deep provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
+    return model
+
+
+def submit(query: str, env: dict[str, str], *, model: str | None = None) -> RequestSpec:
     key = _require_key(env)
+    resolved_model = _require_model(model)
     body = json.dumps(
         {
-            "model": MODEL,
+            "model": resolved_model,
             "input": query,
             "background": True,
             "tools": [{"type": "web_search_preview"}],
@@ -99,7 +108,7 @@ def _terminal_failure_message(data: dict) -> str:
     return f"openai deep job ended with status {data.get('status')!r}"
 
 
-def extract(payload: bytes) -> ParsedResult | None:
+def extract(payload: bytes, *, model: str | None = None) -> ParsedResult | None:
     try:
         data = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -146,6 +155,11 @@ def extract(payload: bytes) -> ParsedResult | None:
     synthesis_text = "\n\n".join(texts).strip()
     if not synthesis_text:
         raise AdapterParseError("openai completed payload has no message text")
+    if not model:
+        raise AdapterParseError(
+            "openai-deep provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
 
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     return ParsedResult(
@@ -153,6 +167,6 @@ def extract(payload: bytes) -> ParsedResult | None:
         citations=citations,
         cost_usd=None,  # Responses API reports token usage only, never a dollar cost
         usage=usage,
-        model=MODEL,
+        model=model,
         kind="search_synthesis",
     )

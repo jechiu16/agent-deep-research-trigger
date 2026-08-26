@@ -23,7 +23,6 @@ from ..boundary import (
 )
 
 ASYNC_BASE = "https://api.perplexity.ai/v1/async/sonar"
-MODEL = "sonar-deep-research"
 
 
 def _require_key(env: dict[str, str]) -> str:
@@ -33,12 +32,22 @@ def _require_key(env: dict[str, str]) -> str:
     return key
 
 
-def submit(query: str, env: dict[str, str]) -> RequestSpec:
+def _require_model(model: str | None) -> str:
+    if not model:
+        raise BoundaryError(
+            "perplexity provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
+    return model
+
+
+def submit(query: str, env: dict[str, str], *, model: str | None = None) -> RequestSpec:
     key = _require_key(env)
+    resolved_model = _require_model(model)
     body = json.dumps(
         {
             "request": {
-                "model": MODEL,
+                "model": resolved_model,
                 "messages": [{"role": "user", "content": query}],
                 "reasoning_effort": "low",
             }
@@ -77,7 +86,7 @@ def poll(token: str, env: dict[str, str]) -> RequestSpec:
     )
 
 
-def extract(payload: bytes) -> ParsedResult | None:
+def extract(payload: bytes, *, model: str | None = None) -> ParsedResult | None:
     try:
         data = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -113,11 +122,21 @@ def extract(payload: bytes) -> ParsedResult | None:
     ]
     usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
     cost = (usage.get("cost") or {}).get("total_cost") if isinstance(usage.get("cost"), dict) else None
+    if not model:
+        # AdapterParseError, not BoundaryError: this runs after the paid
+        # request already succeeded (inside execute_deep_poll's extract()
+        # try/except), so a missing registry model must fall into the
+        # existing malformed-terminal/harvestable-again path rather than
+        # escape as an uncaught exception.
+        raise AdapterParseError(
+            "perplexity provider record has no model configured "
+            "(provider_registry.json is missing the \"model\" field)"
+        )
     return ParsedResult(
         synthesis_text=text,
         citations=citations,
         cost_usd=round(cost, 4) if isinstance(cost, (int, float)) else None,
         usage=usage,
-        model=MODEL,
+        model=model,
         kind="search_synthesis",
     )
