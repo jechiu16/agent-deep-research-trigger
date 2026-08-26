@@ -54,7 +54,12 @@ from research_harness.quota import (
     cost_usage,
     permit_usage,
 )
-from research_harness.rendering import finalize_session_result, render_session_result
+from research_harness.rendering import (
+    finalize_session_result,
+    finalize_state_result,
+    record_host_report_result,
+    render_session_result,
+)
 from research_harness.state import new_state, state_sha256
 from research_harness.storage import (
     _read_events_unlocked,
@@ -819,8 +824,20 @@ def command_validate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return report.to_dict(), 0 if report.ok else 1 if report.errors else 2
 
 
+def command_finalize(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    sealed = finalize_state_result(Path(args.session), args.now or _now())
+    return {
+        "state_sha256": sealed.state_sha256,
+        "validation": sealed.validation.to_dict(),
+    }, 0
+
+
 def command_render(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    rendered = finalize_session_result(Path(args.session), args.now or _now())
+    now = args.now or _now()
+    if args.host_authored:
+        rendered = record_host_report_result(Path(args.session), now)
+    else:
+        rendered = finalize_session_result(Path(args.session), now)
     return {
         "report_path": str(rendered.path.resolve()),
         "state_sha256": rendered.state_sha256,
@@ -1093,17 +1110,44 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(validate)
     validate.set_defaults(handler=command_validate)
 
+    finalize = subparsers.add_parser(
+        "finalize",
+        help="seal budget/tier status and return the exact hash a report must embed",
+        description=(
+            "Pre-write half of the host-authored delivery path. Applies the same "
+            "revision-safe BLOCKED seal as `render` (budget-exhaustion gaps, an "
+            "insufficient tier floor) but writes no report.html. Call this first, "
+            "embed the returned state_sha256 in <meta data-state-sha256> of a "
+            "self-authored report.html, then run `render --host-authored` to bind "
+            "it. Idempotent: calling it again with nothing else changed returns "
+            "the same hash."
+        ),
+    )
+    finalize.add_argument("session")
+    finalize.add_argument("--now", help="timestamp for a canonical tier-status seal")
+    _add_json_flag(finalize)
+    finalize.set_defaults(handler=command_finalize)
+
     render = subparsers.add_parser(
         "render",
         help="final delivery: render report with a revision-safe BLOCKED seal when needed",
         description=(
             "Final delivery path. Deterministically validate the session, then when the tier "
             "floor is unmet but integrity is sound, revision-safely seal "
-            "summary.status=BLOCKED before rendering report.html."
+            "summary.status=BLOCKED before rendering report.html. With "
+            "--host-authored, skip the deterministic renderer and instead bind an "
+            "existing, already-written report.html: the file must already embed "
+            "the exact hash `finalize` returned, or this fails closed rather than "
+            "recording a stale report."
         ),
     )
     render.add_argument("session")
     render.add_argument("--now", help="timestamp for a canonical tier-status seal")
+    render.add_argument(
+        "--host-authored",
+        action="store_true",
+        help="bind an existing host-written report.html instead of overwriting it",
+    )
     _add_json_flag(render)
     render.set_defaults(handler=command_render)
 

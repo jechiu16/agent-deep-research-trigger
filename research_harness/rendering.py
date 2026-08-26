@@ -20,6 +20,7 @@ from .storage import (
     session_lock,
 )
 from .validation import (
+    REPORT_HASH_RE,
     ValidationReport,
     _renderable_human_reasons,
     _validate_loaded_session,
@@ -33,6 +34,21 @@ class RenderedReport:
     validation: ValidationReport
     state_sha256: str
     report_sha256: str
+
+
+@dataclass(frozen=True)
+class SealedState:
+    """The exact hash a report must embed, with no report.html written yet.
+
+    Produced by `finalize_state_result`, the pre-write half of the
+    host-authored path: it applies the same idempotent seal as `render`
+    (budget-gap annotation, insufficient-tier BLOCKED status) without
+    touching report.html, so the host can learn the final canonical hash
+    before authoring the file that must embed it.
+    """
+
+    state_sha256: str
+    validation: ValidationReport
 
 
 def _escape(value: Any) -> str:
@@ -73,18 +89,30 @@ def _render_safe_action(action: dict[str, Any]) -> str:
     )
 
 
-def _human_limitations(state: dict[str, Any], insufficient: bool = False) -> str:
-    handoff = state.get("engineering_handoff", {})
-    values = list(handoff.get("constraints", []))
-    values.extend(state.get("open_questions", []))
-    values.extend(
+def _human_constraints(state: dict[str, Any]) -> str:
+    """This run's scope boundary: what it did not do. Not a flip condition."""
+
+    values = state.get("engineering_handoff", {}).get("constraints", [])
+    return _text_list(values, "尚未記錄範圍限制")
+
+
+def _human_flip_conditions(state: dict[str, Any], insufficient: bool = False) -> str:
+    """What would overturn this conclusion: each claim's own would_change_if."""
+
+    values = [
         claim.get("would_change_if")
         for claim in state.get("claims", [])
         if isinstance(claim, dict) and claim.get("would_change_if")
-    )
+    ]
     if insufficient:
         values.append("尚缺足夠的直接來源，結論可能改變")
-    return _text_list(values, "尚未記錄限制或翻轉條件")
+    return _text_list(values, "尚未記錄翻轉條件")
+
+
+def _human_open_questions(state: dict[str, Any]) -> str:
+    """Open questions this run left unresolved -- distinct from scope or flip conditions."""
+
+    return _text_list(state.get("open_questions", []), "尚未記錄待釐清問題")
 
 
 def _artifact_link(artifact: dict[str, Any] | None) -> str:
@@ -261,15 +289,19 @@ def _render_human_reasons(state: dict[str, Any]) -> str:
     upstream_keys = {source.get("upstream_key") for source in linked_sources}
     if not upstream_keys or "unknown" in upstream_keys:
         upstream_label = "未知"
+        upstream_note = "來源是否重複自同一上游尚無法判定，佐證力有限"
     elif len(upstream_keys) == 1:
         upstream_label = "相同"
+        upstream_note = "以上引用其實來自同一上游，不能互相佐證"
     else:
         upstream_label = "不同"
+        upstream_note = "以上引用來自不同上游，可視為相互獨立的佐證"
     return (
         "<ul class=\"reason-list\">"
         + "".join(reasons)
         + "</ul><p><strong>上游關係：</strong>"
         + upstream_label
+        + f"（{upstream_note}）"
         + "</p>"
     )
 
@@ -363,8 +395,15 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
       <div class="decision"><div class="eyebrow">有界結論</div><h3>結論</h3>
       <p class="decision-text">{_escape(summary.get("decision", "尚未記錄結論"))}</p>
       </div><h3>核心理由</h3>{_render_human_reasons(state)}
-      <h3>限制與翻轉條件</h3>{_human_limitations(state, shortfall_technical_status == "EVIDENCE_INSUFFICIENT" and not report.tier_contract_met)}
+      <h3>這次沒有做到的事</h3>{_human_constraints(state)}
+      <h3>什麼情況下這個結論會翻掉</h3>{_human_flip_conditions(state, shortfall_technical_status == "EVIDENCE_INSUFFICIENT" and not report.tier_contract_met)}
+      <h3>待釐清問題</h3>{_human_open_questions(state)}
       <h3>下一步</h3>{fallback_action}</section>'''
+    summary_headline = summary.get("headline")
+    has_headline = isinstance(summary_headline, str) and bool(summary_headline.strip())
+    headline_text = (
+        summary_headline if valid and report.tier_contract_met and has_headline else recommendation
+    )
 
     return f"""<!doctype html>
 <html lang="zh-Hant-TW">
@@ -386,7 +425,8 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     main,header {{ position:relative; width:min(1120px,calc(100% - 32px)); margin:auto; }}
     header {{ padding:64px 0 32px; border-bottom:2px solid var(--ink); }}
     .eyebrow {{ text-transform:uppercase; letter-spacing:.18em; font:700 12px/1.2 Georgia,serif; color:var(--accent); }}
-    h1 {{ margin:.25rem 0 .5rem; font-size:clamp(2.5rem,7vw,5.8rem); line-height:.92; max-width:13ch; }}
+    h1 {{ margin:.25rem 0 .5rem; font-size:clamp(1.6rem,3.4vw,2.4rem); line-height:1.3; max-width:22ch; }}
+    .kicker {{ margin:0 0 .5rem; color:var(--muted); font-size:.95rem; max-width:60ch; }}
     h2 {{ margin:0 0 1.25rem; font-size:clamp(1.65rem,3vw,2.5rem); }}
     h3 {{ margin:.45rem 0; }}
     .status-line {{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:22px; }}
@@ -398,7 +438,7 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     section {{ background:color-mix(in srgb,var(--panel) 94%,transparent); border:1px solid var(--line);
       padding:clamp(22px,4vw,44px); box-shadow:0 14px 38px #4e46351a; }}
     .decision {{ border-left:8px solid var(--accent); }}
-    .decision-text {{ font-size:clamp(1.35rem,2.6vw,2rem); max-width:38ch; }}
+    .decision-text {{ font-size:1.08rem; line-height:1.75; max-width:46ch; }}
     .human-first {{ border-left:8px solid var(--forest); }}
     .human-first h2 {{ font-size:clamp(1.8rem,4vw,3.2rem); }}
     .reason-list {{ padding-left:1.2rem; }} .reason-list li {{ margin:.55rem 0; }}
@@ -433,12 +473,13 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
 <body>
   <header>
     <div class="eyebrow">研究報告</div>
-    <h1>{_escape(state.get("framing", {}).get("question", "研究結果"))}</h1>
+    <h1>{_escape(headline_text)}</h1>
+    <p class="kicker">研究問題：{_escape(state.get("framing", {}).get("question", "研究結果"))}</p>
     <div class="status-line">{_pill(public_profile, "status")}</div>
   </header>
   <main>
     {human_first_html}
-    <details class="kernel-details"><summary>技術細節</summary>
+    <details class="kernel-details" open><summary>技術細節</summary>
     <section class="decision"><div class="eyebrow">有界結論</div><h2>結論</h2>
       <p class="decision-text">{_escape(summary.get("decision", "尚未記錄結論"))}</p>
       <p><strong>更新時間:</strong> {_escape(state.get("session", {}).get("updated_at"))}</p>
@@ -465,7 +506,7 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
       <p><strong>human_recommendation:</strong> {_escape(organizer_recommendation)}</p>
       {_render_validation(report)}</section>
     <p class="hash">state sha256 {canonical_hash}</p></details>
-    <footer>本報告只從唯一正式 JSON 狀態決定性產生，不含模型撰寫的第二層報告、JavaScript 或遠端資產。</footer>
+    <footer>本報告由決定性渲染器直接從唯一正式 JSON 狀態產生，作為 host 撰寫報告的備援視圖；不含 JavaScript 或遠端資產。</footer>
   </main>
 </body>
 </html>
@@ -506,49 +547,82 @@ def render_session_result(session_dir: Path) -> RenderedReport:
         return _render_loaded_session_unlocked(session_dir, state, validation)
 
 
-def finalize_session_result(session_dir: Path, now: str) -> RenderedReport:
-    """Seal a sound-but-undeliverable status and render it under one session lock."""
+def _finalize_state_unlocked(session_dir: Path, now: str) -> tuple[dict[str, Any], ValidationReport]:
+    """Seal a sound-but-undeliverable status; caller already holds the session lock.
 
-    session_dir = Path(session_dir)
-    with session_lock(session_dir):
-        _recover_session_unlocked(session_dir)
-        state = _load_state_unlocked(session_dir)
+    Shared by every delivery path (deterministic render, the pre-write hash
+    lookup, and recording a host-authored report): each must seal budget-gap
+    annotations and an insufficient-tier BLOCKED status from the same state
+    before anything hashes or embeds it. Idempotent -- calling it again with
+    nothing else changed produces the same state and no new revision.
+    """
+
+    _recover_session_unlocked(session_dir)
+    state = _load_state_unlocked(session_dir)
+    events, event_errors = _read_events_unlocked(session_dir)
+    validation = _validate_loaded_session(
+        session_dir, state, events, event_errors, check_report=False
+    )
+    exhausted_classes = sorted(
+        {
+            event.get("cost_class")
+            for event in events
+            if event.get("event") == "budget_exhausted"
+            and event.get("cost_class") in {"deep", "search"}
+        }
+    )
+    existing_gap_ids = {
+        item.get("id")
+        for item in state.get("open_questions", [])
+        if isinstance(item, dict)
+    }
+    budget_gap_operations = [
+        {
+            "op": "add",
+            "path": "/open_questions/-",
+            "value": {
+                "id": f"budget-exhausted-{cost_class}",
+                "question": (
+                    f"{cost_class} 類外呼預算已用盡；未解缺口僅以現有材料交付，"
+                    "需增加預算或下次重跑才能補強。"
+                ),
+            },
+        }
+        for cost_class in exhausted_classes
+        if f"budget-exhausted-{cost_class}" not in existing_gap_ids
+    ]
+    if budget_gap_operations:
+        state = _commit_patch_unlocked(
+            session_dir,
+            budget_gap_operations,
+            state["session"]["revision"],
+            now,
+            ORGANIZER_ROOTS,
+            "organizer",
+        )
         events, event_errors = _read_events_unlocked(session_dir)
         validation = _validate_loaded_session(
             session_dir, state, events, event_errors, check_report=False
         )
-        exhausted_classes = sorted(
-            {
-                event.get("cost_class")
-                for event in events
-                if event.get("event") == "budget_exhausted"
-                and event.get("cost_class") in {"deep", "search"}
-            }
-        )
-        existing_gap_ids = {
-            item.get("id")
-            for item in state.get("open_questions", [])
-            if isinstance(item, dict)
-        }
-        budget_gap_operations = [
-            {
-                "op": "add",
-                "path": "/open_questions/-",
-                "value": {
-                    "id": f"budget-exhausted-{cost_class}",
-                    "question": (
-                        f"{cost_class} 類外呼預算已用盡；未解缺口僅以現有材料交付，"
-                        "需增加預算或下次重跑才能補強。"
-                    ),
-                },
-            }
-            for cost_class in exhausted_classes
-            if f"budget-exhausted-{cost_class}" not in existing_gap_ids
-        ]
-        if budget_gap_operations:
+    if validation.integrity_ok and not validation.ok:
+        seal_human_status, _ = tier_shortfall_labels(validation.issues)
+        operations = []
+        if state["summary"].get("status") != "BLOCKED":
+            operations.append(
+                {"op": "replace", "path": "/summary/status", "value": "BLOCKED"}
+            )
+        if state["summary"].get("human_status") != seal_human_status:
+            operations.append(
+                {
+                    "op": "replace",
+                    "path": "/summary/human_status",
+                    "value": seal_human_status,
+                }
+            )
+        if operations:
             state = _commit_patch_unlocked(
                 session_dir,
-                budget_gap_operations,
+                operations,
                 state["session"]["revision"],
                 now,
                 ORGANIZER_ROOTS,
@@ -558,34 +632,80 @@ def finalize_session_result(session_dir: Path, now: str) -> RenderedReport:
             validation = _validate_loaded_session(
                 session_dir, state, events, event_errors, check_report=False
             )
-        if (
-            validation.integrity_ok and not validation.ok
-        ):
-            seal_human_status, _ = tier_shortfall_labels(validation.issues)
-            operations = []
-            if state["summary"].get("status") != "BLOCKED":
-                operations.append(
-                    {"op": "replace", "path": "/summary/status", "value": "BLOCKED"}
-                )
-            if state["summary"].get("human_status") != seal_human_status:
-                operations.append(
-                    {
-                        "op": "replace",
-                        "path": "/summary/human_status",
-                        "value": seal_human_status,
-                    }
-                )
-            if operations:
-                state = _commit_patch_unlocked(
-                    session_dir,
-                    operations,
-                    state["session"]["revision"],
-                    now,
-                    ORGANIZER_ROOTS,
-                    "organizer",
-                )
-                events, event_errors = _read_events_unlocked(session_dir)
-                validation = _validate_loaded_session(
-                    session_dir, state, events, event_errors, check_report=False
-                )
+    return state, validation
+
+
+def _record_host_report_unlocked(
+    session_dir: Path,
+    state: dict[str, Any],
+    validation: ValidationReport,
+) -> RenderedReport:
+    """Bind an already-written host-authored report.html to the sealed state.
+
+    The host writes report.html itself (see HARNESS.md); this only verifies
+    the file it left behind and journals the same report_generated event the
+    deterministic path journals, so the audit trail is consistent regardless
+    of which track authored the file. It never rewrites report.html."""
+
+    state_hash = state_sha256(state)
+    report_path = session_dir / "report.html"
+    if not report_path.exists() or report_path.is_symlink() or not report_path.is_file():
+        raise ValueError(
+            "host-authored report.html is missing; write it to the session "
+            "directory before recording it"
+        )
+    try:
+        document = report_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"host-authored report.html cannot be read as UTF-8: {exc}") from exc
+    match = REPORT_HASH_RE.search(html.unescape(document))
+    if match is None or match.group(1) != state_hash:
+        raise ValueError(
+            "host-authored report.html does not embed the current canonical "
+            "state sha256 in <meta data-state-sha256>; re-run finalize and "
+            "rewrite the file before recording it"
+        )
+    payload = report_path.read_bytes()
+    report_hash = hashlib.sha256(payload).hexdigest()
+    _append_event_unlocked(
+        session_dir,
+        {
+            "event": "report_generated",
+            "at": state["session"]["updated_at"],
+            "state_sha256": state_hash,
+            "report_sha256": report_hash,
+            "authored_by": "host",
+        },
+    )
+    return RenderedReport(report_path, validation, state_hash, report_hash)
+
+
+def finalize_session_result(session_dir: Path, now: str) -> RenderedReport:
+    """Seal a sound-but-undeliverable status and render it under one session lock."""
+
+    session_dir = Path(session_dir)
+    with session_lock(session_dir):
+        state, validation = _finalize_state_unlocked(session_dir, now)
         return _render_loaded_session_unlocked(session_dir, state, validation)
+
+
+def finalize_state_result(session_dir: Path, now: str) -> SealedState:
+    """Seal the same as `finalize_session_result`, but write no report.html.
+
+    The host-authored path calls this first to learn the exact canonical
+    hash to embed in <meta data-state-sha256> before it writes report.html
+    itself; `record_host_report_result` then binds that file to this seal."""
+
+    session_dir = Path(session_dir)
+    with session_lock(session_dir):
+        state, validation = _finalize_state_unlocked(session_dir, now)
+        return SealedState(state_sha256(state), validation)
+
+
+def record_host_report_result(session_dir: Path, now: str) -> RenderedReport:
+    """Seal the session, then bind the host-authored report.html already on disk."""
+
+    session_dir = Path(session_dir)
+    with session_lock(session_dir):
+        state, validation = _finalize_state_unlocked(session_dir, now)
+        return _record_host_report_unlocked(session_dir, state, validation)

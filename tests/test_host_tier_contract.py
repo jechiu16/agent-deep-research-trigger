@@ -419,7 +419,7 @@ class HostTierContractTests(unittest.TestCase):
                 report = validate_session(self.session)
                 self.assertFalse(report.tier_contract_met, report.to_dict())
                 self.assertFalse(report.errors, report.to_dict())
-                first_screen = render_session_result(self.session).path.read_text(encoding="utf-8").split('<details class="kernel-details">', 1)[0]
+                first_screen = render_session_result(self.session).path.read_text(encoding="utf-8").split('<summary>技術細節</summary>', 1)[0]
                 self.assertEqual(report.human_status, "交付不完整")
                 self.assertIn("BLOCKED / DELIVERY_INCOMPLETE", first_screen + render_session_result(self.session).path.read_text(encoding="utf-8"))
                 self.assertIn("補齊交付要件後重新產生報告", first_screen)
@@ -432,7 +432,7 @@ class HostTierContractTests(unittest.TestCase):
         )
         report = validate_session(self.session)
         self.assertTrue(report.ok, report.to_dict())
-        first_screen = render_session_result(self.session).path.read_text(encoding="utf-8").split('<details class="kernel-details">', 1)[0]
+        first_screen = render_session_result(self.session).path.read_text(encoding="utf-8").split('<summary>技術細節</summary>', 1)[0]
         for value in ("已完成研究判斷", "建議採用", "採用此有界結論", "Captured source", "若來源改變則重新評估", "A1"):
             self.assertIn(value, first_screen)
         self.assertEqual(first_screen.count('<article class="safe-action">'), 1)

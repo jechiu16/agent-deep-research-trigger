@@ -150,9 +150,10 @@ HTML; it also corrected D1's overly absolute framing of Quack.
 | `state.json` | Machine-readable conclusion, claims, gaps, and coding handoff. |
 | `events.jsonl` | Hash-chained request, revision, and budget journal. |
 | `raw/` | Immutable, policy-gated evidence bytes. |
-| `report.html` | Deterministic Traditional Chinese human report. |
+| `report.html` | Traditional Chinese human report, bound to the canonical state hash. |
 
-No second full Markdown report is generated.
+Host-authored at delivery time, or by a deterministic fallback renderer when
+the host cannot. No second full Markdown report is generated.
 
 ## Platform Support
 

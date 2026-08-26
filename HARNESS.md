@@ -141,7 +141,6 @@ Use boundary-owned calls; do not send a separate paid permit:
   --marginal-purpose '<claim or uncertainty checked>' --json
 "$CLI" patch "$SESSION" --patch "/absolute/path/to/state-patch.json" --json
 "$CLI" validate "$SESSION" --json
-"$CLI" render "$SESSION" --json
 ```
 
 If a call would exceed `deep` or `search`, the boundary sends nothing and
@@ -152,6 +151,93 @@ Human narrative fields, handoff, limitations, and recommendations are
 Traditional Chinese. Preserve exact excerpts, titles, URLs, IDs, hashes,
 provider names, and diagnostics. Acceptance tests use
 `檢查方式 => 預期結果`.
+
+`state.json`, `events.jsonl`, and `raw/` are the canonical package: deterministic,
+hash-chained, byte-exact, and the sole audit surface. Never touch that
+guarantee. `report.html` is the separate human projection of it, and has two
+tracks:
+
+- **Host-authored (default).** You write `report.html` yourself; see
+  [Report Authoring](#report-authoring). It reads far better than a fixed
+  template and can adapt its shape to the question.
+- **Deterministic fallback.** `"$CLI" render "$SESSION" --json` renders a
+  fixed, always-faithful projection instead. Use this only when you cannot
+  author a report yourself -- a crash, budget exhaustion mid-session, or a
+  degraded run -- never as a stylistic choice.
+
+To author your own report:
+
+```bash
+"$CLI" finalize "$SESSION" --json
+# write "$SESSION/report.html" yourself; embed the returned state_sha256
+"$CLI" render "$SESSION" --host-authored --json
+```
+
+`finalize` seals the same budget-gap annotation and insufficient-tier BLOCKED
+status `render` would seal, and returns the exact `state_sha256` the report
+must embed in `<meta data-state-sha256="...">` -- calling it again with
+nothing else changed returns the same hash. Write the file, then
+`render --host-authored` binds it to the sealed state and journals
+`report_generated`; if the file is missing or its embedded hash does not
+match, this fails closed instead of recording a stale report. Do not patch
+state between the two calls -- if you must, re-run `finalize` and rewrite the
+file before `render --host-authored`.
+
+## Report Authoring
+
+Read `state.json` in full before writing. Every claim, number, and quotation
+in the report must come from it -- rearrange, group, summarize, and choose
+emphasis freely, but never introduce a fact the canonical package does not
+contain, and never drop a recorded limitation or unverified disposition. One
+worked reference calibrated to this standard:
+`examples/field/04-duckdb-concurrency-boundary/session/report.html` -- an
+example of the intended standard, not a template to fill in.
+
+Hard constraints:
+
+- One self-contained HTML file: no JavaScript, no remote assets, no external
+  fonts or CSS. It must still open correctly from disk years from now.
+- Embed `<meta data-state-sha256="{the hash finalize returned}">` exactly --
+  this is how `deep-research-state validate` binds the report to this exact
+  package; get it wrong or omit it and validation reports `report.stale`.
+- All narrative in Traditional Chinese (zh-Hant-TW). Exact excerpts, source
+  titles, URLs, IDs, and hashes stay verbatim in their original language.
+- Link preserved evidence under `raw/` only where `artifact_index` permits:
+  `availability == "available"`, `include_in_html is True`, and
+  `sensitivity` in `{"public", "internal"}` -- match the exact gate in
+  `research_harness/rendering.py::_artifact_link`.
+- Must read correctly in both light and dark browser themes, and print
+  sensibly.
+
+Design intent, not a template -- fit the shape to the question:
+
+- Answer first. The reader already knows the question; put it in small
+  supporting text, not the headline. The headline is what to do or what is
+  true -- use `summary.headline` if present, else `summary.human_recommendation`.
+- Display type is for one line. `summary.decision` is body copy, not a
+  headline-sized wall of text.
+- Keep three different lists visually and structurally separate:
+  `engineering_handoff.constraints` (what this run did not do), each claim's
+  `would_change_if` (what would overturn it), and `open_questions` (what is
+  still unresolved). Merging them into one flat undifferentiated list is the
+  single worst defect this instruction replaces -- do not reintroduce it.
+- Do not break Chinese sentence flow with inlined English source titles; use
+  numbered references with a source list instead.
+- Evidence is the product: load-bearing claims, their status, and their
+  evidence chain belong in the default view. Collapse only genuine machinery
+  -- quota tables, hashes, validation internals.
+- Omit a section entirely rather than rendering an empty placeholder like
+  「尚未記錄」.
+
+Two field-shape notes:
+
+- `summary.human_status` is a short one-line note on what this run actually
+  did (≤40 全形字) -- not a narrative. The bounded conclusion belongs in
+  `summary.decision`, the recommendation in `summary.human_recommendation`.
+- `summary.headline` is optional: an action phrase, ≤20 全形字, used as the
+  report's headline and `h1`. Omit it and both tracks fall back to
+  `summary.human_recommendation`; existing packages that predate this field
+  keep validating unchanged.
 
 ## Recovery
 

@@ -146,9 +146,10 @@ disposition 與繁體中文 HTML。這一跑也修正了 D1 對 Quack 的過度�
 | `state.json` | Machine-readable 結論、claims、缺口與 coding handoff。 |
 | `events.jsonl` | Hash-chained request、revision 與 budget journal。 |
 | `raw/` | 不可變、受 policy gate 管理的 evidence bytes。 |
-| `report.html` | 決定性產生的繁體中文人讀報告。 |
+| `report.html` | 繁體中文人讀報告，綁定 canonical state hash。 |
 
-不另外產生第二份完整 Markdown 報告。
+交付時由 host 撰寫；host 無法撰寫時（當機、預算用盡、降級執行）改由決定性
+renderer 產生備援版本。不另外產生第二份完整 Markdown 報告。
 
 ## Platform Support（平台支援）
 
