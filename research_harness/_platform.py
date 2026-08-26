@@ -16,6 +16,10 @@ otherwise relies on:
 Both are exposed as capability probes (hasattr / os.name), never as
 try/except around the primitive itself -- an unsupported operation must be
 visibly unsupported, not silently "succeed" after failing.
+
+A third mismatch is not a missing primitive but a dangerous reinterpretation
+of one: the POSIX pid-liveness idiom os.kill(pid, 0) is not portable, because
+signal 0 collides with signal.CTRL_C_EVENT on Windows (see pid_exists below).
 """
 
 from __future__ import annotations
@@ -38,6 +42,18 @@ SUPPORTS_PRIVATE_FILE_MODE = os.name == "posix"
 O_BINARY = getattr(os, "O_BINARY", 0)
 
 _REPARSE_POINT_ATTR = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _ERROR_ACCESS_DENIED = 5
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
 
 
 def platform_capabilities() -> dict[str, bool]:
@@ -79,3 +95,37 @@ def is_symlink_or_reparse_point(path: Path) -> bool:
         return True
     attributes = getattr(metadata, "st_file_attributes", 0)
     return bool(attributes & _REPARSE_POINT_ATTR)
+
+
+def pid_exists(pid: int) -> bool:
+    """True if `pid` identifies a currently-running process.
+
+    os.kill(pid, 0) is the POSIX idiom for this -- signal 0 is a true
+    null signal there, delivered to nobody, used only to probe whether the
+    kernel will accept the pid/permission pair. It is not safe to reuse on
+    Windows: signal.CTRL_C_EVENT == 0, so CPython's os.kill() special-cases
+    signal 0 (and 1, CTRL_BREAK_EVENT) by calling
+    GenerateConsoleCtrlEvent(sig, pid) instead of any kind of existence
+    check. For a live pid that silently asks the OS to deliver a real
+    console control event to whatever process group `pid` happens to
+    resolve to; for a dead pid it raises OSError (WinError 87, "the
+    parameter is incorrect") rather than ProcessLookupError, since `pid` is
+    being interpreted as a console process-group id, not a target to look
+    up. Query the process table directly instead.
+    """
+
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            _kernel32.CloseHandle(handle)
+            return True
+        return ctypes.get_last_error() == _ERROR_ACCESS_DENIED
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True

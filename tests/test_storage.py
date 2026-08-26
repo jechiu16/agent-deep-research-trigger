@@ -352,3 +352,52 @@ class LockReleaseMaskingTests(unittest.TestCase):
             with self.assertRaises(StorageError):
                 with session_lock(session):
                     (session / LOCK_FILE).unlink()
+
+
+class PidExistsTests(unittest.TestCase):
+    """os.kill(pid, 0) is not portable: signal 0 is signal.CTRL_C_EVENT on
+    Windows, so it is not the POSIX null-signal existence probe there --
+    see research_harness._platform.pid_exists.
+    """
+
+    def test_own_pid_exists(self) -> None:
+        from research_harness._platform import pid_exists
+
+        self.assertTrue(pid_exists(os.getpid()))
+
+    def test_dead_pid_does_not_exist(self) -> None:
+        from research_harness._platform import pid_exists
+
+        # No process running under the test suite is ever assigned this pid.
+        self.assertFalse(pid_exists(999_999_999))
+
+    def test_non_positive_pid_does_not_exist(self) -> None:
+        from research_harness._platform import pid_exists
+
+        self.assertFalse(pid_exists(0))
+        self.assertFalse(pid_exists(-1))
+
+
+class StaleLockRecoveryTests(unittest.TestCase):
+    def test_lock_left_by_a_dead_pid_on_this_host_is_broken_and_reacquired(self) -> None:
+        import json
+        import socket
+        import tempfile
+        from pathlib import Path
+
+        from research_harness.storage import LOCK_FILE, session_lock
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            session = Path(tempdir)
+            stale_record = {
+                "pid": 999_999_999,
+                "hostname": socket.gethostname(),
+                "acquired_at_unix": 0.0,
+                "token": "stale-token",
+            }
+            (session / LOCK_FILE).write_text(json.dumps(stale_record), encoding="utf-8")
+            # Acquiring at all proves the stale lock was detected (matching
+            # hostname, dead pid) and broken rather than timing out -- or,
+            # pre-fix on Windows, raising an uncaught OSError.
+            with session_lock(session):
+                pass

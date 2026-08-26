@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from ._canon import canonical_json as _canonical_json, sha256_hex
-from ._platform import O_BINARY, SUPPORTS_DIRECTORY_FSYNC, is_symlink_or_reparse_point
+from ._platform import O_BINARY, SUPPORTS_DIRECTORY_FSYNC, is_symlink_or_reparse_point, pid_exists
 from .state import state_sha256, validate_state_document
 
 
@@ -138,18 +138,6 @@ def _read_json(path: Path) -> Any:
         raise RecoveryError(f"cannot read {path.name}: {exc}") from exc
 
 
-def _pid_exists(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def _break_stale_lock(lock_path: Path) -> bool:
     if lock_path.is_symlink():
         return False
@@ -160,7 +148,7 @@ def _break_stale_lock(lock_path: Path) -> bool:
     if record.get("hostname") != socket.gethostname():
         return False
     pid = record.get("pid")
-    if not isinstance(pid, int) or _pid_exists(pid):
+    if not isinstance(pid, int) or pid_exists(pid):
         return False
     try:
         lock_path.unlink()
