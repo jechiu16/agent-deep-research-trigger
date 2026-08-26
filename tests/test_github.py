@@ -144,7 +144,7 @@ class GithubBoundaryTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # GitHub response and may be re-recorded after repository metadata
         # changes.
-        fixture = json.loads((FIXTURES / "github_success.json").read_text())
+        fixture = json.loads((FIXTURES / "github_success.json").read_text(encoding="utf-8"))
         expected_full_name = fixture["full_name"]
         expected_html_url = fixture["html_url"]
         expected_lines = [
@@ -180,7 +180,7 @@ class GithubBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["full_name"], expected_full_name)
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["full_name"], expected_full_name)
 
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
@@ -194,7 +194,7 @@ class GithubBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Not Found", spool.read_text())
+        self.assertIn("Not Found", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

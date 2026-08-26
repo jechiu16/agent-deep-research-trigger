@@ -146,7 +146,7 @@ class OsvBoundaryTests(unittest.TestCase):
         # branches of the summary-optional field (8 carry a summary, 7 of
         # the PYSEC-sourced entries do not), so this fixture alone exercises
         # both citation-title shapes honestly.
-        fixture = json.loads((FIXTURES / "osv_success.json").read_text())
+        fixture = json.loads((FIXTURES / "osv_success.json").read_text(encoding="utf-8"))
         vulns = fixture["vulns"]
         expected_citations = [_expected_citation(v) for v in vulns]
         expected_synthesis = "\n".join(_expected_line(v) for v in vulns)
@@ -169,7 +169,7 @@ class OsvBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(len(json.loads(spool.read_text())["vulns"]), len(vulns))
+        self.assertEqual(len(json.loads(spool.read_text(encoding="utf-8"))["vulns"]), len(vulns))
 
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
@@ -208,7 +208,7 @@ class OsvBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Invalid ecosystem", spool.read_text())
+        self.assertIn("Invalid ecosystem", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

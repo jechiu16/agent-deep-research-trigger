@@ -250,7 +250,7 @@ class OpenAlexParseTests(unittest.TestCase):
         self.assertIn("[RETRACTED]", openalex.parse(payload).synthesis_text)
 
     def test_every_citation_is_url_title_date_shaped_against_fixture(self) -> None:
-        fixture = json.loads((FIXTURES / "openalex_success.json").read_text())
+        fixture = json.loads((FIXTURES / "openalex_success.json").read_text(encoding="utf-8"))
         result = openalex.parse((FIXTURES / "openalex_success.json").read_bytes())
         self.assertEqual(len(result.citations), len(fixture["results"]))
         for citation in result.citations:
@@ -294,7 +294,7 @@ class OpenAlexAdapterTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live openalex call 2026-07-11, query "retrieval
         # augmented generation") and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "openalex_success.json").read_text())
+        fixture = json.loads((FIXTURES / "openalex_success.json").read_text(encoding="utf-8"))
         works = fixture["results"]
         expected_total = fixture["meta"]["count"]
 
@@ -316,7 +316,7 @@ class OpenAlexAdapterTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        spooled = json.loads(spool.read_text())
+        spooled = json.loads(spool.read_text(encoding="utf-8"))
         self.assertEqual(spooled["meta"]["count"], expected_total)
         self.assertEqual(len(spooled["results"]), len(works))
 
@@ -337,7 +337,7 @@ class OpenAlexAdapterTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("RateLimitError", spool.read_text())
+        self.assertIn("RateLimitError", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

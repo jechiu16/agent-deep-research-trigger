@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from unittest import mock
 
+from research_harness._platform import SUPPORTS_PRIVATE_FILE_MODE
 from research_harness.state import new_state, state_sha256
 from research_harness.storage import (
     ProtectedStatePath,
@@ -52,9 +53,31 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(events[0]["state_sha256"], state_sha256(loaded))
 
     def test_session_state_and_event_permissions_are_private(self) -> None:
-        self.assertEqual(self.session.stat().st_mode & 0o777, 0o700)
-        self.assertEqual((self.session / "state.json").stat().st_mode & 0o777, 0o600)
-        self.assertEqual((self.session / "events.jsonl").stat().st_mode & 0o777, 0o600)
+        capabilities = load_state(self.session)["session"]["durability_capabilities"]
+        self.assertEqual(capabilities["private_file_mode"], SUPPORTS_PRIVATE_FILE_MODE)
+        if SUPPORTS_PRIVATE_FILE_MODE:
+            # POSIX: the strong guarantee is unchanged -- session_dir is
+            # 0700, state.json and events.jsonl are 0600, exactly as before
+            # this platform-support change.
+            self.assertEqual(self.session.stat().st_mode & 0o777, 0o700)
+            self.assertEqual((self.session / "state.json").stat().st_mode & 0o777, 0o600)
+            self.assertEqual((self.session / "events.jsonl").stat().st_mode & 0o777, 0o600)
+        else:
+            # Windows: os.chmod cannot enforce owner-only bits, so mode bits
+            # are not a meaningful assertion here. The honest, documented
+            # degraded contract is that the session records it did not get
+            # private file modes, and validation surfaces that as a warning
+            # rather than silently claiming privacy it cannot provide.
+            from research_harness.validation import validate_session
+
+            # This fixture session is freshly created (IN_PROGRESS, no
+            # claims/evidence yet), so it is not itself a delivered "PASS"
+            # package -- the relevant assertion here is narrower: the
+            # degradation must show up as a WARNING, and must never surface
+            # as an ERROR (which would fail the package closed).
+            report = validate_session(self.session)
+            self.assertEqual(report.errors, ())
+            self.assertIn("session.degraded_privacy", {issue.code for issue in report.warnings})
 
     def test_nested_lock_times_out_without_stealing_owner(self) -> None:
         with session_lock(self.session):

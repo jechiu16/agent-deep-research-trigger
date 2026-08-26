@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ._canon import sha256_hex
+from ._platform import is_symlink_or_reparse_point
 from .quota import QuotaError, _record_attempt_status_unlocked, _reserve_boundary_action_unlocked
 from .storage import (
     _apply_boundary_patch_unlocked,
@@ -161,7 +162,7 @@ def _urllib_transport(spec: RequestSpec) -> tuple[int, bytes]:
 def _spool_raw(session_dir: Path, action_id: str, payload: bytes) -> Path:
     spool = session_dir / SPOOL_DIR
     if spool.exists():
-        if spool.is_symlink() or not spool.is_dir():
+        if is_symlink_or_reparse_point(spool) or not spool.is_dir():
             raise BoundaryError("provider spool path is not a safe directory")
     else:
         spool.mkdir(mode=0o700)

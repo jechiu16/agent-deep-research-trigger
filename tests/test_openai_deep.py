@@ -165,14 +165,14 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
     # -- submit accept ------------------------------------------------------
 
     def test_submit_records_job_token_and_accepts(self) -> None:
-        fixture = json.loads((FIXTURES / "openai_deep_submit_accept.json").read_text())
+        fixture = json.loads((FIXTURES / "openai_deep_submit_accept.json").read_text(encoding="utf-8"))
         result = self._submit()
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(result["job"], f"openai-deep:{fixture['id']}")
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted"])
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["id"], fixture["id"])
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["id"], fixture["id"])
 
     # -- poll: still running --------------------------------------------
 
@@ -192,7 +192,7 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
     def test_poll_terminal_success_records_occurrence(self) -> None:
         self._submit()
 
-        fixture = json.loads((FIXTURES / "openai_deep_poll_terminal_success.json").read_text())
+        fixture = json.loads((FIXTURES / "openai_deep_poll_terminal_success.json").read_text(encoding="utf-8"))
         expected_citations = sum(
             1
             for item in fixture["output"]

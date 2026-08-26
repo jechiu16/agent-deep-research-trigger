@@ -98,7 +98,7 @@ class BoundaryTests(unittest.TestCase):
     def test_success_records_occurrence_and_completes_attempt(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
         # response (live sonar call 2026-07-11) and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "sonar_success.json").read_text())
+        fixture = json.loads((FIXTURES / "sonar_success.json").read_text(encoding="utf-8"))
         expected_cost = round(fixture["usage"]["cost"]["total_cost"], 4)
         expected_citations = len(
             [item for item in fixture.get("search_results", []) if isinstance(item.get("url"), str)]
@@ -119,7 +119,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["model"], "sonar-pro")
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["model"], "sonar-pro")
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
         self.assertTrue(report.integrity_ok)
@@ -153,7 +153,7 @@ class BoundaryTests(unittest.TestCase):
         self.assert_failure_copy(raised, "returned http", "provider spool", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("rate_limit_exceeded", spool.read_text())
+        self.assertIn("rate_limit_exceeded", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

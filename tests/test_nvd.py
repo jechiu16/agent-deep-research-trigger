@@ -129,7 +129,7 @@ class NvdAdapterUnitTests(unittest.TestCase):
             nvd.parse(payload)
 
     def test_parse_extracts_total_results_into_usage(self) -> None:
-        fixture = json.loads((FIXTURES / "nvd_success.json").read_text())
+        fixture = json.loads((FIXTURES / "nvd_success.json").read_text(encoding="utf-8"))
         result = nvd.parse((FIXTURES / "nvd_success.json").read_bytes())
         self.assertEqual(result.usage, {"total_results": fixture["totalResults"]})
 
@@ -168,7 +168,7 @@ class NvdBoundaryTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live NVD call 2026-07-11 for CVE-2021-44228) and may be
         # re-recorded later.
-        fixture = json.loads((FIXTURES / "nvd_success.json").read_text())
+        fixture = json.loads((FIXTURES / "nvd_success.json").read_text(encoding="utf-8"))
         cve = fixture["vulnerabilities"][0]["cve"]
         expected_id = cve["id"]
         expected_description = next(
@@ -213,7 +213,7 @@ class NvdBoundaryTests(unittest.TestCase):
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
         self.assertEqual(
-            json.loads(spool.read_text())["vulnerabilities"][0]["cve"]["id"], expected_id
+            json.loads(spool.read_text(encoding="utf-8"))["vulnerabilities"][0]["cve"]["id"], expected_id
         )
 
         report = validate_session(self.session, check_report=False)
@@ -238,7 +238,7 @@ class NvdBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("synthetic nvd error", spool.read_text())
+        self.assertIn("synthetic nvd error", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

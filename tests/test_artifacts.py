@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from research_harness._platform import SUPPORTS_PRIVATE_FILE_MODE
 from research_harness.artifacts import (
     ArtifactExists,
     ArtifactPolicyError,
@@ -145,7 +146,16 @@ class ArtifactTests(unittest.TestCase):
         path = self.session / artifact["relative_path"]
         self.assertEqual(path.parent, self.session / "raw")
         self.assertEqual(artifact["sha256"], hashlib.sha256(self.source.read_bytes()).hexdigest())
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if SUPPORTS_PRIVATE_FILE_MODE:
+            # POSIX: unchanged strong guarantee -- raw artifact bytes are 0600.
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        else:
+            # Windows: os.chmod cannot enforce owner-only bits (see
+            # research_harness._platform); the honest degraded contract is
+            # recorded on the session and surfaced by validate_session as a
+            # WARNING (test_storage.test_session_state_and_event_permissions_are_private
+            # covers that surfacing), not asserted as a filesystem mode here.
+            pass
         self.assertEqual(load_state(self.session)["artifact_index"], [artifact])
 
     def test_secret_like_content_is_rejected_without_persisting(self) -> None:
@@ -227,8 +237,27 @@ class ArtifactTests(unittest.TestCase):
                 {"origin_kind": "local_output", "action_id": "L1"},
                 NOW,
             )
+        # Duplicate/overwrite rejection does not depend on symlinks -- run it
+        # unconditionally so it still executes even where the environment
+        # cannot construct a symlink fixture (see below).
+        self._ingest_local()
+        with self.assertRaises(ArtifactExists):
+            self._ingest_local()
+
         symlink = self.root / "link.json"
-        symlink.symlink_to(self.source)
+        try:
+            symlink.symlink_to(self.source)
+        except OSError as exc:
+            # Windows: creating a *file* symlink requires either
+            # SeCreateSymbolicLinkPrivilege (admin) or Developer Mode: a
+            # plain user account gets WinError 1314 here, before the
+            # ingestion code under test is ever reached. The security gate
+            # this exercises (_open_regular_source's os.lstat + S_ISLNK /
+            # reparse-point check in research_harness/artifacts.py) is
+            # unchanged and still enforced on Windows -- there is just no
+            # stdlib-only way to construct a symlink fixture in an
+            # unprivileged environment to exercise it.
+            self.skipTest(f"cannot create a symlink in this environment: {exc}")
         with self.assertRaises(ArtifactPolicyError):
             ingest_local_artifact(
                 self.session,
@@ -241,9 +270,6 @@ class ArtifactTests(unittest.TestCase):
                 {"origin_kind": "local_output", "action_id": "L1"},
                 NOW,
             )
-        self._ingest_local()
-        with self.assertRaises(ArtifactExists):
-            self._ingest_local()
 
     def test_raw_storage_ceiling_is_enforced_before_persistence(self) -> None:
         session = self._make_session("tiny", raw_storage_bytes=4)

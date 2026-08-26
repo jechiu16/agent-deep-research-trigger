@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Mapping, Optional
 
 from ._canon import sha256_hex
+from ._platform import platform_capabilities
 from .contracts import (
     _validate_persisted_contract,
     _validate_persisted_contract_v1,
@@ -108,6 +109,7 @@ def new_state(
             "created_at": now,
             "updated_at": now,
             "contract_semantics": CONTRACT_SEMANTICS,
+            "durability_capabilities": platform_capabilities(),
         },
         "contract": normalized,
         "capabilities": {
@@ -257,6 +259,19 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
             CONTRACT_SEMANTICS_V3,
         }:
             errors.append("session contract_semantics is invalid")
+        # Optional and backward-compatible: sessions created before this
+        # field existed (and canonical fixtures under examples/field/) omit
+        # it entirely, which is not itself an error -- validation.py treats
+        # an absent record as "not degraded" rather than warning on packages
+        # that predate the field. When present, it must be well-formed.
+        if "durability_capabilities" in session:
+            durability = session["durability_capabilities"]
+            if (
+                not isinstance(durability, dict)
+                or set(durability) != {"directory_fsync", "private_file_mode"}
+                or any(not isinstance(value, bool) for value in durability.values())
+            ):
+                errors.append("session durability_capabilities is invalid")
 
     capabilities = state.get("capabilities")
     providers: list[dict[str, Any]] = []

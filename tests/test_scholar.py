@@ -98,7 +98,7 @@ class ScholarAdapterTests(unittest.TestCase):
     def test_success_records_occurrence_and_completes_attempt(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
         # response (live scholar call 2026-07-11) and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "scholar_success.json").read_text())
+        fixture = json.loads((FIXTURES / "scholar_success.json").read_text(encoding="utf-8"))
         papers = fixture.get("data", [])
         expected_returned = len(papers)
         expected_total = fixture.get("total")
@@ -122,7 +122,7 @@ class ScholarAdapterTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        spooled = json.loads(spool.read_text())
+        spooled = json.loads(spool.read_text(encoding="utf-8"))
         self.assertEqual(spooled.get("total"), expected_total)
         self.assertEqual(len(spooled.get("data", [])), expected_returned)
 
@@ -143,7 +143,7 @@ class ScholarAdapterTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Too Many Requests", spool.read_text())
+        self.assertIn("Too Many Requests", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

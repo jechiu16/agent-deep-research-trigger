@@ -234,7 +234,7 @@ class BraveBoundaryTests(unittest.TestCase):
     def test_success_records_result_listing_and_citation_count(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
         # response (live brave call 2026-07-11) and may be re-recorded later.
-        fixture = json.loads(SUCCESS_FIXTURE.read_text())
+        fixture = json.loads(SUCCESS_FIXTURE.read_text(encoding="utf-8"))
         web_results = fixture["web"]["results"]
         expected_citations = [
             item
@@ -271,7 +271,7 @@ class BraveBoundaryTests(unittest.TestCase):
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
-        self.assertIn("UNAUTHORIZED", (self.session / "provider_spool/A1.raw.json").read_text())
+        self.assertIn("UNAUTHORIZED", (self.session / "provider_spool/A1.raw.json").read_text(encoding="utf-8"))
         self._assert_request_count_consumed()
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:

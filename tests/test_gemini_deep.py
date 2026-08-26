@@ -191,7 +191,7 @@ class GeminiDeepAdapterTests(unittest.TestCase):
         self.assertEqual(spec.headers["x-goog-api-key"], "test-key")
 
     def test_extract_success_sanitizes_citations_and_keeps_live_usage_shape(self) -> None:
-        fixture = json.loads((FIXTURES / "gemini_deep_poll_terminal_success.json").read_text())
+        fixture = json.loads((FIXTURES / "gemini_deep_poll_terminal_success.json").read_text(encoding="utf-8"))
         result = gemini_deep.extract(json.dumps(fixture).encode())
         self.assertIsNotNone(result)
         assert result is not None
@@ -213,12 +213,12 @@ class GeminiDeepAdapterTests(unittest.TestCase):
 
     def test_status_table_distinguishes_running_terminal_interactive_and_malformed(self) -> None:
         cases = (
-            ("running", json.loads((FIXTURES / "gemini_deep_poll_running.json").read_text()), None),
+            ("running", json.loads((FIXTURES / "gemini_deep_poll_running.json").read_text(encoding="utf-8")), None),
             ("failed", {"status": "failed", "error": {"message": "failed detail"}}, AdapterTerminalFailure),
             ("cancelled", {"status": "cancelled", "error": {"message": "cancelled detail"}}, AdapterTerminalFailure),
             ("incomplete", {"status": "incomplete", "error": {"message": "incomplete detail"}}, AdapterTerminalFailure),
-            ("requires_action", json.loads((FIXTURES / "gemini_deep_poll_requires_action.json").read_text()), AdapterParseError),
-            ("malformed", json.loads((FIXTURES / "gemini_deep_poll_malformed_completed.json").read_text()), AdapterParseError),
+            ("requires_action", json.loads((FIXTURES / "gemini_deep_poll_requires_action.json").read_text(encoding="utf-8")), AdapterParseError),
+            ("malformed", json.loads((FIXTURES / "gemini_deep_poll_malformed_completed.json").read_text(encoding="utf-8")), AdapterParseError),
         )
         for status, payload, expected in cases:
             with self.subTest(status=status):
@@ -272,7 +272,7 @@ class GeminiDeepAdapterTests(unittest.TestCase):
         self.assertEqual(self.attempt_statuses("T2"), ["attempted", "accepted", "completed"])
         state = load_state(self.session)
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
-        self.assertNotIn("test-key", (self.session / "provider_spool" / "T2.raw.json").read_text())
+        self.assertNotIn("test-key", (self.session / "provider_spool" / "T2.raw.json").read_text(encoding="utf-8"))
 
     def test_boundary_terminal_failure_consumes_deep_and_poll_actions(self) -> None:
         self._submit()
@@ -332,7 +332,7 @@ class GeminiDeepAdapterTests(unittest.TestCase):
 
     def test_gemini_fixtures_contain_no_credentials(self) -> None:
         for path in FIXTURES.glob("gemini_deep_*.json"):
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
             self.assertNotIn("GEMINI_API_KEY", text)
             self.assertNotIn("test-key", text)
             self.assertNotIn("secret", text.lower())

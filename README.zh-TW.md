@@ -73,6 +73,9 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
+Windows 上改用 `python -m venv .venv`，再執行
+`.venv\Scripts\python -m pip install -e .`。
+
 2. **連結到一個或兩個 host。**
 
 ```bash
@@ -80,6 +83,11 @@ mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"
 ln -s "$PWD" "$HOME/.claude/skills/deep"
 ln -s "$PWD" "$HOME/.agents/skills/deep"
 ```
+
+一般 Windows 帳號預設沒有 `ln -s` 需要的權限：開啟**開發人員模式**（設定 →
+隱私權與安全性 → 開發人員專用）可讓 `New-Item -ItemType SymbolicLink` 免權限
+執行，或乾脆用 `Copy-Item -Recurse` 把整個資料夾複製進每個 skills 目錄（複製
+不會隨 `git pull` 更新，之後要重新複製一次）。
 
 3. **開啟新的 host session。**
 
@@ -141,6 +149,18 @@ disposition 與繁體中文 HTML。這一跑也修正了 D1 對 Quack 的過度�
 | `report.html` | 決定性產生的繁體中文人讀報告。 |
 
 不另外產生第二份完整 Markdown 報告。
+
+## Platform Support（平台支援）
+
+Linux、macOS、Windows 都只靠 Python 標準函式庫就能跑，不必額外安裝套件。有
+兩項 POSIX-only 的保證在 Windows 上會誠實降級、絕不假裝成立：目錄 fsync 的
+當機一致性（Windows 上 rename/unlink 不保證撐得過斷電當機），以及私有
+0600/0700 檔案權限（Windows 的 `chmod` 沒辦法限制成只有擁有者可讀寫）。
+Windows 上產生的 session 會把這兩件事都記在 `state.json` 裡，
+`deep-research-state validate` 各回報一個 `WARNING`
+（`session.degraded_durability`、`session.degraded_privacy`），不會讓原本
+有效的套件被判定失敗。Symlink 與目錄 junction 的拒絕邏輯，在每個平台上都
+一致地強制執行。
 
 ## 專案連結
 

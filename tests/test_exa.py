@@ -197,7 +197,7 @@ class ExaBoundaryTests(unittest.TestCase):
 
     @unittest.skipUnless(SUCCESS_FIXTURE.exists(), "recorded Exa success fixture not created yet")
     def test_success_records_result_listing_and_cost(self) -> None:
-        fixture = json.loads(SUCCESS_FIXTURE.read_text())
+        fixture = json.loads(SUCCESS_FIXTURE.read_text(encoding="utf-8"))
         expected_results = [
             item
             for item in fixture["results"]
@@ -233,7 +233,7 @@ class ExaBoundaryTests(unittest.TestCase):
                 environ=TEST_ENV,
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
-        self.assertIn("rate_limit_exceeded", (self.session / "provider_spool/A1.raw.json").read_text())
+        self.assertIn("rate_limit_exceeded", (self.session / "provider_spool/A1.raw.json").read_text(encoding="utf-8"))
         self._assert_request_count_consumed()
 
     def test_parse_failure_spools_raw_and_fails_attempt(self) -> None:
