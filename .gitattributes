@@ -1,0 +1,9 @@
+# Canonical session packages are byte-exact. Their raw/ artifacts have their
+# sha256 and byte_size pinned in state.json, so any checkout-time line-ending
+# translation corrupts them: on a Windows clone with core.autocrlf=true,
+# validate reports artifact.integrity and evidence.excerpt_mismatch against
+# evidence that was never actually modified.
+examples/field/**/session/raw/** -text
+
+# Adapter fixtures are compared byte-for-byte against recorded responses.
+tests/fixtures/** -text
