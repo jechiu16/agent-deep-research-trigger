@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ._canon import RETENTION_RANK, canonical_source_key, indexed, sha256_hex
+from ._platform import is_symlink_or_reparse_point
 from .artifacts import MEDIA_EXTENSIONS, SCANNER_VERSION
 from .contracts import METERED_CATEGORIES
 from .providers import action_cost_class
@@ -668,7 +669,7 @@ def _validate_artifacts(
 
     raw_dir = session_dir / "raw"
     if raw_dir.exists():
-        if raw_dir.is_symlink() or not raw_dir.is_dir():
+        if is_symlink_or_reparse_point(raw_dir) or not raw_dir.is_dir():
             _add(issues, "artifact.raw_directory", "raw path is not a safe directory", "/raw")
         else:
             for path in raw_dir.iterdir():
@@ -1605,6 +1606,44 @@ def _validate_report_hash(
         _add(issues, "report.stale", "report.html is not bound to the current canonical state", "/report.html")
 
 
+def _validate_platform_durability(state: dict[str, Any], issues: list[Issue]) -> None:
+    """Warn (never fail) when a session was produced without full guarantees.
+
+    session.durability_capabilities (see state.new_state / _platform.py) is
+    optional and backward-compatible: sessions created before this field
+    existed, and the canonical fixtures under examples/field/, simply omit
+    it. An absent record is treated as "not degraded" rather than warned on,
+    matching the historical (fully-capable POSIX) contract those packages
+    were actually produced under.
+    """
+
+    capabilities = state.get("session", {}).get("durability_capabilities")
+    if not isinstance(capabilities, dict):
+        return
+    if capabilities.get("directory_fsync") is False:
+        _add(
+            issues,
+            "session.degraded_durability",
+            "session was produced on a host that cannot fsync a directory "
+            "(e.g. Windows); a crash between a rename/unlink and its "
+            "directory fsync could leave this package's most recent write "
+            "unconfirmed on disk",
+            "/session/durability_capabilities/directory_fsync",
+            "WARNING",
+        )
+    if capabilities.get("private_file_mode") is False:
+        _add(
+            issues,
+            "session.degraded_privacy",
+            "session was produced on a host without POSIX private file "
+            "modes (e.g. Windows); state.json, events.jsonl, and raw "
+            "artifact bytes are not confined to the owning user by "
+            "filesystem permissions",
+            "/session/durability_capabilities/private_file_mode",
+            "WARNING",
+        )
+
+
 def _validate_loaded_session(
     session_dir: Path,
     state: dict[str, Any],
@@ -1618,6 +1657,7 @@ def _validate_loaded_session(
     strict_atomic = state.get("session", {}).get("contract_semantics") == CONTRACT_SEMANTICS_V3
     for message in validate_state_document(state):
         _add(issues, "state.structural", message, "/state")
+    _validate_platform_durability(state, issues)
     _validate_event_lineage(state, events, event_errors, current_hash, issues)
     _validate_quota(state, events, issues, strict_atomic=strict_atomic)
     _validate_attempt_lifecycle(events, issues, strict_atomic=strict_atomic)

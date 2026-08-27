@@ -10,7 +10,13 @@ migration note, not a silent field-list edit.
 Design rules (from the v2 decisions ledger):
 
 - One boundary action, one physical request. A failed or uncertain attempt
-  consumes the boundary action/request count; nothing here refunds anything.
+  consumes the boundary action/request count; nothing here refunds the
+  physical request count. The one narrow exception is cost accounting: an
+  unambiguous pre-work provider rejection (see _classify_http_rejection) is
+  journaled as rejected_unbilled, and quota._cost_usage_from_events excludes
+  it from the deep/search budget — the action id is still permanently
+  burned, only the paid permit is returned. Every other failed or uncertain
+  outcome stays fully consumed, budget included.
 - Raw provider output is preserved verbatim in the session's provider spool
   before any parsing — parse failures never destroy paid bytes.
 - The boundary writes retrieval occurrences itself (code provenance). Search
@@ -34,6 +40,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from ._canon import sha256_hex
+from ._platform import is_symlink_or_reparse_point
 from .quota import QuotaError, _record_attempt_status_unlocked, _reserve_boundary_action_unlocked
 from .storage import (
     _apply_boundary_patch_unlocked,
@@ -161,7 +168,7 @@ def _urllib_transport(spec: RequestSpec) -> tuple[int, bytes]:
 def _spool_raw(session_dir: Path, action_id: str, payload: bytes) -> Path:
     spool = session_dir / SPOOL_DIR
     if spool.exists():
-        if spool.is_symlink() or not spool.is_dir():
+        if is_symlink_or_reparse_point(spool) or not spool.is_dir():
             raise BoundaryError("provider spool path is not a safe directory")
     else:
         spool.mkdir(mode=0o700)
@@ -309,6 +316,23 @@ def _bound_route(state: dict[str, Any], route: str, *, mode: str) -> dict[str, A
     return {**provider, "_adapter_key": adapter_key}
 
 
+def _model_kwargs(provider: dict[str, Any]) -> dict[str, str]:
+    """Forward the registry-pinned model id to adapters that declare one.
+
+    Only openai-deep, gemini-deep, perplexity, and sonar carry a "model"
+    registry field (see provider_registry.json); every other adapter's
+    build/submit/parse/extract signature is untouched, since calling with an
+    empty kwargs dict is identical to calling with none at all. An adapter
+    that declares a `model` keyword parameter but whose registry entry omits
+    the field (a registry misconfiguration) gets called with no model kwarg
+    at all -- its own guard then raises a clear error rather than silently
+    reusing a stale hardcoded default.
+    """
+
+    model = provider.get("model")
+    return {"model": model} if isinstance(model, str) and model else {}
+
+
 def _ensure_new_action(events: list[dict[str, Any]], action_id: str) -> None:
     if any(
         event.get("event") == "permit_acquired" and event.get("action_id") == action_id
@@ -338,6 +362,71 @@ def _failure_message(
         f"request count={count}; same action must never be retried or resubmitted; "
         f"recovery: {recovery}{suffix}"
     )
+
+
+def _rejected_unbilled_message(
+    phase: str,
+    action_id: str,
+    count: int,
+    status: int,
+    recovery: str,
+) -> str:
+    """Message for the one boundary outcome where the permit is returned.
+
+    Deliberately does NOT say "consumed=true" (unlike _failure_message): a
+    rejected_unbilled classification means the physical request count still
+    stays consumed (one HTTP round trip did happen), but the paid deep/search
+    budget permit is returned by _cost_usage_from_events. The never-resubmit
+    invariant is unchanged -- this action id is still permanently burned.
+    """
+
+    return (
+        f"{phase} rejected: HTTP {status} (unambiguous provider request-validation "
+        f"rejection; no research work was performed); boundary action {action_id} "
+        f"request count={count} stays physically consumed, but the paid permit is "
+        f"returned and does not count against the cost budget; this action id must "
+        f"still never be retried or resubmitted; recovery: {recovery}"
+    )
+
+
+def _classify_http_rejection(status: int, payload: bytes) -> Optional[dict[str, Any]]:
+    """Classify a non-200 boundary response as an unambiguous, unbilled
+    pre-work rejection, or return None to keep the default "consumed" outcome.
+
+    This is a narrow whitelist, not a heuristic. To qualify, ALL of the
+    following must hold:
+      - status is in 4xx, EXCLUDING 429 (a rate limit may follow work the
+        provider already started and billed for).
+      - the body decodes as UTF-8 JSON and is an object.
+      - the body positively matches a recognized provider request-validation
+        error shape. Today that is exactly OpenAI's Responses/Chat error
+        envelope: {"error": {"type": "invalid_request_error", ...}}.
+
+    A 5xx, a timeout, a transport error, an unparseable body, a 429, or any
+    body this function does not positively recognize returns None here --
+    callers must keep counting those as consumed. Extend the recognized
+    shapes below as more providers' validation-error bodies are confirmed;
+    never loosen the status-code gate.
+    """
+
+    if status == 429 or not (400 <= status < 500):
+        return None
+    try:
+        body = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(body, dict):
+        return None
+
+    error = body.get("error")
+    if isinstance(error, dict) and error.get("type") == "invalid_request_error":
+        message = error.get("message")
+        return {
+            "http_status": status,
+            "provider_error_type": "invalid_request_error",
+            "provider_error_message": message if isinstance(message, str) else None,
+        }
+    return None
 
 
 def _reserve_request(
@@ -407,8 +496,12 @@ def execute_probe(
     """Build, reserve, and execute one probe request atomically.
 
     Lifecycle written to the event journal: attempted, then exactly one of
-    completed (occurrence recorded), failed (terminal, boundary action consumed), or
-    uncertain (timeout after send — the provider may have processed it).
+    completed (occurrence recorded), failed (terminal, boundary action consumed),
+    uncertain (timeout after send — the provider may have processed it), or
+    rejected_unbilled (an unambiguous pre-work provider rejection recognized by
+    _classify_http_rejection — the physical request count still stays
+    consumed, but the cost-class permit is returned; see quota._cost_usage_from_events).
+    In every case this action id is permanently burned and must never be retried.
     """
 
     session_dir = Path(session_dir)
@@ -463,8 +556,9 @@ def execute_probe(
             )
 
         adapter = _adapters()[provider["_adapter_key"]]
+        model_kwargs = _model_kwargs(provider)
 
-        spec = adapter["build"](query.strip(), env)
+        spec = adapter["build"](query.strip(), env, **model_kwargs)
         wall_cap = state["contract"]["resource_envelope"]["external"].get("max_wall_time_seconds")
         timeout = min(spec.timeout_s, wall_cap) if isinstance(wall_cap, int) else spec.timeout_s
         spec = RequestSpec(
@@ -520,6 +614,19 @@ def execute_probe(
             {"http_status": status, "spool": spool_path.name},
         )
         if status != 200:
+            rejection = _classify_http_rejection(status, payload)
+            if rejection is not None:
+                _record_attempt_status_unlocked(
+                    session_dir, action_id, "rejected_unbilled", now,
+                    {**rejection, "spool": spool_path.name},
+                )
+                raise BoundaryError(
+                    _rejected_unbilled_message(
+                        "sync request", action_id, count, status,
+                        f"inspect provider spool {spool_path.name}; a new action id "
+                        "may reserve a new permit if retrying",
+                    )
+                )
             _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now,
                 {"http_status": status, "spool": spool_path.name},
@@ -531,7 +638,7 @@ def execute_probe(
                 )
             )
         try:
-            parsed = adapter["parse"](payload)
+            parsed = adapter["parse"](payload, **model_kwargs)
         except AdapterParseError as exc:
             _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now,
@@ -578,8 +685,12 @@ def execute_deep_submit(
 
     Lifecycle written to the event journal: attempted, then exactly one of
     accepted (details include the provider job token), failed (terminal HTTP
-    error or malformed accept body; boundary action consumed), or uncertain (timeout
-    after send).
+    error or malformed accept body; boundary action consumed), uncertain (timeout
+    after send), or rejected_unbilled (an unambiguous pre-work provider
+    rejection recognized by _classify_http_rejection — the physical request
+    count still stays consumed, but the cost-class permit is returned; see
+    quota._cost_usage_from_events). In every case this action id is
+    permanently burned and must never be resubmitted.
     """
 
     session_dir = Path(session_dir)
@@ -601,8 +712,9 @@ def execute_deep_submit(
         if not isinstance(count, int) or count <= 0:
             raise BoundaryError(f"route {route} has invalid deep multiplicity")
         adapter = _adapters()[provider["_adapter_key"]]
+        model_kwargs = _model_kwargs(provider)
 
-        spec = adapter["submit"](query, env)
+        spec = adapter["submit"](query, env, **model_kwargs)
         query_hash = sha256_hex(query)
         _reserve_request(
             session_dir, action_id, stage, "deep", route, spec, count, now,
@@ -641,6 +753,19 @@ def execute_deep_submit(
         spool_path = _spool_raw(session_dir, action_id, payload)
 
         if status != 200:
+            rejection = _classify_http_rejection(status, payload)
+            if rejection is not None:
+                _record_attempt_status_unlocked(
+                    session_dir, action_id, "rejected_unbilled", now,
+                    {**rejection, "spool": spool_path.name},
+                )
+                raise BoundaryError(
+                    _rejected_unbilled_message(
+                        "deep submit", action_id, count, status,
+                        f"inspect provider spool {spool_path.name}; do not resubmit this "
+                        "action id; a new action id may reserve a new permit if retrying",
+                    )
+                )
             _record_attempt_status_unlocked(
                 session_dir, action_id, "failed", now,
                 {"http_status": status, "spool": spool_path.name},
@@ -740,6 +865,7 @@ def execute_deep_poll(
         if not isinstance(count, int) or count <= 0:
             raise BoundaryError(f"route {route} has invalid transport multiplicity")
         adapter = _adapters()[provider["_adapter_key"]]
+        model_kwargs = _model_kwargs(provider)
 
         token = _job_token_for(events, deep_action_id)
         spec = adapter["poll"](token, env)
@@ -797,7 +923,7 @@ def execute_deep_poll(
             )
 
         try:
-            parsed = adapter["extract"](payload)
+            parsed = adapter["extract"](payload, **model_kwargs)
         except AdapterTerminalFailure as exc:
             # The poll itself succeeded (it correctly learned the job failed).
             _record_attempt_status_unlocked(

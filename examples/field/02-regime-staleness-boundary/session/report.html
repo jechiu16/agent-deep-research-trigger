@@ -18,7 +18,8 @@
     main,header { position:relative; width:min(1120px,calc(100% - 32px)); margin:auto; }
     header { padding:64px 0 32px; border-bottom:2px solid var(--ink); }
     .eyebrow { text-transform:uppercase; letter-spacing:.18em; font:700 12px/1.2 Georgia,serif; color:var(--accent); }
-    h1 { margin:.25rem 0 .5rem; font-size:clamp(2.5rem,7vw,5.8rem); line-height:.92; max-width:13ch; }
+    h1 { margin:.25rem 0 .5rem; font-size:clamp(1.6rem,3.4vw,2.4rem); line-height:1.3; max-width:22ch; }
+    .kicker { margin:0 0 .5rem; color:var(--muted); font-size:.95rem; max-width:60ch; }
     h2 { margin:0 0 1.25rem; font-size:clamp(1.65rem,3vw,2.5rem); }
     h3 { margin:.45rem 0; }
     .status-line { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:22px; }
@@ -30,7 +31,7 @@
     section { background:color-mix(in srgb,var(--panel) 94%,transparent); border:1px solid var(--line);
       padding:clamp(22px,4vw,44px); box-shadow:0 14px 38px #4e46351a; }
     .decision { border-left:8px solid var(--accent); }
-    .decision-text { font-size:clamp(1.35rem,2.6vw,2rem); max-width:38ch; }
+    .decision-text { font-size:1.08rem; line-height:1.75; max-width:46ch; }
     .human-first { border-left:8px solid var(--forest); }
     .human-first h2 { font-size:clamp(1.8rem,4vw,3.2rem); }
     .reason-list { padding-left:1.2rem; } .reason-list li { margin:.55rem 0; }
@@ -65,7 +66,8 @@
 <body>
   <header>
     <div class="eyebrow">研究報告</div>
-    <h1>Which cache invalidation boundary in Parallax is most likely to prevent stale regime data without increasing coupling?</h1>
+    <h1>若要補強，先加 post-commit read-only health assertion，不改 consumer coupling，也不把現有 non-gating step 直接升為 hard gate。</h1>
+    <p class="kicker">研究問題：Which cache invalidation boundary in Parallax is most likely to prevent stale regime data without increasing coupling?</p>
     <div class="status-line"><span class="pill status">light</span></div>
   </header>
   <main>
@@ -73,10 +75,12 @@
       <p><strong>研究狀態:</strong> 複驗修正了問題 framing：目前沒有需要 invalidation 的 active regime cache。</p>
       <div class="decision"><div class="eyebrow">有界結論</div><h3>結論</h3>
       <p class="decision-text">不要新增跨模組 cache invalidation。把邊界放在 refresh transaction commit：寫入全成或全不成，commit 後由一個 read-only version/age check 決定下游是否採用；失敗就標 degraded。</p>
-      </div><h3>核心理由</h3><ul class="reason-list"><li>目前 app pipeline 已不把 regime_history 當 analogue match pool；它只保留讀取失敗的 degraded-subsystem health signal，因此問題不是 active cache invalidation。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/src/parallax/app/pipeline.py">Parallax pipeline regime_history health surface</a>）</li><li>避免 mixed/stale z-score rows 的最低耦合邊界是 refresh 的單一 DuckDB transaction commit，並在 commit 後以版本與新鮮度檢查決定下游是否採用。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/scripts/refresh_regime_history_zscores.py">Transactional regime_history z-score refresh</a>）</li></ul><p><strong>上游關係：</strong>相同</p>
-      <h3>限制與翻轉條件</h3><ul><li>若未來 production consumer 持有跨 refresh 的 in-memory cache，需重新定位到該 consumer 的 lifecycle boundary。</li><li>新的 production consumer 再次持有跨 refresh 的 regime_history cache。</li><li>staleness 來源被證明是 transaction 外的長壽命 process cache，而不是 persisted rows。</li></ul>
+      </div><h3>核心理由</h3><ul class="reason-list"><li>目前 app pipeline 已不把 regime_history 當 analogue match pool；它只保留讀取失敗的 degraded-subsystem health signal，因此問題不是 active cache invalidation。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/src/parallax/app/pipeline.py">Parallax pipeline regime_history health surface</a>）</li><li>避免 mixed/stale z-score rows 的最低耦合邊界是 refresh 的單一 DuckDB transaction commit，並在 commit 後以版本與新鮮度檢查決定下游是否採用。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/scripts/refresh_regime_history_zscores.py">Transactional regime_history z-score refresh</a>）</li></ul><p><strong>上游關係：</strong>相同（以上引用其實來自同一上游，不能互相佐證）</p>
+      <h3>這次沒有做到的事</h3><ul><li>若未來 production consumer 持有跨 refresh 的 in-memory cache，需重新定位到該 consumer 的 lifecycle boundary。</li></ul>
+      <h3>什麼情況下這個結論會翻掉</h3><ul><li>新的 production consumer 再次持有跨 refresh 的 regime_history cache。</li><li>staleness 來源被證明是 transaction 外的長壽命 process cache，而不是 persisted rows。</li></ul>
+      <h3>待釐清問題</h3><p class="empty">尚未記錄待釐清問題</p>
       <h3>下一步</h3><article class="safe-action"><h3>SA1: 先以 non-gating probe 查全部 rows 的 z_scores_version 與最新 snapshot age，觀察一輪再決定是否升級。</h3><p>可逆：是</p><p>依賴主張：C1, C2</p></article></section>
-    <details class="kernel-details"><summary>技術細節</summary>
+    <details class="kernel-details" open><summary>技術細節</summary>
     <section class="decision"><div class="eyebrow">有界結論</div><h2>結論</h2>
       <p class="decision-text">不要新增跨模組 cache invalidation。把邊界放在 refresh transaction commit：寫入全成或全不成，commit 後由一個 read-only version/age check 決定下游是否採用；失敗就標 degraded。</p>
       <p><strong>更新時間:</strong> 2026-07-13T12:20:12Z</p>
@@ -105,7 +109,7 @@
         # table must still leave an operator-visible trail in the run record.
 </blockquote><p class="offsets">原文位元組範圍: 0..549</p></details></section>
     <section><h2>來源與起源</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>來源標題</th><th>來源層級</th><th>起源</th><th>起源類型</th><th>直接擷取</th></tr></thead><tbody><tr><td><code>S1</code></td><td><a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/scripts/refresh_regime_history_zscores.py">Transactional regime_history z-score refresh</a></td><td>T1</td><td>OR1</td><td>repository-source-of-record</td><td>是</td></tr><tr><td><code>S2</code></td><td><a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/src/parallax/app/pipeline.py">Parallax pipeline regime_history health surface</a></td><td>T1</td><td>OR2</td><td>repository-source-of-record</td><td>是</td></tr></tbody></table></div></section>
-    <section><h2>驗證</h2><div class="verification-grid"><article class="verification"><code>VR1</code><h3>targeted_reverification</h3><p>已完成：是</p><p>上下文分離：未記錄</p></article></div></section>
+    <section><h2>驗證</h2><div class="verification-grid"><article class="verification"><code>VR1</code><h3>targeted_reverification</h3><p>已完成：是</p><p>上下文分離：未記錄</p><p><strong>複驗結論：</strong>逐段比對 refresh writer 與現行 app reader；修正「存在 active cache」的前提，保留 transaction 後 health check 作為最小補強。</p><div class="table-wrap"><table><thead><tr><th>主張</th><th>複驗 disposition</th></tr></thead><tbody><tr><td><code>C1</code></td><td>corrected / 已修正</td></tr><tr><td><code>C2</code></td><td>accepted / 接受</td></tr></tbody></table></div></article></div></section>
     <section><h2>工程交接</h2><article class="safe-action"><h3>SA1: 先以 non-gating probe 查全部 rows 的 z_scores_version 與最新 snapshot age，觀察一輪再決定是否升級。</h3><p>可逆：是</p><p>依賴主張：C1, C2</p></article>
       <h3>限制條件</h3><ul><li>若未來 production consumer 持有跨 refresh 的 in-memory cache，需重新定位到該 consumer 的 lifecycle boundary。</li></ul>
       <h3>驗收測試</h3><ul><li>中途終止 refresh 並重讀 regime_history =&gt; 所有 rows 仍保持同一 z_scores_version，且 health surface 明確標註 degraded 或 stale</li></ul></section>
@@ -116,7 +120,7 @@
       <p><strong>human_recommendation:</strong> 若要補強，先加 post-commit read-only health assertion，不改 consumer coupling，也不把現有 non-gating step 直接升為 hard gate。</p>
       <p class="gate-ok">所有決定性檢查均已通過。</p></section>
     <p class="hash">state sha256 84ed80a890af0bc89b9fad6464ad717c2251ebffc3fdce2f025c99fa2fc97064</p></details>
-    <footer>本報告只從唯一正式 JSON 狀態決定性產生，不含模型撰寫的第二層報告、JavaScript 或遠端資產。</footer>
+    <footer>本報告由決定性渲染器直接從唯一正式 JSON 狀態產生，作為 host 撰寫報告的備援視圖；不含 JavaScript 或遠端資產。</footer>
   </main>
 </body>
 </html>

@@ -52,8 +52,9 @@ gate and no automatic provider bundle.
 
 ## Delivery
 
-Always deliver canonical `state.json`, `events.jsonl`, `raw/`, and
-`report.html`. Human-facing narrative fields and HTML are Traditional Chinese;
-exact excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged.
-Integrity failure remains unsafe; evidence insufficiency remains an annotated
-epistemic status. Neither prevents producing the package.
+Always deliver canonical `state.json`, `events.jsonl`, `raw/`, and a
+hash-bound `report.html`, host-authored or, failing that, deterministically
+rendered. Human-facing fields and HTML are Traditional Chinese; exact
+excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged.
+Integrity failure remains unsafe; evidence insufficiency remains an
+annotated status. Neither prevents producing the package.

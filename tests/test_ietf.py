@@ -138,7 +138,7 @@ class IetfBoundaryTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live rfc-editor.org call 2026-07-11 against RFC 9110)
         # and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "ietf_success.json").read_text())
+        fixture = json.loads((FIXTURES / "ietf_success.json").read_text(encoding="utf-8"))
         doc_id = fixture["doc_id"]
         title = fixture["title"]
         expected_lines = [
@@ -176,7 +176,7 @@ class IetfBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["doc_id"], doc_id)
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["doc_id"], doc_id)
 
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
@@ -190,7 +190,7 @@ class IetfBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Not found", spool.read_text())
+        self.assertIn("Not found", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

@@ -536,6 +536,93 @@ class CliTests(unittest.TestCase):
                 report.read_text(encoding="utf-8"),
             )
 
+    def test_finalize_then_host_authored_render_binds_and_records_report(self) -> None:
+        contract = confirmed_medium_contract()
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        contract_path = self._write_json(contract, "host-authored-contract.json")
+        session = self.root / "host-authored-session"
+        self.run_cli(
+            "init", str(session), "--contract", str(contract_path), "--now", NOW, "--json"
+        )
+
+        finalized = self.run_cli("finalize", str(session), "--now", NOW, "--json")
+        finalize_payload = json.loads(finalized.stdout)
+        self.assertFalse(finalize_payload["validation"]["tier_contract_met"])
+        state_after_finalize = load_state(session)
+        self.assertEqual(state_after_finalize["summary"]["status"], "BLOCKED")
+        self.assertEqual(finalize_payload["state_sha256"], state_sha256(state_after_finalize))
+        self.assertFalse((session / "report.html").exists())
+
+        report_path = session / "report.html"
+        report_path.write_text(
+            '<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8">'
+            f'<meta data-state-sha256="{finalize_payload["state_sha256"]}" '
+            'content="canonical-state-binding"></head>'
+            '<body>host-authored report</body></html>',
+            encoding="utf-8",
+        )
+
+        rendered = self.run_cli(
+            "render", str(session), "--host-authored", "--now", NOW, "--json"
+        )
+        render_payload = json.loads(rendered.stdout)
+        self.assertEqual(render_payload["state_sha256"], finalize_payload["state_sha256"])
+        self.assertEqual(
+            render_payload["report_sha256"],
+            hashlib.sha256(report_path.read_bytes()).hexdigest(),
+        )
+        self.assertIn("host-authored report", report_path.read_text(encoding="utf-8"))
+
+        # finalize is idempotent: calling render --host-authored again with the
+        # same unchanged file must not bump the revision or reject the report.
+        state_before_second = load_state(session)
+        second = self.run_cli(
+            "render", str(session), "--host-authored", "--now", NOW, "--json"
+        )
+        self.assertEqual(load_state(session)["session"]["revision"], state_before_second["session"]["revision"])
+        self.assertEqual(json.loads(second.stdout)["report_sha256"], render_payload["report_sha256"])
+
+        events = read_events(session)[0]
+        report_events = [event for event in events if event["event"] == "report_generated"]
+        self.assertEqual(len(report_events), 2)
+        self.assertEqual(report_events[-1]["authored_by"], "host")
+
+        validation = json.loads(
+            self.run_cli("validate", str(session), "--json", check=False).stdout
+        )
+        self.assertNotIn("report.stale", {issue["code"] for issue in validation["issues"]})
+
+    def test_render_host_authored_fails_closed_without_matching_report(self) -> None:
+        contract = confirmed_medium_contract()
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        contract_path = self._write_json(contract, "host-authored-missing-contract.json")
+        session = self.root / "host-authored-missing-session"
+        self.run_cli(
+            "init", str(session), "--contract", str(contract_path), "--now", NOW, "--json"
+        )
+        self.run_cli("finalize", str(session), "--now", NOW, "--json")
+
+        missing = self.run_cli(
+            "render", str(session), "--host-authored", "--now", NOW, "--json", check=False
+        )
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("missing", json.loads(missing.stdout)["error"])
+
+        (session / "report.html").write_text(
+            f'<meta data-state-sha256="{"0" * 64}">', encoding="utf-8"
+        )
+        stale = self.run_cli(
+            "render", str(session), "--host-authored", "--now", NOW, "--json", check=False
+        )
+        self.assertEqual(stale.returncode, 1)
+        self.assertIn("does not embed", json.loads(stale.stdout)["error"])
+        events = read_events(session)[0]
+        self.assertFalse(any(event["event"] == "report_generated" for event in events))
+
     def test_attempt_records_status_transitions_for_organizer_action(self) -> None:
         self._init_session()
         self.run_cli(
@@ -854,10 +941,14 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(secret, result.stdout)
 
     def test_cli_loads_nearest_dotenv_without_printing_secret(self) -> None:
+        # brave/BRAVE_SEARCH_API_KEY (not openalex/OPENALEX_API_KEY): OpenAlex
+        # serves anonymously now (required_env == []; see the 2026-08-26
+        # registry fix), so it can no longer stand in for "a route with a
+        # credential the nearest .env should supply."
         secret = "nearest-dotenv-secret-must-not-appear"
-        (self.root / ".env").write_text(f"OPENALEX_API_KEY={secret}\n", encoding="utf-8")
+        (self.root / ".env").write_text(f"BRAVE_SEARCH_API_KEY={secret}\n", encoding="utf-8")
         env = os.environ.copy()
-        env.pop("OPENALEX_API_KEY", None)
+        env.pop("BRAVE_SEARCH_API_KEY", None)
         result = subprocess.run(
             [sys.executable, str(self.cli), "providers", "--json"],
             cwd=self.root,
@@ -868,10 +959,10 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         providers = json.loads(result.stdout)["providers"]
-        openalex = next(provider for provider in providers if provider["id"] == "openalex")
+        brave = next(provider for provider in providers if provider["id"] == "brave")
         self.assertEqual(
-            openalex["required_env"],
-            [{"name": "OPENALEX_API_KEY", "present": True}],
+            brave["required_env"],
+            [{"name": "BRAVE_SEARCH_API_KEY", "present": True}],
         )
         self.assertNotIn(secret, result.stdout)
 
@@ -914,7 +1005,7 @@ class CliTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(
             [item["id"] for item in payload["d1_candidates"]],
-            ["perplexity", "gemini-deep", "openai-deep"],
+            ["perplexity", "gemini-deep"],
         )
         self.assertEqual(payload["rules"]["conclusion_author"], "host")
         self.assertEqual(payload["rules"]["provider_reports_role"], "discovery_only")

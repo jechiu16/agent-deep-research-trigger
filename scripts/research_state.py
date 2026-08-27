@@ -42,6 +42,8 @@ from research_harness.contracts import (
 )
 from research_harness.operations import purge_artifact, recover_operation
 from research_harness.providers import (
+    adapter_is_bound,
+    effective_adoption_status,
     load_provider_registry,
     preflight_contract_routes,
     provider_records_sha256,
@@ -53,8 +55,14 @@ from research_harness.quota import (
     acquire_permits,
     cost_usage,
     permit_usage,
+    rejected_unbilled_actions,
 )
-from research_harness.rendering import finalize_session_result, render_session_result
+from research_harness.rendering import (
+    finalize_session_result,
+    finalize_state_result,
+    record_host_report_result,
+    render_session_result,
+)
 from research_harness.state import new_state, state_sha256
 from research_harness.storage import (
     _read_events_unlocked,
@@ -212,7 +220,7 @@ def _format_confirmation_card(payload: dict[str, Any]) -> str:
             for item in deep_candidates
         )
     else:
-        candidates = "目前沒有 ready provider；仍可選 light"
+        candidates = "目前沒有 locally-verified provider；仍可選 light"
     search_candidates = ", ".join(
         f"{item['id']}[{item['state']}]" for item in payload["search_candidates"]
     ) or "無付費 search route；仍可用 free routes"
@@ -247,6 +255,7 @@ def _validate_prepared_contract(
 
 def command_providers(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     registry = _registry(args.registry_overlay)
+    now = _now()
     providers = []
     for provider in registry["providers"]:
         providers.append(
@@ -259,6 +268,12 @@ def command_providers(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "adapter_version": provider["adapter_version"],
                 "execution_binding": provider["execution_binding"],
                 "adoption_status": provider["adoption_status"],
+                "docs_verified_at": provider["docs_verified_at"],
+                # Derived, not persisted: a point-in-time adoption claim past
+                # ADOPTION_STALE_DAYS is downgraded for display only (item 4)
+                # -- the raw adoption_status/docs_verified_at pair above is
+                # never altered, only shown alongside this.
+                "adoption_status_effective": effective_adoption_status(provider, now),
                 "roles": provider["roles"],
                 "action_categories": provider["action_categories"],
                 "stage_capabilities": provider["stage_capabilities"],
@@ -278,6 +293,25 @@ def command_providers(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     }, 0
 
 
+def _card_provider_state(provider: dict[str, Any], missing: list[str]) -> str:
+    """The card's per-route state: exactly what local, no-network preflight
+    can honestly claim (SKILL.md forbids any network call before confirmation).
+
+    "locally-verified" means the adapter module is registered AND the
+    required credential env var is present -- nothing more. It is
+    deliberately NOT named "ready": a present credential is not execution
+    readiness (HARNESS.md), and the 2026-08-26 openai-deep incident is proof
+    that even a bound, credentialed route can still be refused upstream by
+    the provider itself. No local check can rule that out.
+    """
+
+    if missing:
+        return "missing-key"
+    if not adapter_is_bound(provider):
+        return "unbound"
+    return "locally-verified"
+
+
 def command_card(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     registry = _registry(args.registry_overlay)
     profiles = load_budget_profiles(Path(args.profiles) if args.profiles else None)
@@ -289,7 +323,7 @@ def command_card(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         missing = [name for name in provider["required_env"] if not os.environ.get(name)]
         item = {
             "id": provider["id"],
-            "state": "ready" if not missing else "missing-key",
+            "state": _card_provider_state(provider, missing),
             "missing_env": missing,
             "list_price": provider["metering"]["list_price"],
             "verified_at": provider["metering"]["verified_at"],
@@ -664,6 +698,7 @@ def command_status(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "usage": permit_usage(Path(args.session)),
         "cost_budget": state.get("contract", {}).get("resource_envelope", {}).get("cost_budget"),
         "cost_usage": cost_usage(Path(args.session)),
+        "rejected_unbilled": rejected_unbilled_actions(Path(args.session)),
         "validation": validation.to_dict(),
     }, 0
 
@@ -819,8 +854,20 @@ def command_validate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return report.to_dict(), 0 if report.ok else 1 if report.errors else 2
 
 
+def command_finalize(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    sealed = finalize_state_result(Path(args.session), args.now or _now())
+    return {
+        "state_sha256": sealed.state_sha256,
+        "validation": sealed.validation.to_dict(),
+    }, 0
+
+
 def command_render(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    rendered = finalize_session_result(Path(args.session), args.now or _now())
+    now = args.now or _now()
+    if args.host_authored:
+        rendered = record_host_report_result(Path(args.session), now)
+    else:
+        rendered = finalize_session_result(Path(args.session), now)
     return {
         "report_path": str(rendered.path.resolve()),
         "state_sha256": rendered.state_sha256,
@@ -1093,17 +1140,44 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(validate)
     validate.set_defaults(handler=command_validate)
 
+    finalize = subparsers.add_parser(
+        "finalize",
+        help="seal budget/tier status and return the exact hash a report must embed",
+        description=(
+            "Pre-write half of the host-authored delivery path. Applies the same "
+            "revision-safe BLOCKED seal as `render` (budget-exhaustion gaps, an "
+            "insufficient tier floor) but writes no report.html. Call this first, "
+            "embed the returned state_sha256 in <meta data-state-sha256> of a "
+            "self-authored report.html, then run `render --host-authored` to bind "
+            "it. Idempotent: calling it again with nothing else changed returns "
+            "the same hash."
+        ),
+    )
+    finalize.add_argument("session")
+    finalize.add_argument("--now", help="timestamp for a canonical tier-status seal")
+    _add_json_flag(finalize)
+    finalize.set_defaults(handler=command_finalize)
+
     render = subparsers.add_parser(
         "render",
         help="final delivery: render report with a revision-safe BLOCKED seal when needed",
         description=(
             "Final delivery path. Deterministically validate the session, then when the tier "
             "floor is unmet but integrity is sound, revision-safely seal "
-            "summary.status=BLOCKED before rendering report.html."
+            "summary.status=BLOCKED before rendering report.html. With "
+            "--host-authored, skip the deterministic renderer and instead bind an "
+            "existing, already-written report.html: the file must already embed "
+            "the exact hash `finalize` returned, or this fails closed rather than "
+            "recording a stale report."
         ),
     )
     render.add_argument("session")
     render.add_argument("--now", help="timestamp for a canonical tier-status seal")
+    render.add_argument(
+        "--host-authored",
+        action="store_true",
+        help="bind an existing host-written report.html instead of overwriting it",
+    )
     _add_json_flag(render)
     render.set_defaults(handler=command_render)
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from ._canon import canonical_json as _canonical_json, sha256_hex
+from ._platform import O_BINARY, SUPPORTS_DIRECTORY_FSYNC, is_symlink_or_reparse_point, pid_exists
 from .state import state_sha256, validate_state_document
 
 
@@ -82,10 +83,19 @@ class SessionLockTimeout(StorageError):
 
 
 def _fsync_dir(path: Path) -> None:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    fd = os.open(path, flags)
+    """Fsync a directory's own fd so a prior rename/unlink survives a crash.
+
+    Documented no-op where directory fds are unavailable (Windows: os.open()
+    cannot open a directory handle this way at all). This is a real,
+    platform-probed degradation, not a swallowed error -- callers that care
+    whether it actually ran should check _platform.SUPPORTS_DIRECTORY_FSYNC;
+    the session-creation path records that capability into state (see
+    state.new_state) so a package produced here honestly says it did not get
+    directory-level crash durability.
+    """
+    if not SUPPORTS_DIRECTORY_FSYNC:
+        return
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(fd)
     finally:
@@ -104,7 +114,7 @@ def _write_all(fd: int, payload: bytes) -> None:
 def _atomic_write_bytes_unlocked(path: Path, payload: bytes) -> None:
     temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | O_BINARY, 0o600)
         try:
             _write_all(fd, payload)
             os.fsync(fd)
@@ -128,18 +138,6 @@ def _read_json(path: Path) -> Any:
         raise RecoveryError(f"cannot read {path.name}: {exc}") from exc
 
 
-def _pid_exists(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def _break_stale_lock(lock_path: Path) -> bool:
     if lock_path.is_symlink():
         return False
@@ -150,7 +148,7 @@ def _break_stale_lock(lock_path: Path) -> bool:
     if record.get("hostname") != socket.gethostname():
         return False
     pid = record.get("pid")
-    if not isinstance(pid, int) or _pid_exists(pid):
+    if not isinstance(pid, int) or pid_exists(pid):
         return False
     try:
         lock_path.unlink()
@@ -163,7 +161,7 @@ def _break_stale_lock(lock_path: Path) -> bool:
 @contextmanager
 def session_lock(session_dir: Path, timeout_s: float = 5.0) -> Iterator[None]:
     session_dir = Path(session_dir)
-    if not session_dir.is_dir() or session_dir.is_symlink():
+    if not session_dir.is_dir() or is_symlink_or_reparse_point(session_dir):
         raise StorageError("session directory must be an existing non-symlink directory")
     lock_path = session_dir / LOCK_FILE
     token = uuid.uuid4().hex
@@ -177,7 +175,7 @@ def session_lock(session_dir: Path, timeout_s: float = 5.0) -> Iterator[None]:
     deadline = time.monotonic() + timeout_s
     while True:
         try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | O_BINARY, 0o600)
         except FileExistsError:
             if _break_stale_lock(lock_path):
                 continue
@@ -300,7 +298,7 @@ def _prepare_event_unlocked(session_dir: Path, event: dict[str, Any]) -> tuple[d
 
 
 def _append_bytes_unlocked(path: Path, payload: bytes) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | O_BINARY, 0o600)
     try:
         _write_all(fd, payload)
         os.fsync(fd)
@@ -394,7 +392,7 @@ def _recover_event_payload_unlocked(session_dir: Path, transaction: dict[str, An
     if not line.startswith(tail):
         raise RecoveryError("event tail is not owned by the pending transaction")
     events_path = session_dir / EVENTS_FILE
-    fd = os.open(events_path, os.O_WRONLY | os.O_CREAT, 0o600)
+    fd = os.open(events_path, os.O_WRONLY | os.O_CREAT | O_BINARY, 0o600)
     try:
         os.ftruncate(fd, boundary)
         os.fsync(fd)

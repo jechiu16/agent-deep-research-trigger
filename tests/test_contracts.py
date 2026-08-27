@@ -490,6 +490,35 @@ class ContractTests(unittest.TestCase):
         self.assertIn("enabled route host-web is sunset", errors)
         self.assertIn("enabled route host-web has unknown storage rights", errors)
 
+    def test_sunset_route_is_not_preflight_selectable_even_with_credential(self) -> None:
+        # Regression for the 2026-08-26 openai-deep sunset: the shipped
+        # registry record is both disabled and lifecycle-sunset. Preflight
+        # must flag both independently (not enabled, AND lifecycle not
+        # active) and must never report the route ready, even when its
+        # credential is present -- a present credential is not execution
+        # readiness (HARNESS.md), and here the route cannot even be selected.
+        contract = {"stage_permit_map": [{"route": "openai-deep"}]}
+        records, errors = preflight_contract_routes(
+            contract, self.registry, {"OPENAI_API_KEY": "test-key"}
+        )
+        self.assertIn("route openai-deep is not enabled", errors)
+        self.assertIn("route openai-deep lifecycle is not active", errors)
+        record = next(item for item in records if item["provider_id"] == "openai-deep")
+        self.assertFalse(record["ready"])
+
+    def test_openalex_route_is_preflight_ready_without_any_credential(self) -> None:
+        # Regression for the 2026-08-26 openalex fix: OPENALEX_API_KEY was
+        # listed as required_env even though the live API serves anonymous
+        # requests, which made this free route permanently unavailable.
+        # required_env is now [], so preflight must report it ready with an
+        # empty environment -- no credential should ever be needed here.
+        contract = {"stage_permit_map": [{"route": "openalex"}]}
+        records, errors = preflight_contract_routes(contract, self.registry, {})
+        self.assertEqual(errors, [])
+        record = next(item for item in records if item["provider_id"] == "openalex")
+        self.assertEqual(record["required_env"], [])
+        self.assertTrue(record["ready"])
+
     def test_registry_hash_does_not_depend_on_record_order(self) -> None:
         reversed_registry = copy.deepcopy(self.registry)
         reversed_registry["providers"].reverse()

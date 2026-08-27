@@ -107,15 +107,44 @@ def permit_usage(session_dir: Path) -> dict[str, int]:
         return _usage_from_events(events)
 
 
+def _final_attempt_statuses(events: list[dict[str, Any]]) -> dict[str, str]:
+    """Map each action_id to its most recently journaled attempt status.
+
+    An action with no attempt_status event yet keeps its permit's
+    initial_status (e.g. "attempted" for boundary actions, "acquired" for
+    legacy non-boundary permits).
+    """
+
+    finals: dict[str, str] = {}
+    for event in events:
+        action_id = event.get("action_id")
+        if not isinstance(action_id, str):
+            continue
+        if event.get("event") == "permit_acquired":
+            finals.setdefault(action_id, event.get("initial_status", "acquired"))
+        elif event.get("event") == "attempt_status" and isinstance(event.get("status"), str):
+            finals[action_id] = event["status"]
+    return finals
+
+
 def _cost_usage_from_events(
     events: list[dict[str, Any]], providers: list[dict[str, Any]]
 ) -> dict[str, int]:
     by_id = {provider.get("id"): provider for provider in providers if isinstance(provider, dict)}
+    final_statuses = _final_attempt_statuses(events)
     usage = {"deep": 0, "search": 0, "free": 0}
     for event in _permit_events(events):
         provider = by_id.get(event.get("route"))
         count = event.get("count")
         if provider is None or not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            continue
+        if final_statuses.get(event.get("action_id")) == "rejected_unbilled":
+            # Unambiguous pre-work provider rejection: no research work was
+            # done and nothing was billed, so the permit is returned. The
+            # action id itself is not reusable -- see ATTEMPT_TRANSITIONS
+            # (rejected_unbilled is terminal) and _ensure_new_action in
+            # boundary.py, which refuses any action id that already exists
+            # in the journal regardless of its outcome.
             continue
         cost_class = action_cost_class(provider, str(event.get("category")))
         if cost_class in usage:
@@ -132,6 +161,50 @@ def cost_usage(session_dir: Path) -> dict[str, int]:
         if errors:
             raise QuotaError("event history is malformed")
         return _cost_usage_from_events(events, state.get("capabilities", {}).get("providers", []))
+
+
+def rejected_unbilled_actions(session_dir: Path) -> list[dict[str, Any]]:
+    """List every boundary action journaled as rejected_unbilled.
+
+    An unambiguous pre-work provider rejection (see
+    boundary._classify_http_rejection) returns the paid cost-class permit
+    from cost_usage/_cost_usage_from_events, but the action id itself is
+    permanently burned like any other terminal outcome. That combination
+    would otherwise be invisible next to a session that never attempted the
+    action at all: cost_usage shows less spend, but nothing says why. This
+    gives an auditor the concrete list -- action id, route, stage, category,
+    when, and the upstream evidence recorded at classification time -- so a
+    run with a rejected_unbilled deep call is inspectable after the fact.
+    """
+
+    session_dir = Path(session_dir)
+    with session_lock(session_dir):
+        _recover_session_unlocked(session_dir)
+        events, errors = _read_events_unlocked(session_dir)
+        if errors:
+            raise QuotaError("event history is malformed")
+    permits_by_action = {
+        event["action_id"]: event
+        for event in _permit_events(events)
+        if isinstance(event.get("action_id"), str)
+    }
+    results: list[dict[str, Any]] = []
+    for event in events:
+        if event.get("event") != "attempt_status" or event.get("status") != "rejected_unbilled":
+            continue
+        action_id = event.get("action_id")
+        permit = permits_by_action.get(action_id, {})
+        results.append(
+            {
+                "action_id": action_id,
+                "route": permit.get("route"),
+                "stage": permit.get("stage"),
+                "category": permit.get("category"),
+                "at": event.get("at"),
+                "details": event.get("details"),
+            }
+        )
+    return results
 
 
 def _assert_cost_budget(
@@ -421,6 +494,17 @@ def _reserve_boundary_action_unlocked(
 # (async wall-clock exhaustion: execute_deep_timeout, no physical request).
 # In both cases the boundary action/request count stays consumed; nothing here refunds.
 #
+# "rejected_unbilled" is reached from "attempted" (execute_deep_submit, which
+# journals no intermediate "accepted" on a non-200 response) or from
+# "accepted" (execute_probe, which always journals "accepted" once the
+# transport returns before evaluating the status code). It is terminal, like
+# "failed": the action id is permanently burned, this is not a resumable
+# state, and it is reached only through boundary._classify_http_rejection's
+# narrow whitelist (an unambiguous pre-work provider rejection). Unlike every
+# other terminal outcome, the PAID cost-class permit is excluded from
+# _cost_usage_from_events below — the physical request count still stays
+# consumed, since one physical HTTP round trip did happen.
+#
 # uncertain -> accepted is the resume transition: the ONLY way out of
 # uncertain. It is journaled with details {"resume": true} by
 # execute_deep_poll itself (there is no separate resume verb) the moment a
@@ -428,8 +512,8 @@ def _reserve_boundary_action_unlocked(
 # continues under a newly reserved boundary transport action.
 ATTEMPT_TRANSITIONS = {
     "acquired": {"attempted"},
-    "attempted": {"accepted", "failed", "uncertain"},
-    "accepted": {"completed", "failed", "uncertain"},
+    "attempted": {"accepted", "failed", "uncertain", "rejected_unbilled"},
+    "accepted": {"completed", "failed", "uncertain", "rejected_unbilled"},
     "uncertain": {"accepted"},
 }
 

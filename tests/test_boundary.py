@@ -17,7 +17,7 @@ from research_harness.boundary import (
     _urllib_transport,
     execute_probe,
 )
-from research_harness.quota import permit_usage
+from research_harness.quota import cost_usage, permit_usage, rejected_unbilled_actions
 from research_harness.state import new_state
 from research_harness.storage import apply_state_patch, create_session, load_state, read_events
 from research_harness.validation import validate_session
@@ -98,7 +98,7 @@ class BoundaryTests(unittest.TestCase):
     def test_success_records_occurrence_and_completes_attempt(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
         # response (live sonar call 2026-07-11) and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "sonar_success.json").read_text())
+        fixture = json.loads((FIXTURES / "sonar_success.json").read_text(encoding="utf-8"))
         expected_cost = round(fixture["usage"]["cost"]["total_cost"], 4)
         expected_citations = len(
             [item for item in fixture.get("search_results", []) if isinstance(item.get("url"), str)]
@@ -119,7 +119,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["model"], "sonar-pro")
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["model"], "sonar-pro")
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
         self.assertTrue(report.integrity_ok)
@@ -143,6 +143,32 @@ class BoundaryTests(unittest.TestCase):
             {issue.code for issue in report.errors},
         )
 
+    def test_invalid_request_error_returns_permit_but_burns_action_id(self) -> None:
+        # boundary_invalid_request_error.json is a synthetic body (the sonar
+        # route is only a convenient already-wired sync v2_request_boundary
+        # route here; the classification in boundary._classify_http_rejection
+        # is provider-agnostic and keys purely on HTTP status + body shape,
+        # not on which route sent the request). The async submit path is
+        # exercised against the real recorded incident body in
+        # tests/test_openai_deep.py.
+        with self.assertRaises(BoundaryError) as raised:
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
+                transport=fixture_transport("boundary_invalid_request_error.json", status=400),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertIn("must still never be retried or resubmitted", message)
+        self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["action_id"], "A1")
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "invalid_request_error")
+
     def test_http_error_consumes_permit_and_preserves_payload(self) -> None:
         with self.assertRaises(BoundaryError) as raised:
             execute_probe(
@@ -153,7 +179,7 @@ class BoundaryTests(unittest.TestCase):
         self.assert_failure_copy(raised, "returned http", "provider spool", "do not replay")
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("rate_limit_exceeded", spool.read_text())
+        self.assertIn("rate_limit_exceeded", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

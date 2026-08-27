@@ -74,6 +74,9 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
+On Windows, use `python -m venv .venv` then
+`.venv\Scripts\python -m pip install -e .`.
+
 2. **Link it to one or both hosts.**
 
 ```bash
@@ -81,6 +84,12 @@ mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"
 ln -s "$PWD" "$HOME/.claude/skills/deep"
 ln -s "$PWD" "$HOME/.agents/skills/deep"
 ```
+
+`ln -s` needs a privilege most Windows accounts lack by default: turn on
+**Developer Mode** (Settings -> Privacy & Security -> For developers) so
+`New-Item -ItemType SymbolicLink` works unprivileged, or just
+`Copy-Item -Recurse` this folder into each skills directory instead (a copy
+does not track `git pull`, so re-copy after updating).
 
 3. **Start a fresh host session.**
 
@@ -141,9 +150,23 @@ HTML; it also corrected D1's overly absolute framing of Quack.
 | `state.json` | Machine-readable conclusion, claims, gaps, and coding handoff. |
 | `events.jsonl` | Hash-chained request, revision, and budget journal. |
 | `raw/` | Immutable, policy-gated evidence bytes. |
-| `report.html` | Deterministic Traditional Chinese human report. |
+| `report.html` | Traditional Chinese human report, bound to the canonical state hash. |
 
-No second full Markdown report is generated.
+Host-authored at delivery time, or by a deterministic fallback renderer when
+the host cannot. No second full Markdown report is generated.
+
+## Platform Support
+
+Linux, macOS, and Windows all run on the Python standard library alone --
+no extra dependency on any of them. Two POSIX-only guarantees are honestly
+degraded, never faked, on Windows: directory-fsync crash durability (a
+rename/unlink there is not guaranteed to survive a hard crash) and private
+0600/0700 file modes (Windows `chmod` cannot restrict access to the owning
+user). Windows sessions record both facts in `state.json`, and
+`deep-research-state validate` reports each as a `WARNING`
+(`session.degraded_durability`, `session.degraded_privacy`) without failing
+an otherwise-valid package closed. Symlink and directory-junction rejection
+during artifact ingestion is enforced identically on every platform.
 
 ## Project Links
 

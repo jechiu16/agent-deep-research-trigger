@@ -181,14 +181,14 @@ class AsyncBoundaryTests(unittest.TestCase):
     # -- submit -----------------------------------------------------------
 
     def test_submit_records_job_token_and_accepts(self) -> None:
-        fixture = json.loads((FIXTURES / "perplexity_deep_submit_accept.json").read_text())
+        fixture = json.loads((FIXTURES / "perplexity_deep_submit_accept.json").read_text(encoding="utf-8"))
         result = self._submit()
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(result["job"], f"perplexity:{fixture['id']}")
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "accepted"])
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["id"], fixture["id"])
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["id"], fixture["id"])
 
     def test_submit_is_never_retried_after_accept(self) -> None:
         self._submit()
@@ -255,7 +255,7 @@ class AsyncBoundaryTests(unittest.TestCase):
         self.assert_failure_copy(raised, "provider spool", "manual")
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "failed"])
         spool = self.session / "provider_spool" / "D1.raw.json"
-        self.assertIn("rate_limit_exceeded", spool.read_text())
+        self.assertIn("rate_limit_exceeded", spool.read_text(encoding="utf-8"))
 
     def test_submit_malformed_accept_body_fails_after_spooling(self) -> None:
         with self.assertRaises(AdapterParseError) as raised:
@@ -267,7 +267,7 @@ class AsyncBoundaryTests(unittest.TestCase):
         self.assertEqual(self.attempt_statuses("D1"), ["attempted", "uncertain"])
         spool = self.session / "provider_spool" / "D1.raw.json"
         self.assertTrue(spool.exists())
-        self.assertIn("CREATED", spool.read_text())
+        self.assertIn("CREATED", spool.read_text(encoding="utf-8"))
 
     def test_submit_timeout_is_uncertain_and_requires_deep_pending(self) -> None:
         def timeout_transport(spec):
@@ -306,7 +306,7 @@ class AsyncBoundaryTests(unittest.TestCase):
         # synthetic (a real failure was not deliberately induced).
         self._submit()
 
-        fixture = json.loads((FIXTURES / "perplexity_deep_poll_terminal_success.json").read_text())
+        fixture = json.loads((FIXTURES / "perplexity_deep_poll_terminal_success.json").read_text(encoding="utf-8"))
         expected_cost = round(fixture["response"]["usage"]["cost"]["total_cost"], 4)
         expected_citations = len(fixture["response"].get("search_results", []))
 

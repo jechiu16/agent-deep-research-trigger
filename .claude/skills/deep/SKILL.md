@@ -1,6 +1,6 @@
 ---
 name: deep
-description: Portable /deep research trigger for Claude Code and OpenAI Codex. Use only when the user explicitly types /deep to start a bounded, evidence-gated research session.
+description: Portable /deep research trigger for Claude Code and OpenAI Codex. Use only when the user explicitly types /deep to start one bounded, host-led research session.
 ---
 
 # Claude Code discovery wrapper

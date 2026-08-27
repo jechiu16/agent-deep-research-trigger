@@ -18,7 +18,8 @@
     main,header { position:relative; width:min(1120px,calc(100% - 32px)); margin:auto; }
     header { padding:64px 0 32px; border-bottom:2px solid var(--ink); }
     .eyebrow { text-transform:uppercase; letter-spacing:.18em; font:700 12px/1.2 Georgia,serif; color:var(--accent); }
-    h1 { margin:.25rem 0 .5rem; font-size:clamp(2.5rem,7vw,5.8rem); line-height:.92; max-width:13ch; }
+    h1 { margin:.25rem 0 .5rem; font-size:clamp(1.6rem,3.4vw,2.4rem); line-height:1.3; max-width:22ch; }
+    .kicker { margin:0 0 .5rem; color:var(--muted); font-size:.95rem; max-width:60ch; }
     h2 { margin:0 0 1.25rem; font-size:clamp(1.65rem,3vw,2.5rem); }
     h3 { margin:.45rem 0; }
     .status-line { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:22px; }
@@ -30,7 +31,7 @@
     section { background:color-mix(in srgb,var(--panel) 94%,transparent); border:1px solid var(--line);
       padding:clamp(22px,4vw,44px); box-shadow:0 14px 38px #4e46351a; }
     .decision { border-left:8px solid var(--accent); }
-    .decision-text { font-size:clamp(1.35rem,2.6vw,2rem); max-width:38ch; }
+    .decision-text { font-size:1.08rem; line-height:1.75; max-width:46ch; }
     .human-first { border-left:8px solid var(--forest); }
     .human-first h2 { font-size:clamp(1.8rem,4vw,3.2rem); }
     .reason-list { padding-left:1.2rem; } .reason-list li { margin:.55rem 0; }
@@ -65,7 +66,8 @@
 <body>
   <header>
     <div class="eyebrow">研究報告</div>
-    <h1>對 Parallax 的 single-writer local analytics workload，DuckDB 的 process/concurrency boundary 應如何制定？哪些官方限制與 failure modes 必須進入 acceptance tests？</h1>
+    <h1>把 single-writer 從設計慣例升級成 deterministic acceptance contract；現在不導入 Quack，待其穩定且能通過同一組 failure-path tests 再評估。</h1>
+    <p class="kicker">研究問題：對 Parallax 的 single-writer local analytics workload，DuckDB 的 process/concurrency boundary 應如何制定？哪些官方限制與 failure modes 必須進入 acceptance tests？</p>
     <div class="status-line"><span class="pill status">standard</span></div>
   </header>
   <main>
@@ -73,10 +75,12 @@
       <p><strong>研究狀態:</strong> Standard 循環確認核心 single-process boundary，並以現行官方文件修正 D1 過度絕對的 multi-process framing：Quack 已提供 multi-process write 路徑，但仍是 beta。</p>
       <div class="decision"><div class="eyebrow">有界結論</div><h3>結論</h3>
       <p class="decision-text">Parallax 應維持單一 process 擁有原生 DuckDB file 的 read-write lifecycle；同一檔案的並行讀寫留在 owner process 內，以 transaction conflict 明確失敗並由 bounded retry 處理。外部 CLI／report consumer 不應假設可與 writer 同時直接開檔，應改讀 immutable export、snapshot 或 owner-mediated surface。Quack 提供未來的 multi-process client-server 路徑，但目前仍是 beta，不進 production boundary。</p>
-      </div><h3>核心理由</h3><ul class="reason-list"><li>直接開啟原生 DuckDB file 時，read-write mode 由單一 process 擁有；multiple processes 只適用於全員 read-only。owner process 內可有多個 writer threads，append 不衝突，同 row update/delete 則以 conflict error 失敗。（<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/connect/concurrency.md">DuckDB Concurrency documentation source</a>）</li><li>現行官方文件修正了「DuckDB 沒有任何 multi-process write 路徑」的絕對說法：Quack 可把 DuckDB 轉成 client-server 以支援 multi-process writes，但目前仍是 beta，protocol、functions、settings 與 defaults 都可能改變。（<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/connect/concurrency.md">DuckDB Concurrency documentation source</a>、<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/quack/overview.md">DuckDB Quack remote protocol documentation source</a>）</li><li>Parallax 目前 pin DuckDB 1.5.x，且 production code 已明確先關閉 read-only connection，才呼叫會開 read-write connection 的 repository，因同檔案 mixed read_only configuration 會被拒絕。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/pyproject.toml">Parallax dependency declaration</a>、<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/src/parallax/forecast/brief_view.py">Parallax forecast DuckDB connection boundary</a>）</li></ul><p><strong>上游關係：</strong>不同</p>
-      <h3>限制與翻轉條件</h3><ul><li>本次研究沒有替 Parallax 實作上述 concurrency tests，也沒有對 Quack beta 做 production benchmark。</li><li>DuckDB current docs 會隨 v1.5.x／v2.0 演進；升版時必須重跑文件複驗與 failure-path suite。</li><li>本次 repository search 未找到明確的跨 process DuckDB lock falsifier。</li><li>DuckDB current documentation 明確放寬直接 file access 的 process boundary。</li><li>Quack 成為 stable，且 Parallax 的 failure-path probe 證明其操作成本低於 single-owner boundary。</li><li>Parallax 升級到不同 concurrency contract，或所有 consumers 改走 remote／snapshot boundary。</li></ul>
+      </div><h3>核心理由</h3><ul class="reason-list"><li>直接開啟原生 DuckDB file 時，read-write mode 由單一 process 擁有；multiple processes 只適用於全員 read-only。owner process 內可有多個 writer threads，append 不衝突，同 row update/delete 則以 conflict error 失敗。（<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/connect/concurrency.md">DuckDB Concurrency documentation source</a>）</li><li>現行官方文件修正了「DuckDB 沒有任何 multi-process write 路徑」的絕對說法：Quack 可把 DuckDB 轉成 client-server 以支援 multi-process writes，但目前仍是 beta，protocol、functions、settings 與 defaults 都可能改變。（<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/connect/concurrency.md">DuckDB Concurrency documentation source</a>、<a href="https://raw.githubusercontent.com/duckdb/duckdb-web/refs/heads/main/docs/current/quack/overview.md">DuckDB Quack remote protocol documentation source</a>）</li><li>Parallax 目前 pin DuckDB 1.5.x，且 production code 已明確先關閉 read-only connection，才呼叫會開 read-write connection 的 repository，因同檔案 mixed read_only configuration 會被拒絕。（<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/pyproject.toml">Parallax dependency declaration</a>、<a href="https://github.com/jechiu16/parallax/blob/a8c4284e73156ac62e61d5e70a273781342c55fb/src/parallax/forecast/brief_view.py">Parallax forecast DuckDB connection boundary</a>）</li></ul><p><strong>上游關係：</strong>不同（以上引用來自不同上游，可視為相互獨立的佐證）</p>
+      <h3>這次沒有做到的事</h3><ul><li>本次研究沒有替 Parallax 實作上述 concurrency tests，也沒有對 Quack beta 做 production benchmark。</li><li>DuckDB current docs 會隨 v1.5.x／v2.0 演進；升版時必須重跑文件複驗與 failure-path suite。</li><li>本次 repository search 未找到明確的跨 process DuckDB lock falsifier。</li></ul>
+      <h3>什麼情況下這個結論會翻掉</h3><ul><li>DuckDB current documentation 明確放寬直接 file access 的 process boundary。</li><li>Quack 成為 stable，且 Parallax 的 failure-path probe 證明其操作成本低於 single-owner boundary。</li><li>Parallax 升級到不同 concurrency contract，或所有 consumers 改走 remote／snapshot boundary。</li></ul>
+      <h3>待釐清問題</h3><p class="empty">尚未記錄待釐清問題</p>
       <h3>下一步</h3><article class="safe-action"><h3>SA1: 先新增一個 temp DB + subprocess 的 process-boundary test module，不改 production connection architecture。</h3><p>可逆：是</p><p>依賴主張：C1, C3</p></article></section>
-    <details class="kernel-details"><summary>技術細節</summary>
+    <details class="kernel-details" open><summary>技術細節</summary>
     <section class="decision"><div class="eyebrow">有界結論</div><h2>結論</h2>
       <p class="decision-text">Parallax 應維持單一 process 擁有原生 DuckDB file 的 read-write lifecycle；同一檔案的並行讀寫留在 owner process 內，以 transaction conflict 明確失敗並由 bounded retry 處理。外部 CLI／report consumer 不應假設可與 writer 同時直接開檔，應改讀 immutable export、snapshot 或 owner-mediated surface。Quack 提供未來的 multi-process client-server 路徑，但目前仍是 beta，不進 production boundary。</p>
       <p><strong>更新時間:</strong> 2026-07-13T17:21:40Z</p>
@@ -127,7 +131,7 @@ For the full list of functions, settings, and logging knobs, see the [Reference]
       <p><strong>human_recommendation:</strong> 把 single-writer 從設計慣例升級成 deterministic acceptance contract；現在不導入 Quack，待其穩定且能通過同一組 failure-path tests 再評估。</p>
       <p class="gate-ok">所有決定性檢查均已通過。</p></section>
     <p class="hash">state sha256 3fdc601be628b2ac7f2854e0cc712e5bce01a3f5abea129a4382ca7bf019178f</p></details>
-    <footer>本報告只從唯一正式 JSON 狀態決定性產生，不含模型撰寫的第二層報告、JavaScript 或遠端資產。</footer>
+    <footer>本報告由決定性渲染器直接從唯一正式 JSON 狀態產生，作為 host 撰寫報告的備援視圖；不含 JavaScript 或遠端資產。</footer>
   </main>
 </body>
 </html>

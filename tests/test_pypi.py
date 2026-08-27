@@ -115,7 +115,7 @@ class PypiBoundaryTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live pypi.org call 2026-07-11 against the "requests"
         # package) and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "pypi_success.json").read_text())
+        fixture = json.loads((FIXTURES / "pypi_success.json").read_text(encoding="utf-8"))
         info = fixture["info"]
         expected_name = info["name"]
         expected_version = info["version"]
@@ -152,7 +152,7 @@ class PypiBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        self.assertEqual(json.loads(spool.read_text())["info"]["name"], expected_name)
+        self.assertEqual(json.loads(spool.read_text(encoding="utf-8"))["info"]["name"], expected_name)
 
         report = validate_session(self.session, check_report=False)
         self.assertEqual(report.errors, ())
@@ -166,7 +166,7 @@ class PypiBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Not Found", spool.read_text())
+        self.assertIn("Not Found", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

@@ -182,7 +182,7 @@ class EuropePmcParseTests(unittest.TestCase):
         self.assertEqual(result.usage, {"total_results": None, "returned": 0})
 
     def test_every_citation_is_url_title_date_shaped_against_fixture(self) -> None:
-        fixture = json.loads((FIXTURES / "europe_pmc_success.json").read_text())
+        fixture = json.loads((FIXTURES / "europe_pmc_success.json").read_text(encoding="utf-8"))
         result = europe_pmc.parse((FIXTURES / "europe_pmc_success.json").read_bytes())
         self.assertEqual(len(result.citations), len(fixture["resultList"]["result"]))
         for citation in result.citations:
@@ -226,7 +226,7 @@ class EuropePmcAdapterTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live europe-pmc call 2026-07-11, query "CRISPR gene
         # editing efficacy") and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "europe_pmc_success.json").read_text())
+        fixture = json.loads((FIXTURES / "europe_pmc_success.json").read_text(encoding="utf-8"))
         results = fixture["resultList"]["result"]
         expected_total = fixture["hitCount"]
 
@@ -248,7 +248,7 @@ class EuropePmcAdapterTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        spooled = json.loads(spool.read_text())
+        spooled = json.loads(spool.read_text(encoding="utf-8"))
         self.assertEqual(spooled["hitCount"], expected_total)
         self.assertEqual(len(spooled["resultList"]["result"]), len(results))
 
@@ -269,7 +269,7 @@ class EuropePmcAdapterTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("Too Many Requests", spool.read_text())
+        self.assertIn("Too Many Requests", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 

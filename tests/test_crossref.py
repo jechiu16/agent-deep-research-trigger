@@ -73,7 +73,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         # Expectations come from the fixture itself: it is a recorded real
         # response (live crossref call 2026-07-11, query "dynamic factor
         # model nowcasting") and may be re-recorded later.
-        fixture = json.loads((FIXTURES / "crossref_success.json").read_text())
+        fixture = json.loads((FIXTURES / "crossref_success.json").read_text(encoding="utf-8"))
         message = fixture["message"]
         items = message["items"]
         expected_returned = len(items)
@@ -110,7 +110,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(len(state["retrieval_occurrences"]), 1)
         spool = Path(result["spool_path"])
         self.assertTrue(spool.exists())
-        spooled = json.loads(spool.read_text())
+        spooled = json.loads(spool.read_text(encoding="utf-8"))
         self.assertEqual(spooled["message"]["total-results"], expected_total)
         self.assertEqual(len(spooled["message"]["items"]), expected_returned)
 
@@ -135,7 +135,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
             )
         self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
         spool = self.session / "provider_spool" / "A1.raw.json"
-        self.assertIn("validation-failure", spool.read_text())
+        self.assertIn("validation-failure", spool.read_text(encoding="utf-8"))
         # The boundary request count stays consumed after the failed call.
         self.assertEqual(permit_usage(self.session)["probe"], 1)
 
@@ -321,7 +321,7 @@ class CrossrefParseTests(unittest.TestCase):
         self.assertEqual(len(result.citations), 1)
 
     def test_usage_reports_total_and_returned_counts(self) -> None:
-        fixture = json.loads((FIXTURES / "crossref_success.json").read_text())
+        fixture = json.loads((FIXTURES / "crossref_success.json").read_text(encoding="utf-8"))
         payload = (FIXTURES / "crossref_success.json").read_bytes()
         result = crossref.parse(payload)
         self.assertEqual(

@@ -12,7 +12,10 @@ import research_harness.rendering as rendering
 from research_harness.artifacts import ingest_host_capture
 from research_harness.contracts import contract_card_sha256
 from research_harness.rendering import (
+    _text_list,
     finalize_session_result,
+    finalize_state_result,
+    record_host_report_result,
     render_html,
     render_session_result,
 )
@@ -78,6 +81,90 @@ class RenderingTests(unittest.TestCase):
         self.assertTrue(result.validation.ok, result.validation.to_dict())
         self.assertEqual(result.state_sha256, state_sha256(load_state(self.session)))
         self.assertEqual(result.report_sha256, hashlib.sha256(result.path.read_bytes()).hexdigest())
+
+    def test_finalize_state_result_seals_without_writing_report(self) -> None:
+        session = self.root / "finalize-only-session"
+        contract = confirmed_contract("medium")
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        create_session(session, new_state(contract, NOW, None, {}))
+
+        sealed = finalize_state_result(session, NOW)
+
+        self.assertFalse((session / "report.html").exists())
+        self.assertFalse(sealed.validation.tier_contract_met)
+        self.assertEqual(sealed.state_sha256, state_sha256(load_state(session)))
+        self.assertEqual(load_state(session)["summary"]["status"], "BLOCKED")
+
+        # Idempotent: calling it again with nothing else changed is a no-op.
+        revision = load_state(session)["session"]["revision"]
+        sealed_again = finalize_state_result(session, NOW)
+        self.assertEqual(load_state(session)["session"]["revision"], revision)
+        self.assertEqual(sealed_again.state_sha256, sealed.state_sha256)
+
+    def test_record_host_report_result_binds_existing_file_and_journals_event(self) -> None:
+        session = self.root / "record-host-report-session"
+        contract = confirmed_contract("medium")
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        create_session(session, new_state(contract, NOW, None, {}))
+
+        sealed = finalize_state_result(session, NOW)
+        report_path = session / "report.html"
+        report_path.write_text(
+            '<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8">'
+            f'<meta data-state-sha256="{sealed.state_sha256}" content="canonical-state-binding">'
+            "</head><body>host-authored</body></html>",
+            encoding="utf-8",
+        )
+
+        recorded = record_host_report_result(session, NOW)
+
+        self.assertEqual(recorded.path, report_path)
+        self.assertEqual(recorded.state_sha256, sealed.state_sha256)
+        self.assertEqual(
+            recorded.report_sha256, hashlib.sha256(report_path.read_bytes()).hexdigest()
+        )
+        self.assertIn("host-authored", report_path.read_text(encoding="utf-8"))
+        event = read_events(session)[0][-1]
+        self.assertEqual(event["event"], "report_generated")
+        self.assertEqual(event["authored_by"], "host")
+        self.assertEqual(event["state_sha256"], sealed.state_sha256)
+        self.assertNotIn(
+            "report.stale", {issue.code for issue in validate_session(session).errors}
+        )
+
+    def test_record_host_report_result_rejects_missing_report(self) -> None:
+        session = self.root / "record-host-report-missing-session"
+        contract = confirmed_contract("medium")
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        create_session(session, new_state(contract, NOW, None, {}))
+        finalize_state_result(session, NOW)
+
+        with self.assertRaisesRegex(ValueError, "missing"):
+            record_host_report_result(session, NOW)
+
+    def test_record_host_report_result_rejects_hash_mismatch(self) -> None:
+        session = self.root / "record-host-report-stale-session"
+        contract = confirmed_contract("medium")
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        create_session(session, new_state(contract, NOW, None, {}))
+        finalize_state_result(session, NOW)
+        (session / "report.html").write_text(
+            f'<meta data-state-sha256="{"0" * 64}">', encoding="utf-8"
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not embed"):
+            record_host_report_result(session, NOW)
+        self.assertFalse(
+            any(event["event"] == "report_generated" for event in read_events(session)[0])
+        )
 
     def test_report_has_no_script_or_external_assets(self) -> None:
         document = render_html(self.state, self.report)
@@ -286,7 +373,7 @@ class RenderingTests(unittest.TestCase):
         self.assertFalse(result.validation.ok)
         self.assertTrue(result.validation.integrity_ok)
         document = result.path.read_text(encoding="utf-8")
-        first_screen = document.split('<details class="kernel-details">', 1)[0]
+        first_screen = document.split('<summary>技術細節</summary>', 1)[0]
         self.assertIn("驗證未通過，暫不作建議", first_screen)
         self.assertIn("驗證未通過", first_screen)
         self.assertNotIn("建議採用", first_screen)
@@ -326,7 +413,7 @@ class RenderingTests(unittest.TestCase):
             "",
         )
         document = render_html(state, report)
-        first_screen = document.split('<details class="kernel-details">', 1)[0]
+        first_screen = document.split('<summary>技術細節</summary>', 1)[0]
 
         self.assertIn("暫定結論", first_screen)
         self.assertIn("暫定主張", first_screen)
@@ -570,7 +657,7 @@ class RenderingTests(unittest.TestCase):
             state["evidence"].append({"id": evidence_id, "source_id": source_id})
             state["claims"][0]["supporting_evidence_ids"].append(evidence_id)
         report = ValidationReport((), state_sha256(state), True, True, "", "")
-        first_screen = render_html(state, report).split('<details class="kernel-details">', 1)[0]
+        first_screen = render_html(state, report).split('<summary>技術細節</summary>', 1)[0]
 
         self.assertIn("Validated Source 1", first_screen)
         self.assertIn("Validated Source 3", first_screen)
@@ -604,7 +691,7 @@ class RenderingTests(unittest.TestCase):
             )
         state["summary"]["load_bearing_claim_ids"] = claim_ids
         report = ValidationReport((), state_sha256(state), True, True, "", "")
-        first_screen = render_html(state, report).split('<details class="kernel-details">', 1)[0]
+        first_screen = render_html(state, report).split('<summary>技術細節</summary>', 1)[0]
 
         self.assertNotIn("Claim 1", first_screen)
         self.assertNotIn("Claim 2", first_screen)
@@ -643,7 +730,7 @@ class RenderingTests(unittest.TestCase):
             {"id": "SAFE2", "description": "second safe", "reversible": True, "depends_on_claim_ids": []},
         ]
         document = render_html(state, ValidationReport((), state_sha256(state), True, True, "", ""))
-        first_screen = document.split('<details class="kernel-details">', 1)[0]
+        first_screen = document.split('<summary>技術細節</summary>', 1)[0]
 
         for value in ("constraint one", "open question", "flip condition", "SAFE1"):
             self.assertIn(value, first_screen)
@@ -654,3 +741,16 @@ class RenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenQuestionRenderingTests(unittest.TestCase):
+    """open_questions is an ID section, so its entries are records, not strings."""
+
+    def test_id_carrying_records_render_their_text_not_a_dict_repr(self) -> None:
+        rendered = _text_list([{"id": "Q1", "text": "這個 tag 是否真實存在？"}])
+        self.assertIn("這個 tag 是否真實存在？", rendered)
+        self.assertNotIn("Q1", rendered)
+        self.assertNotIn("{", rendered)
+
+    def test_plain_strings_still_render_unchanged(self) -> None:
+        self.assertIn("純字串限制", _text_list(["純字串限制"]))

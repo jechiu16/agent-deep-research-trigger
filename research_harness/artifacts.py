@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ._canon import RETENTION_RANK, canonical_source_key, normalize_upstream_key, sha256_hex
+from ._platform import O_BINARY, SUPPORTS_PRIVATE_FILE_MODE, is_symlink_or_reparse_point
 from .quota import ACTION_ID_RE
 from .storage import (
     _apply_artifact_state_patch_unlocked,
@@ -114,7 +115,7 @@ def _open_regular_source(source_path: Path) -> tuple[int, os.stat_result]:
         raise ArtifactPolicyError("source file is not readable") from exc
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
         raise ArtifactPolicyError("source must be a regular non-symlink file")
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | O_BINARY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
@@ -168,9 +169,15 @@ def _reject_managed_source(session_dir: Path, source_path: Path) -> None:
 def _ensure_raw_dir(session_dir: Path) -> Path:
     raw_dir = session_dir / "raw"
     if raw_dir.exists():
-        if raw_dir.is_symlink() or not raw_dir.is_dir():
+        if is_symlink_or_reparse_point(raw_dir) or not raw_dir.is_dir():
             raise ArtifactPolicyError("raw path must be a non-symlink directory")
-        if raw_dir.stat().st_mode & 0o077:
+        # Windows os.chmod cannot enforce owner-only bits, and a freshly
+        # mkdir(mode=0o700)'d directory reads back as fully open there (see
+        # _platform.SUPPORTS_PRIVATE_FILE_MODE) -- asserting privacy on a
+        # platform that cannot provide it would fail every ingest closed.
+        # The degradation is recorded on the session (state.new_state) and
+        # surfaced as a validation WARNING instead.
+        if SUPPORTS_PRIVATE_FILE_MODE and raw_dir.stat().st_mode & 0o077:
             raise ArtifactPolicyError("raw directory permissions are not private")
     else:
         raw_dir.mkdir(mode=0o700)
@@ -190,7 +197,7 @@ def _raw_bytes_used(raw_dir: Path) -> int:
 
 def _copy_fd_to_temp(fd: int, temp_path: Path, byte_limit: int) -> tuple[int, str]:
     try:
-        out_fd = os.open(temp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        out_fd = os.open(temp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | O_BINARY, 0o600)
     except FileExistsError as exc:
         raise ArtifactExists("artifact staging path already exists") from exc
     digest = hashlib.sha256()
@@ -230,7 +237,7 @@ def _copy_bytes_to_temp(payload: bytes, temp_path: Path, byte_limit: int) -> tup
     if _contains_secret_marker(payload):
         raise SecretDetected("content matches the deterministic secret rejection floor")
     try:
-        out_fd = os.open(temp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        out_fd = os.open(temp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | O_BINARY, 0o600)
     except FileExistsError as exc:
         raise ArtifactExists("artifact staging path already exists") from exc
     try:
@@ -712,7 +719,7 @@ def _confined_raw_path(session_dir: Path, relative_path: Any) -> Path:
     if relative.is_absolute() or len(relative.parts) != 2 or relative.parts[0] != "raw":
         raise ArtifactPolicyError("artifact raw path is not confined")
     raw_dir = session_dir / "raw"
-    if raw_dir.is_symlink() or not raw_dir.is_dir():
+    if is_symlink_or_reparse_point(raw_dir) or not raw_dir.is_dir():
         raise ArtifactPolicyError("raw directory is unavailable")
     path = session_dir / relative
     if path.parent != raw_dir:
