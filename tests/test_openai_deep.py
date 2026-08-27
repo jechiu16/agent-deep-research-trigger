@@ -337,6 +337,47 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
                 environ=TEST_ENV,
             )
 
+    def test_insufficient_quota_is_rejected_unbilled_and_burns_action_id(self) -> None:
+        # Proves the same whitelist extension that fixes the real sonar
+        # incident (tests/test_boundary.py) also applies through the async
+        # deep-submit path, which shares _classify_http_rejection.
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=fixture_transport(
+                    "openai_deep_submit_rejected_insufficient_quota.json", status=401
+                ),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        self.assertEqual(permit_usage(self.session)["deep"], 1)
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(rejected[0]["details"]["http_status"], 401)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "insufficient_quota")
+
+    def test_authentication_error_is_rejected_unbilled_and_burns_action_id(self) -> None:
+        with self.assertRaises(BoundaryError) as raised:
+            execute_deep_submit(
+                self.session, "D1", "investigation", "openai-deep",
+                "what changed in SMR construction status", NOW,
+                transport=fixture_transport(
+                    "openai_deep_submit_rejected_authentication_error.json", status=401
+                ),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertEqual(self.attempt_statuses("D1"), ["attempted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "authentication_error")
+
     def test_server_error_stays_consumed(self) -> None:
         with self.assertRaises(BoundaryError):
             execute_deep_submit(

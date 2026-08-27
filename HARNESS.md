@@ -96,6 +96,14 @@ The request boundary reserves before sending. Failed or uncertain calls remain
 consumed. Transport polls are physically bounded but are not another `deep`
 submit.
 
+One narrow exception: an unambiguous, unbilled provider gateway rejection
+(invalid credentials, exhausted quota, malformed request -- rejected before
+any work started) returns the paid `deep`/`search` permit, so `cost_usage`
+does not increment for that call. The action id is still permanently burned
+either way -- a rejected call is never retried or resubmitted. Do not expect
+`cost_usage` to increment 1:1 with every attempted paid call; check
+`rejected_unbilled` actions when reconciling spend against attempts.
+
 ## Research Loop
 
 1. Frame the decision, assumptions, exclusions, and flip conditions.

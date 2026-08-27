@@ -169,6 +169,92 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(rejected[0]["action_id"], "A1")
         self.assertEqual(rejected[0]["details"]["provider_error_type"], "invalid_request_error")
 
+    def test_insufficient_quota_returns_permit_but_burns_action_id(self) -> None:
+        # sonar_insufficient_quota.json is a VERBATIM copy of
+        # scratchpad/heavy-uswest-jan2027/session/provider_spool/A2.raw.json:
+        # the real body from a live Heavy run where a paid Perplexity `sonar`
+        # search returned HTTP 401 after the account ran out of credit. The
+        # provider refused at the gateway, ran no work, and billed nothing --
+        # before this fix, "insufficient_quota" fell through the whitelist
+        # (only "invalid_request_error" was recognized) and the call was
+        # wrongly counted as consumed, burning a real search permit.
+        with self.assertRaises(BoundaryError) as raised:
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
+                transport=fixture_transport("sonar_insufficient_quota.json", status=401),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertIn("must still never be retried or resubmitted", message)
+        self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        self.assertEqual(permit_usage(self.session)["probe"], 1)
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["action_id"], "A1")
+        self.assertEqual(rejected[0]["details"]["http_status"], 401)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "insufficient_quota")
+        self.assertIn("exceeded your current quota", rejected[0]["details"]["provider_error_message"])
+
+        # the action id is still permanently burned -- never resubmit
+        with self.assertRaises(BoundaryError):
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "retry attempt", NOW,
+                transport=fixture_transport("sonar_success.json"), environ=TEST_ENV,
+            )
+
+    def test_authentication_error_at_401_returns_permit_but_burns_action_id(self) -> None:
+        with self.assertRaises(BoundaryError) as raised:
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
+                transport=fixture_transport("boundary_authentication_error_401.json", status=401),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(rejected[0]["details"]["http_status"], 401)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "authentication_error")
+
+    def test_authentication_error_at_403_returns_permit_but_burns_action_id(self) -> None:
+        # Confirms the status gate admits 403 the same way it admits 401 for
+        # this error type -- the gate is "4xx excluding 429", not a fixed
+        # status; auth/credential rejections are observed at both codes.
+        with self.assertRaises(BoundaryError) as raised:
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
+                transport=fixture_transport("boundary_authentication_error_403.json", status=403),
+                environ=TEST_ENV,
+            )
+        message = str(raised.exception).lower()
+        self.assertIn("rejected", message)
+        self.assertIn("permit is returned", message)
+        self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "rejected_unbilled"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 0, "free": 0})
+        rejected = rejected_unbilled_actions(self.session)
+        self.assertEqual(rejected[0]["details"]["http_status"], 403)
+        self.assertEqual(rejected[0]["details"]["provider_error_type"], "authentication_error")
+
+    def test_unrecognised_error_type_stays_consumed(self) -> None:
+        # Same envelope shape and a qualifying non-429 4xx status, but a
+        # type ("permission_error") this whitelist does not enumerate --
+        # proves the match is exact-type, not "any error.type at all".
+        with self.assertRaises(BoundaryError) as raised:
+            execute_probe(
+                self.session, "A1", 'primary_scout', 'sonar', "q", NOW,
+                transport=fixture_transport("boundary_unrecognised_error_type.json", status=403),
+                environ=TEST_ENV,
+            )
+        self.assert_failure_copy(raised, "returned http", "provider spool", "do not replay")
+        self.assertEqual(self.attempt_statuses(), ["attempted", "accepted", "failed"])
+        self.assertEqual(cost_usage(self.session), {"deep": 0, "search": 1, "free": 0})
+        self.assertEqual(rejected_unbilled_actions(self.session), [])
+
     def test_http_error_consumes_permit_and_preserves_payload(self) -> None:
         with self.assertRaises(BoundaryError) as raised:
             execute_probe(
