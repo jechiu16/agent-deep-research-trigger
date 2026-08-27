@@ -389,6 +389,48 @@ def _rejected_unbilled_message(
     )
 
 
+# Structured, enumerated error.type values recognized as unambiguous
+# pre-work rejections inside the OpenAI-style {"error": {"type": ...}}
+# envelope -- shared by openai-deep, perplexity-deep, and sonar (Perplexity's
+# API mirrors OpenAI's chat/completions error shape). Every entry here is a
+# gateway check that necessarily runs BEFORE any billable model or search
+# work starts; none of them can plausibly be returned after work has begun:
+#   - invalid_request_error: malformed/invalid request parameters, rejected
+#     at validation before dispatch (OpenAI error-codes docs,
+#     https://developers.openai.com/api/docs/guides/error-codes).
+#   - authentication_error: invalid, expired, or revoked API credentials
+#     (same OpenAI docs) -- credentials are checked before a request is ever
+#     handed to a model or search backend, at any of the 4xx codes admitted
+#     by the status gate (401 invalid key, 403 also observed for permission
+#     variants).
+#   - insufficient_quota: billing/credit-balance exhausted (same OpenAI
+#     docs). This is the literal type recorded in the real incident that
+#     motivated this whitelist entry: provider_spool/A2.raw.json, a live
+#     Perplexity `sonar` call that returned HTTP 401 with body
+#     {"error": {"type": "insufficient_quota", ...}} after the account ran
+#     out of credit -- the gateway refused the request and Perplexity billed
+#     nothing. This is not an OpenAI-only quirk: Perplexity's own FAQ
+#     separately confirms a 401 can mean the key "belongs to an account
+#     which ran out of credits", i.e. the same billing gate, checked before
+#     any search work, in the same borrowed envelope shape.
+#
+# Other adapters this repo binds (gemini-deep, brave, exa, openalex) were
+# surveyed and are deliberately NOT covered here: none of them share this
+# {"error": {"type": ...}} envelope (gemini-deep's and brave's documented
+# shapes use differently-named fields; exa's and openalex's error shapes
+# could not be confirmed strongly enough to positively enumerate). Per the
+# fail-closed default, their 4xx bodies simply keep falling through to
+# "consumed" until a provider's real captured body confirms a shape worth
+# adding.
+_PRE_WORK_ERROR_TYPES = frozenset(
+    {
+        "invalid_request_error",
+        "authentication_error",
+        "insufficient_quota",
+    }
+)
+
+
 def _classify_http_rejection(status: int, payload: bytes) -> Optional[dict[str, Any]]:
     """Classify a non-200 boundary response as an unambiguous, unbilled
     pre-work rejection, or return None to keep the default "consumed" outcome.
@@ -400,12 +442,13 @@ def _classify_http_rejection(status: int, payload: bytes) -> Optional[dict[str, 
       - the body decodes as UTF-8 JSON and is an object.
       - the body positively matches a recognized provider request-validation
         error shape. Today that is exactly OpenAI's Responses/Chat error
-        envelope: {"error": {"type": "invalid_request_error", ...}}.
+        envelope, {"error": {"type": <value>, ...}}, with <value> one of
+        _PRE_WORK_ERROR_TYPES above.
 
     A 5xx, a timeout, a transport error, an unparseable body, a 429, or any
     body this function does not positively recognize returns None here --
     callers must keep counting those as consumed. Extend the recognized
-    shapes below as more providers' validation-error bodies are confirmed;
+    shapes above as more providers' validation-error bodies are confirmed;
     never loosen the status-code gate.
     """
 
@@ -419,11 +462,12 @@ def _classify_http_rejection(status: int, payload: bytes) -> Optional[dict[str, 
         return None
 
     error = body.get("error")
-    if isinstance(error, dict) and error.get("type") == "invalid_request_error":
+    if isinstance(error, dict) and error.get("type") in _PRE_WORK_ERROR_TYPES:
+        error_type = error["type"]
         message = error.get("message")
         return {
             "http_status": status,
-            "provider_error_type": "invalid_request_error",
+            "provider_error_type": error_type,
             "provider_error_message": message if isinstance(message, str) else None,
         }
     return None
