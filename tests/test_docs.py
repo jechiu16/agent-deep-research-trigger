@@ -118,7 +118,7 @@ class DocumentationTests(unittest.TestCase):
             (provider for provider in enabled if provider["cost_class"] == "deep"),
             key=lambda provider: provider["cost_rank"],
         )
-        self.assertEqual([provider["id"] for provider in deep], ["perplexity", "gemini-deep", "openai-deep"])
+        self.assertEqual([provider["id"] for provider in deep], ["perplexity", "gemini-deep"])
 
     def test_harness_preserves_evidence_and_gap_statuses(self) -> None:
         text = self.read("HARNESS.md")

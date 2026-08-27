@@ -526,7 +526,7 @@
       "adoption_evidence": [
         "fixture-replay-suite-tests-test_openai_deep",
         "live-occurrence-2026-07-12-rfc9110-o4-mini-deep-research",
-        "live-heavy-run-2026-08-26-freethreading-D2 FAILED: POST /v1/responses returned HTTP 404 {\"error\":{\"message\":\"Model not found o4-mini-deep-research\",\"type\":\"invalid_request_error\",\"param\":\"model\",\"code\":null}}. Root cause undetermined: the model is present in the account's /v1/models listing, the sk-proj- key authenticates, no base-url override is set, and the account owner confirms the model is enabled for the project. Downgraded from validated until a live submit succeeds again."
+        "sunset confirmed 2026-08-26: GET https://api.openai.com/v1/models/o4-mini-deep-research returns HTTP 200 with {\"shutdown_date\": \"2026-07-23\"}, and o3-deep-research carries the same date. The catalog entry survives as a tombstone, so /v1/models still lists the id, but POST /v1/responses refuses it with HTTP 404 invalid_request_error. No OpenAI deep research model remains available; disabled until a successor is confirmed."
       ],
       "roles": [
         "investigation"
@@ -587,7 +587,11 @@
       ],
       "docs_url": "https://platform.openai.com/docs/guides/deep-research",
       "docs_verified_at": "2026-08-26",
-      "enabled": true
+      "enabled": false,
+      "lifecycle": {
+        "status": "sunset",
+        "sunset_at": "2026-07-23"
+      }
     },
     {
       "id": "gemini-deep",
@@ -749,7 +753,8 @@
       "adoption_status": "baseline",
       "adoption_evidence": [
         "fixture-replay-suite-tests-test_openalex",
-        "live-occurrence-2026-07-11-openalex-boundary (cost 0.001, 20 citations)"
+        "live-occurrence-2026-07-11-openalex-boundary (cost 0.001, 20 citations)",
+        "live-probe-2026-08-26: GET https://api.openalex.org/works?search=python&per-page=1 returns HTTP 200 with no credential. OPENALEX_API_KEY was listed as required_env, which made this route permanently unavailable; OpenAlex serves anonymously and only asks for a mailto/key for its faster polite pool."
       ],
       "roles": [
         "scholarly-scout"
@@ -802,11 +807,9 @@
         "verified_at": "2026-07-11",
         "source": "https://developers.openalex.org/ (open metadata; conservative session-only API payload retention)"
       },
-      "required_env": [
-        "OPENALEX_API_KEY"
-      ],
+      "required_env": [],
       "docs_url": "https://developers.openalex.org/",
-      "docs_verified_at": "2026-07-11"
+      "docs_verified_at": "2026-08-26"
     },
     {
       "id": "crossref",

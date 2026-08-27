@@ -406,14 +406,20 @@ class OpenAIDeepAdapterTests(unittest.TestCase):
         self.assertEqual(provider["transport"], {"mode": "async", "polling": "required"})
         self.assertEqual(provider["required_env"], ["OPENAI_API_KEY"])
         self.assertEqual(provider["evidence_capabilities"], {"can_support_claims": False})
-        # adoption gate invariant (not a frozen snapshot): an enabled external
-        # route must carry a recognized adoption status and non-empty evidence;
-        # openai-deep crossed the gate with a live occurrence on 2026-07-12,
-        # the same gate perplexity crossed in test_async_boundary's live-run note.
-        self.assertTrue(provider["enabled"])
+        # openai-deep crossed the adoption gate with a live occurrence on
+        # 2026-07-12 (the same gate perplexity crossed in
+        # test_async_boundary's live-run note), but a 2026-08-26 live probe
+        # of GET /v1/models/o4-mini-deep-research confirmed both o4-mini- and
+        # o3-deep-research carry shutdown_date 2026-07-23 and POST
+        # /v1/responses now refuses the model with HTTP 404. The route is
+        # disabled and lifecycle-sunset until a successor model ships -- it
+        # must NOT be re-enabled just to make this assertion pass again.
+        self.assertFalse(provider["enabled"])
+        self.assertEqual(provider["lifecycle"], {"status": "sunset", "sunset_at": "2026-07-23"})
         self.assertIn(provider["adoption_status"], {"baseline", "validated"})
         self.assertTrue(provider["adoption_evidence"])
         self.assertTrue(any("live-occurrence" in item for item in provider["adoption_evidence"]))
+        self.assertTrue(any("sunset confirmed" in item for item in provider["adoption_evidence"]))
 
     def test_model_id_is_registry_data_snapshotted_into_state(self) -> None:
         """The pinned model id lives in provider_registry.json, not in

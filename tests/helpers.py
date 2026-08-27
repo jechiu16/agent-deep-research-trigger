@@ -265,12 +265,13 @@ def confirmed_contract(
 def enabled_registry_copy(provider_id: str) -> dict[str, Any]:
     """Deep-copied registry with one candidate route enabled, for tests only.
 
-    Enabling a v2_request_boundary route needs three fields, not one:
-    validate_provider_registry also demands baseline/validated adoption_status
-    and non-empty adoption_evidence. This sets all three on the copy without
-    mutating the committed registry. Thread the SAME copy through both
-    confirmed_demo_contract(registry=...) and new_state(registry=...) so the
-    registry hashes agree.
+    Enabling a v2_request_boundary route needs four fields, not one:
+    validate_provider_registry also demands baseline/validated adoption_status,
+    non-empty adoption_evidence, and an active lifecycle (an enabled route
+    cannot be sunset/deprecated -- see the 2026-08-26 openai-deep sunset).
+    This sets all four on the copy without mutating the committed registry.
+    Thread the SAME copy through both confirmed_demo_contract(registry=...)
+    and new_state(registry=...) so the registry hashes agree.
     """
 
     registry = copy.deepcopy(load_provider_registry())
@@ -279,6 +280,7 @@ def enabled_registry_copy(provider_id: str) -> dict[str, Any]:
             provider["enabled"] = True
             provider["adoption_status"] = "baseline"
             provider["adoption_evidence"] = [f"test-override-{provider_id}"]
+            provider["lifecycle"] = {"status": "active", "sunset_at": "not_applicable"}
     return registry
 
 

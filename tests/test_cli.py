@@ -941,10 +941,14 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(secret, result.stdout)
 
     def test_cli_loads_nearest_dotenv_without_printing_secret(self) -> None:
+        # brave/BRAVE_SEARCH_API_KEY (not openalex/OPENALEX_API_KEY): OpenAlex
+        # serves anonymously now (required_env == []; see the 2026-08-26
+        # registry fix), so it can no longer stand in for "a route with a
+        # credential the nearest .env should supply."
         secret = "nearest-dotenv-secret-must-not-appear"
-        (self.root / ".env").write_text(f"OPENALEX_API_KEY={secret}\n", encoding="utf-8")
+        (self.root / ".env").write_text(f"BRAVE_SEARCH_API_KEY={secret}\n", encoding="utf-8")
         env = os.environ.copy()
-        env.pop("OPENALEX_API_KEY", None)
+        env.pop("BRAVE_SEARCH_API_KEY", None)
         result = subprocess.run(
             [sys.executable, str(self.cli), "providers", "--json"],
             cwd=self.root,
@@ -955,10 +959,10 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         providers = json.loads(result.stdout)["providers"]
-        openalex = next(provider for provider in providers if provider["id"] == "openalex")
+        brave = next(provider for provider in providers if provider["id"] == "brave")
         self.assertEqual(
-            openalex["required_env"],
-            [{"name": "OPENALEX_API_KEY", "present": True}],
+            brave["required_env"],
+            [{"name": "BRAVE_SEARCH_API_KEY", "present": True}],
         )
         self.assertNotIn(secret, result.stdout)
 
@@ -1001,7 +1005,7 @@ class CliTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(
             [item["id"] for item in payload["d1_candidates"]],
-            ["perplexity", "gemini-deep", "openai-deep"],
+            ["perplexity", "gemini-deep"],
         )
         self.assertEqual(payload["rules"]["conclusion_author"], "host")
         self.assertEqual(payload["rules"]["provider_reports_role"], "discovery_only")
