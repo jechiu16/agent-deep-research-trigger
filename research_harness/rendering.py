@@ -175,6 +175,44 @@ def _render_claims(state: dict[str, Any]) -> str:
     return "".join(rows)
 
 
+def _render_observations(state: dict[str, Any]) -> str:
+    """Host synthesis that is explicitly NOT evidence-backed.
+
+    Structurally and visually distinct from `_render_claims`: no claim id
+    scheme, no load-bearing pill, no evidence links, no status pill that
+    could read as "verified" -- just the host's own cross-source judgement
+    (driving time, physical load, meal rhythm, and similar questions that
+    genuinely cannot be reduced to a single byte-backed claim), labelled as
+    such. See HARNESS.md's Report Authoring section for when to use this
+    section instead of `claims`.
+    """
+
+    observations = state.get("observations", [])
+    rows: list[str] = []
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
+        basis = observation.get("basis")
+        basis_html = (
+            f'<p class="note"><strong>綜合依據:</strong> {_escape(basis)}</p>'
+            if isinstance(basis, str) and basis.strip()
+            else ""
+        )
+        rows.append(
+            '<article class="observation">'
+            f'<div class="observation-head"><code>{_escape(observation.get("id"))}</code>'
+            f'{_pill("非逐位元組佐證", "advisory")}</div>'
+            f'<p>{_escape(observation.get("text", "未記錄觀察內容"))}</p>'
+            f"{basis_html}</article>"
+        )
+    if not rows:
+        return _empty("尚未記錄host綜合觀察")
+    return (
+        '<p class="note">以下為 host 的跨來源綜合判斷，不是逐位元組佐證的正式主張，'
+        "不計入證據下限、關鍵主張或來源多樣性檢查。</p>" + "".join(rows)
+    )
+
+
 def _render_evidence(state: dict[str, Any]) -> str:
     evidence_records = state.get("evidence", [])
     if not evidence_records:
@@ -470,6 +508,10 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     .pill {{ display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px;
       font:700 11px/1.5 Menlo,Consolas,monospace; text-transform:uppercase; }}
     .pill.critical {{ color:var(--accent); border-color:var(--accent); }}
+    .pill.advisory {{ color:var(--gold); border-color:var(--gold); }}
+    .observations {{ border-left:8px solid var(--gold); }}
+    .observation {{ padding:16px 18px; margin:10px 0; background:#f6f0e1; border:1px dashed var(--gold); }}
+    .observation-head {{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }}
     details {{ margin:.8rem 0; }} summary {{ cursor:pointer; font-weight:700; }}
     .evidence {{ border:1px solid var(--line); background:#fbf7ed; padding:14px 17px; }}
     .evidence-meta {{ display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--muted); margin:12px 0; }}
@@ -513,6 +555,7 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     </div>{f'<details><summary>成本向量</summary><table><tbody>{cost_rows}</tbody></table></details>' if cost_rows else ''}
     <details><summary>實體請求上限</summary><table><tbody>{quota_rows}</tbody></table></details></section>
     <section><h2>正式主張</h2>{_render_claims(state)}</section>
+    <section class="observations"><h2>Host 綜合觀察</h2>{_render_observations(state)}</section>
     <section><h2>證據紀錄</h2>{_render_evidence(state)}</section>
     <section><h2>來源與起源</h2>{_render_sources(state)}</section>
     <section><h2>驗證</h2>{_render_verification(state)}</section>

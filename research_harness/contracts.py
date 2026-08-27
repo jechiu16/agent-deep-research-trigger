@@ -222,7 +222,14 @@ def draft_host_led_contract(
                 },
             },
             "stage_permit_map": mappings,
-            "evidence_floor": {"minimum_load_bearing_claims": 1, "require_raw_artifacts": True},
+            # Heavy spends a second deep call (and double the search budget)
+            # specifically to substantiate more than a single claim; keep
+            # light/standard at the historical floor of one so a light run
+            # stays genuinely cheap and a standard run is not re-tightened.
+            "evidence_floor": {
+                "minimum_load_bearing_claims": 2 if profile["profile"] == "heavy" else 1,
+                "require_raw_artifacts": True,
+            },
             "artifact_policy": {"default_retention": "session", "allow_provider_payloads": False},
             "confirmation": {},
         }

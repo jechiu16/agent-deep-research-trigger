@@ -36,6 +36,8 @@ EVIDENCE_SHORTFALL_CODES = frozenset(
         "tier.load_bearing_claims_missing",
         "tier.medium_direct_capture_missing",
         "tier.high_capture_diversity",
+        "profile.direct_evidence_missing",
+        "profile.heavy_capture_diversity",
     }
 )
 DELIVERY_SHORTFALL_CODES = frozenset(
@@ -974,6 +976,154 @@ def _host_capture_tier_contract(
     return not (host_permits or host_attempts)
 
 
+def _qualifying_profile_capture(
+    evidence_id: Any,
+    evidence_map: dict[str, dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+    raw_payloads: dict[str, bytes],
+) -> tuple[str, str] | None:
+    """Return (canonical_source_key, upstream_key) for one clean, available host capture.
+
+    A standalone, live-vocabulary counterpart to the `qualifying` closure
+    inside `_host_capture_tier_contract`: same qualification rules (host
+    capture provenance, available artifact, raw bytes present, non-empty
+    key/upstream), kept as a separate function rather than shared so the
+    legacy tier-gated helper above is left completely untouched.
+    """
+
+    evidence = evidence_map.get(evidence_id)
+    if not isinstance(evidence, dict):
+        return None
+    artifact = artifacts.get(evidence.get("artifact_id"))
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("provenance", {}).get("origin_kind") != "host_capture"
+        or artifact.get("availability") != "available"
+        or artifact.get("id") not in raw_payloads
+    ):
+        return None
+    capture = artifact.get("host_capture", {})
+    key = capture.get("canonical_source_key")
+    upstream = capture.get("upstream_key")
+    if not isinstance(key, str) or not key or not isinstance(upstream, str) or not upstream.strip():
+        return None
+    return key, upstream
+
+
+def _has_locally_verifiable_evidence(
+    claim: dict[str, Any],
+    evidence_map: dict[str, dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+    raw_payloads: dict[str, bytes],
+) -> bool:
+    """True when a claim links at least one host-captured or local-output artifact.
+
+    The live-vocabulary analogue of the legacy Medium "direct capture"
+    floor: something the host itself fetched or produced, not solely a
+    relayed provider synthesis.
+    """
+
+    for evidence_id in claim.get("supporting_evidence_ids", []):
+        evidence = evidence_map.get(evidence_id)
+        if not isinstance(evidence, dict):
+            continue
+        artifact = artifacts.get(evidence.get("artifact_id"))
+        if not isinstance(artifact, dict) or artifact.get("id") not in raw_payloads:
+            continue
+        if artifact.get("provenance", {}).get("origin_kind") in {"host_capture", "local_output"}:
+            return True
+    return False
+
+
+def _profile_evidence_contract(
+    state: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    raw_payloads: dict[str, bytes],
+    evidence_map: dict[str, dict[str, Any]],
+    issues: list[Issue],
+) -> bool:
+    """Live-vocabulary evidence requirements keyed on the public cost profile.
+
+    `contract.tier` is pinned to "custom" for every host-led draft (see
+    contracts.draft_host_led_contract), so `_host_capture_tier_contract`'s
+    Medium/High/Ultra branches can never fire for these packages -- not
+    because of tier alone, but because that function is also gated on
+    `execution == "host_native"`, an axis host-led packages never carry
+    either. Rather than loosen that legacy gate (left untouched per this
+    task's scope), this adds the equivalent requirement on the vocabulary
+    the public CLI actually emits: resource_envelope.cost_budget.profile.
+
+    Scope, by design:
+      * light (0 deep calls): no extra floor here. Light must stay cheap
+        and usable, so it keeps only the tier-agnostic baseline already
+        applied to every claim in `_validate_pass` (raw artifact presence,
+        source-of-record T1 provenance, etc).
+      * standard/heavy (>=1 deep call): each load-bearing claim needs at
+        least one directly observed (host-captured or locally produced)
+        piece of evidence, not solely a relayed, unverifiable provider
+        synthesis.
+      * heavy only (2 deep calls -- the second bought specifically for an
+        independent angle): each load-bearing claim's captured evidence
+        must span at least two distinct upstream sources. A claim resting
+        on several capture files that all trace back to one upstream (the
+        real regression this task fixes: a Heavy package whose three
+        load-bearing claims each cited only noaa.gov, only navy.mil, and
+        only nps.gov, respectively) does not count as corroborated.
+    """
+
+    contract = state.get("contract", {})
+    if contract.get("durability") != "canonical_package":
+        return True
+    profile = contract.get("resource_envelope", {}).get("cost_budget", {}).get("profile")
+    if profile not in {"standard", "heavy"}:
+        return True
+
+    load_ids = state.get("summary", {}).get("load_bearing_claim_ids", [])
+    if not isinstance(load_ids, list) or not load_ids:
+        return True
+    claims = indexed(state.get("claims"))
+
+    met = True
+    for claim_id in load_ids:
+        claim = claims.get(claim_id)
+        if not isinstance(claim, dict):
+            continue
+        if not _has_locally_verifiable_evidence(claim, evidence_map, artifacts, raw_payloads):
+            _add(
+                issues,
+                "profile.direct_evidence_missing",
+                "standard and heavy load-bearing claims require at least one directly observed source",
+                f"/claims/{claim_id}",
+                "WARNING",
+            )
+            met = False
+
+    if profile != "heavy":
+        return met
+
+    for claim_id in load_ids:
+        claim = claims.get(claim_id)
+        if not isinstance(claim, dict):
+            continue
+        upstream_keys: set[str] = set()
+        has_capture = False
+        for evidence_id in claim.get("supporting_evidence_ids", []):
+            match = _qualifying_profile_capture(evidence_id, evidence_map, artifacts, raw_payloads)
+            if match is not None:
+                has_capture = True
+                upstream_keys.add(match[1])
+        if has_capture and len(upstream_keys) < 2:
+            _add(
+                issues,
+                "profile.heavy_capture_diversity",
+                "heavy load-bearing claims resting on captured evidence require at least two distinct upstream sources",
+                f"/claims/{claim_id}",
+                "WARNING",
+            )
+            met = False
+    return met
+
+
 def _renderable_human_reasons(
     state: dict[str, Any],
 ) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
@@ -1518,26 +1668,60 @@ def _validate_pass(
     contract = state.get("contract", {})
     posture = contract.get("posture")
     tier = contract.get("tier")
+    # `contract.tier` is pinned to "custom" for every host-led draft (see
+    # contracts.draft_host_led_contract), so the Medium/High/Ultra branches
+    # below can never fire for a host-led package no matter what a host
+    # does. `profile` is the live equivalent for the one thing this task
+    # asks these two gates to key on: heavy buys a second deep call
+    # specifically for an independent angle, so it -- and it alone among
+    # the profiles -- inherits the old High/Ultra reinforcement bar.
+    profile = contract.get("resource_envelope", {}).get("cost_budget", {}).get("profile")
     verification = [item for item in state.get("verification", []) if isinstance(item, dict)]
     if posture == "lookup":
         for claim_id in load_ids:
             claim = claims.get(claim_id, {})
             if not _has_direct_t1_evidence(claim.get("supporting_evidence_ids"), evidence_map, sources):
                 _add(issues, "posture.lookup_primary_missing", "lookup PASS requires a directly fetched T1 source", f"/claims/{claim_id}")
-    if posture in {"scientific", "decision"} and tier in {"medium", "high", "ultra"}:
-        if not any(item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification):
+    has_anti_lock_in = any(
+        item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification
+    )
+    if posture in {"scientific", "decision"} and (tier in {"medium", "high", "ultra"} or profile == "heavy"):
+        if not has_anti_lock_in:
             _add(issues, "tier.anti_lock_in_missing", "anti-lock-in checkpoint is missing", "/verification")
+    has_coverage_audit = any(
+        item.get("kind") == "coverage_audit"
+        and item.get("completed") is True
+        and item.get("candidate_omissions_dispositioned") is True
+        for item in verification
+    )
     # synthesis's posture promise IS a coverage/omissions declaration (see
-    # HARNESS.md's posture table), so it shares this gate at Medium/High/Ultra even
-    # though it has no anti-lock-in requirement of its own.
-    if posture in {"scientific", "decision", "synthesis"} and tier in {"medium", "high", "ultra"}:
-        if not any(
-            item.get("kind") == "coverage_audit"
-            and item.get("completed") is True
-            and item.get("candidate_omissions_dispositioned") is True
-            for item in verification
-        ):
+    # HARNESS.md's posture table), so it shares this gate at Medium/High/Ultra
+    # (or, live, at heavy) even though it has no anti-lock-in requirement of
+    # its own.
+    if posture in {"scientific", "decision", "synthesis"} and (
+        tier in {"medium", "high", "ultra"} or profile == "heavy"
+    ):
+        if not has_coverage_audit:
             _add(issues, "tier.coverage_audit_missing", "coverage audit is incomplete", "/verification")
+    elif posture == "decision" and not has_coverage_audit:
+        # Decision posture always needs a documented coverage disposition --
+        # which parts of the asked question this package does and does not
+        # address (see HARNESS.md) -- regardless of profile. This is a
+        # WARNING rather than a hard failure so it does not retroactively
+        # invalidate the four canonical packages under examples/field/: all
+        # are light/standard decision packages produced before this
+        # convention existed, and the task that introduced this gate is
+        # explicit that already-committed packages must keep validating.
+        # Heavy decision packages already get the hard-blocking version
+        # above.
+        _add(
+            issues,
+            "posture.coverage_audit_recommended",
+            "decision-posture packages should record a coverage audit stating which parts of "
+            "the asked question this package does and does not address",
+            "/verification",
+            "WARNING",
+        )
     if posture == "decision" and not any(
         isinstance(joint, dict)
         and joint.get("weakest_joint") is True
@@ -1677,7 +1861,10 @@ def _validate_loaded_session(
     host_capture_met = _host_capture_tier_contract(
         state, events, artifacts, raw_payloads, evidence_map, issues
     )
-    tier_contract_met = canonical_delivery_met and host_capture_met
+    profile_evidence_met = _profile_evidence_contract(
+        state, artifacts, raw_payloads, evidence_map, issues
+    )
+    tier_contract_met = canonical_delivery_met and host_capture_met and profile_evidence_met
     integrity_prefixes = (
         "state.",
         "event.",

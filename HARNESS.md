@@ -134,6 +134,46 @@ Minimal re-verification record:
 }
 ```
 
+A **heavy** run (`profile: "heavy"`) spends its second deep call specifically
+to buy an independent angle on the current frame, and its scientific/decision
+delivery is gated on showing for it:
+
+- an `anti_lock_in` record binding to that call, and
+- each load-bearing claim's captured evidence spanning at least two distinct
+  upstream sources -- capture files that all trace back to one upstream
+  (e.g. three claims that each cite only `noaa.gov`, only `navy.mil`, and
+  only `nps.gov`, respectively, with nothing cross-checking any one of them)
+  does not satisfy this.
+
+```json
+{
+  "id": "AL1",
+  "kind": "anti_lock_in",
+  "completed": true,
+  "disposition": "D2（gemini-deep）提出獨立角度並經 host 覆核，未推翻既有結論；未採用其未驗證延伸。"
+}
+```
+
+A **decision**-posture package -- at any profile -- additionally requires a
+`coverage_audit` record. This is the fix for the single most common silent
+failure mode: a package that validates cleanly while quietly answering only
+half the asked question. State plainly which parts of the question this
+package addresses and which it does not; an omission is not a defect as long
+as it is disclosed here (and, for the parts not addressed, usually also in
+`open_questions`).
+
+```json
+{
+  "id": "CA1",
+  "kind": "coverage_audit",
+  "completed": true,
+  "candidate_omissions_dispositioned": true,
+  "addressed": ["問題中已有直接證據佐證的部分，逐項列出"],
+  "not_addressed": ["問題中本次未觸及或無法逐位元組佐證的部分，逐項列出"],
+  "disposition": "本次僅完成問題的 X 部分；Y 部分未觸及，已記錄為待辦缺口而非結論的一部分。"
+}
+```
+
 ## Execution And Delivery
 
 Use boundary-owned calls; do not send a separate paid permit:
@@ -236,8 +276,21 @@ Design intent, not a template -- fit the shape to the question:
   -- quota tables, hashes, validation internals.
 - Omit a section entirely rather than rendering an empty placeholder like
   「尚未記錄」.
+- `claims` are byte-backed and evidenced; `observations` are not, and must
+  never be rendered so a reader could mistake one for the other. Some
+  questions cannot be reduced to a claim no matter how much budget a run
+  buys -- future events, subjective experience, or a cross-source synthesis
+  such as driving time vs. walking distance, physical load, or meal rhythm.
+  Put that judgement in `observations` instead of stretching a claim's
+  evidence past what it supports; give it its own visually distinct block
+  (a different heading, styling, and an explicit "not evidence" label -- see
+  `research_harness/rendering.py::_render_observations` for the deterministic
+  fallback's treatment), and never let it satisfy an evidence floor,
+  load-bearing requirement, or diversity check. An observation needs no
+  `supporting_evidence_ids` or `source_origin_ids` -- if it has real evidence
+  behind it, it belongs in `claims`, not here.
 
-Two field-shape notes:
+Three field-shape notes:
 
 - `summary.human_status` is a short one-line note on what this run actually
   did (≤40 全形字) -- not a narrative. The bounded conclusion belongs in
@@ -246,6 +299,11 @@ Two field-shape notes:
   report's headline and `h1`. Omit it and both tracks fall back to
   `summary.human_recommendation`; existing packages that predate this field
   keep validating unchanged.
+- `observations` entries are free-form but conventionally carry `id`, `text`,
+  and an optional `basis` describing what was synthesized across (e.g. "跨來源綜合判斷（氣候常年值 + 日照時數 + 路網結構），非單一可查核來源").
+  Never give one a `load_bearing`, `supporting_evidence_ids`, or `status`
+  field -- those are `claims` vocabulary, and no validator ever reads them
+  off an observation, so borrowing that shape only invites confusing the two.
 
 ## Recovery
 
