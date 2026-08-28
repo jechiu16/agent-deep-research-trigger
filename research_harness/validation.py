@@ -17,7 +17,7 @@ from .contracts import METERED_CATEGORIES
 from .providers import action_cost_class
 from .quota import ATTEMPT_TRANSITIONS, BOUNDARY_CATEGORIES, HASH64_RE
 from .state import state_sha256, validate_state_document
-from .state import CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4
+from .state import CONTRACT_SEMANTICS_V4, STRICT_ATOMIC_SEMANTICS
 from .storage import (
     _event_chain_errors,
     _load_state_unlocked,
@@ -57,10 +57,6 @@ HUMAN_STATUS_SENTINELS = frozenset(
     {"證據不足", "EVIDENCE_INSUFFICIENT", "交付不完整", "DELIVERY_INCOMPLETE"}
 )
 DELIVERY_HUMAN_STATUS_SENTINELS = frozenset({"交付不完整", "DELIVERY_INCOMPLETE"})
-# Semantics versions strict enough to re-derive every action's atomic
-# occurrence/quota/attempt lifecycle from the event journal (see
-# _validate_atomic_occurrences, _validate_quota, _validate_attempt_lifecycle).
-STRICT_ATOMIC_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4})
 # Semantics versions under which a decision-posture PASS must carry a
 # coverage_audit record on every profile (ERROR), not just heavy. Packages
 # recorded under an older semantics keep the historical WARNING-only

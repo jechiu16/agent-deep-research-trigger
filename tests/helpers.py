@@ -256,6 +256,13 @@ def confirmed_demo_contract(
 ) -> dict[str, Any]:
     resolved = copy.deepcopy(load_provider_registry() if registry is None else registry)
     contract = draft_medium_contract()
+    # This fixture exercises a standalone probe route, not the host-led
+    # workflow `draft_medium_contract` otherwise models: its stage_permit_map
+    # below has no reserved verification stage, so keeping the host-led
+    # markers would trip `_host_led_budget_errors` in contracts.py.
+    contract.pop("research_workflow", None)
+    contract.pop("conclusion_author", None)
+    contract.pop("provider_reports_role", None)
     contract["tier"] = "custom"
     contract["execution"] = "external_managed"
     contract["durability"] = "canonical_package"

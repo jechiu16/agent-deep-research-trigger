@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from .contracts import ACTION_CATEGORIES, METERED_CATEGORIES, contract_card_sha256
 from .providers import action_cost_class, preflight_contract_routes, provider_records_sha256
-from .state import CONTRACT_SEMANTICS_V3, validate_state_document
+from .state import STRICT_ATOMIC_SEMANTICS, validate_state_document
 from .storage import (
     _append_event_unlocked,
     _load_state_unlocked,
@@ -427,8 +427,10 @@ def _reserve_boundary_action_unlocked(
     elif query_hash is not None:
         raise QuotaExceeded("non-deep boundary actions cannot carry query_hash")
     state = _load_state_unlocked(session_dir)
-    if state.get("session", {}).get("contract_semantics") != CONTRACT_SEMANTICS_V3:
-        raise QuotaExceeded(f"boundary actions require contract_semantics={CONTRACT_SEMANTICS_V3}")
+    if state.get("session", {}).get("contract_semantics") not in STRICT_ATOMIC_SEMANTICS:
+        raise QuotaExceeded(
+            f"boundary actions require contract_semantics in {sorted(STRICT_ATOMIC_SEMANTICS)}"
+        )
     _assert_confirmed_and_bound(state)
     events, errors = _read_events_unlocked(session_dir)
     if errors:

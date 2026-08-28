@@ -31,6 +31,13 @@ CONTRACT_SEMANTICS_V2 = "pure_trigger_v2"
 CONTRACT_SEMANTICS_V3 = "pure_trigger_v3"
 CONTRACT_SEMANTICS_V4 = "pure_trigger_v4"
 CONTRACT_SEMANTICS = CONTRACT_SEMANTICS_V4
+# Semantics versions strict enough to re-derive every action's atomic
+# occurrence/quota/attempt lifecycle from the event journal. Boundary
+# actions (quota.py) and the full atomic-occurrence/quota/attempt-lifecycle
+# checks (validation.py) both gate on this set; a version stays in it for
+# as long as it preserves that guarantee, so bumping CONTRACT_SEMANTICS
+# forward does not by itself require touching either gate.
+STRICT_ATOMIC_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4})
 REQUIRED_SECTIONS = (
     "schema_version",
     "session",
