@@ -11,7 +11,7 @@ from unittest import mock
 from research_harness import boundary
 from research_harness.boundary import BoundaryError, RequestSpec, execute_probe
 from research_harness.quota import QuotaError, _append_permit_unlocked, acquire_permits
-from research_harness.state import new_state, validate_state_document
+from research_harness.state import CONTRACT_SEMANTICS, new_state, validate_state_document
 from research_harness.storage import apply_state_patch, create_session, load_state, read_events, session_lock
 from scripts.research_state import build_parser, command_deep_pending
 from tests.helpers import (
@@ -130,9 +130,9 @@ class Task3bAtomicityTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertFalse(any(event.get("event") == "permit_acquired" for event in events))
 
-    def test_new_state_uses_v3_and_unknown_marker_fails_closed(self) -> None:
+    def test_new_state_uses_current_semantics_and_unknown_marker_fails_closed(self) -> None:
         state = load_state(self.session)
-        self.assertEqual(state["session"]["contract_semantics"], "pure_trigger_v3")
+        self.assertEqual(state["session"]["contract_semantics"], CONTRACT_SEMANTICS)
         state["session"]["contract_semantics"] = "pure_trigger_future"
         self.assertIn("session contract_semantics is invalid", validate_state_document(state))
 

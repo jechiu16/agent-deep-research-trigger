@@ -304,6 +304,11 @@ class RenderingTests(unittest.TestCase):
         state["engineering_handoff"]["safe_actions"] = [{}]
         state["contract"].pop("tier", None)
         state["contract"].pop("posture", None)
+        # The cost-tier pill prefers the live profile vocabulary over the
+        # legacy tier field (see render_html's `public_profile`), so it only
+        # falls through to the "not recorded" fallback once the profile is
+        # also missing.
+        state["contract"]["resource_envelope"].pop("cost_budget", None)
 
         document = render_html(state, self.report)
 
@@ -401,8 +406,8 @@ class RenderingTests(unittest.TestCase):
             (
                 Issue(
                     "WARNING",
-                    "tier.capture_missing",
-                    "host capture is missing",
+                    "tier.load_bearing_claims_missing",
+                    "load-bearing claims are missing direct evidence",
                     "/artifact_index",
                 ),
             ),
@@ -430,8 +435,8 @@ class RenderingTests(unittest.TestCase):
             (
                 Issue(
                     "WARNING",
-                    "tier.capture_missing",
-                    "host capture is missing",
+                    "tier.load_bearing_claims_missing",
+                    "load-bearing claims are missing direct evidence",
                     "/artifact_index",
                 ),
             ),
@@ -478,10 +483,12 @@ class RenderingTests(unittest.TestCase):
         self.assertNotIn("尚缺足夠的直接來源，結論可能改變", document)
 
     def test_direct_render_does_not_seal_delivery_shortfall(self) -> None:
+        # confirmed_contract already builds the live host-led shape
+        # (execution=external_managed, research_workflow=host_led_v1, ...)
+        # that ingest_host_capture requires; the old override to
+        # execution="host_native" modeled the removed legacy tier-gated
+        # host-native capture path.
         contract = confirmed_contract("medium")
-        contract["execution"] = "host_native"
-        contract["durability"] = "canonical_package"
-        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
         session = self.root / "host-seal-counterexample"
         create_session(session, new_state(contract, NOW, None, {}))
         artifact = ingest_host_capture(
@@ -714,7 +721,10 @@ class RenderingTests(unittest.TestCase):
         header = document.split("<header>", 1)[1].split("</header>", 1)[0]
 
         self.assertIn(self.state["framing"]["question"], header)
-        self.assertIn(">medium<", header)
+        # The status pill renders the live cost profile (contract.tier is
+        # pinned to "custom" for every host-led package); the fixture built
+        # by make_complete_pass_session carries profile "light".
+        self.assertIn(">light<", header)
         self.assertNotIn("PASS", header)
         self.assertNotIn("decision", header)
         self.assertLess(document.index("技術細節"), document.index("PASS"))

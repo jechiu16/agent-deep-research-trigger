@@ -9,7 +9,7 @@ from research_harness.providers import (
     provider_registry_sha256,
 )
 from research_harness.contracts import contract_card_sha256
-from research_harness.state import new_state, state_sha256, validate_state_document
+from research_harness.state import CONTRACT_SEMANTICS, new_state, state_sha256, validate_state_document
 from tests.helpers import NOW, confirmed_medium_contract
 
 
@@ -59,7 +59,7 @@ class StateTests(unittest.TestCase):
             "artifact_index",
         }
         self.assertEqual(set(state), expected)
-        self.assertEqual(state["session"]["contract_semantics"], "pure_trigger_v3")
+        self.assertEqual(state["session"]["contract_semantics"], CONTRACT_SEMANTICS)
         self.assertEqual(state["session"]["revision"], 0)
         self.assertEqual(validate_state_document(state), [])
 
@@ -121,6 +121,12 @@ class StateTests(unittest.TestCase):
         legacy["contract"].pop("execution")
         legacy["contract"].pop("durability")
         legacy["contract"].pop("question")
+        # A truly legacy, pre-axis contract also predates the host-led
+        # workflow markers (a newer concept than execution/durability
+        # itself), so it would never carry these either.
+        legacy["contract"].pop("research_workflow")
+        legacy["contract"].pop("conclusion_author")
+        legacy["contract"].pop("provider_reports_role")
         legacy["session"].pop("contract_semantics")
         legacy["contract"]["confirmation"]["card_sha256"] = contract_card_sha256(legacy["contract"])
         self.assertEqual(validate_state_document(legacy), [])
