@@ -17,7 +17,7 @@ from .contracts import METERED_CATEGORIES
 from .providers import action_cost_class
 from .quota import ATTEMPT_TRANSITIONS, BOUNDARY_CATEGORIES, HASH64_RE
 from .state import state_sha256, validate_state_document
-from .state import CONTRACT_SEMANTICS_V3
+from .state import CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4
 from .storage import (
     _event_chain_errors,
     _load_state_unlocked,
@@ -32,10 +32,7 @@ VALID_DELIVERY_STATUSES = frozenset({"IN_PROGRESS", "PASS", "PARTIAL", "BLOCKED"
 TERMINAL_DELIVERY_STATUSES = frozenset({"PASS", "PARTIAL", "BLOCKED"})
 EVIDENCE_SHORTFALL_CODES = frozenset(
     {
-        "tier.capture_missing",
         "tier.load_bearing_claims_missing",
-        "tier.medium_direct_capture_missing",
-        "tier.high_capture_diversity",
         "profile.direct_evidence_missing",
         "profile.heavy_capture_diversity",
     }
@@ -50,10 +47,6 @@ DELIVERY_SHORTFALL_CODES = frozenset(
         "tier.human_limitation_missing",
         "tier.human_safe_action_missing",
         "tier.acceptance_tests_missing",
-        "tier.high_verifier_missing",
-        "tier.high_verifier_invalid",
-        "tier.ultra_deep_completed_missing",
-        "tier.ultra_deep_second_completed_missing",
         "tier.anti_lock_in_missing",
         "tier.coverage_audit_missing",
         "tier.targeted_reverification_missing",
@@ -64,7 +57,15 @@ HUMAN_STATUS_SENTINELS = frozenset(
     {"證據不足", "EVIDENCE_INSUFFICIENT", "交付不完整", "DELIVERY_INCOMPLETE"}
 )
 DELIVERY_HUMAN_STATUS_SENTINELS = frozenset({"交付不完整", "DELIVERY_INCOMPLETE"})
-HIGH_VERIFIER_VERDICTS = frozenset({"accept", "revise", "block"})
+# Semantics versions strict enough to re-derive every action's atomic
+# occurrence/quota/attempt lifecycle from the event journal (see
+# _validate_atomic_occurrences, _validate_quota, _validate_attempt_lifecycle).
+STRICT_ATOMIC_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4})
+# Semantics versions under which a decision-posture PASS must carry a
+# coverage_audit record on every profile (ERROR), not just heavy. Packages
+# recorded under an older semantics keep the historical WARNING-only
+# behaviour so already-shipped packages are not retroactively invalidated.
+NEW_COVERAGE_AUDIT_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V4})
 REPORT_HASH_RE = re.compile(r'data-state-sha256=["\']([0-9a-f]{64})["\']')
 
 
@@ -829,153 +830,6 @@ def _claim_has_available_evidence(
     return False
 
 
-def _host_capture_tier_contract(
-    state: dict[str, Any],
-    events: list[dict[str, Any]],
-    artifacts: dict[str, dict[str, Any]],
-    raw_payloads: dict[str, bytes],
-    evidence_map: dict[str, dict[str, Any]],
-    issues: list[Issue],
-) -> bool:
-    """Check only facts observable from host capture lineage.
-
-    Explicit host-native canonical-package axes opt a package into this
-    pure-trigger gate; legacy contracts without those axes retain their
-    existing validation semantics.
-    """
-
-    contract = state.get("contract", {})
-    if (
-        contract.get("execution") != "host_native"
-        or contract.get("durability") != "canonical_package"
-        or contract.get("tier") not in {"medium", "high", "ultra"}
-    ):
-        return True
-
-    host_artifacts = {
-        artifact_id: artifact
-        for artifact_id, artifact in artifacts.items()
-        if artifact.get("provenance", {}).get("origin_kind") == "host_capture"
-    }
-    host_permits = [
-        event
-        for event in events
-        if event.get("event") == "permit_acquired"
-        and (
-            event.get("category") in {"host_retrieval", "local", "organizer_pass"}
-            or event.get("route") in {"host-web", "host", "local"}
-        )
-    ]
-    host_attempts = [
-        event
-        for event in events
-        if event.get("event") == "attempt_status"
-        and event.get("action_id")
-        in {permit.get("action_id") for permit in host_permits}
-    ]
-    if host_permits or host_attempts:
-        _add(
-            issues,
-            "host.accounting",
-            "host-native packages cannot contain host permits, attempts, or quota events",
-            "/events",
-        )
-
-    if not host_artifacts:
-        _add(
-            issues,
-            "tier.capture_missing",
-            "host-native canonical packages require at least one host capture",
-            "/artifact_index",
-            "WARNING",
-        )
-        return False
-
-    load_ids = state.get("summary", {}).get("load_bearing_claim_ids", [])
-    claims = indexed(state.get("claims"))
-
-    def qualifying(evidence_id: Any) -> tuple[str, str, str] | None:
-        evidence = evidence_map.get(evidence_id)
-        if not isinstance(evidence, dict):
-            return None
-        artifact = artifacts.get(evidence.get("artifact_id"))
-        if (
-            not isinstance(artifact, dict)
-            or artifact.get("provenance", {}).get("origin_kind") != "host_capture"
-            or artifact.get("availability") != "available"
-            or artifact.get("id") not in raw_payloads
-        ):
-            return None
-        if any(
-            issue.code
-            in {
-                "evidence.excerpt_bounds",
-                "evidence.excerpt_mismatch",
-                "evidence.source_missing",
-                "evidence.source_url_invalid",
-                "evidence.host_capture_source_key_mismatch",
-                "evidence.host_capture_source_metadata_mismatch",
-            }
-            and issue.path == f"/evidence/{evidence_id}"
-            for issue in issues
-        ):
-            return None
-        capture = artifact.get("host_capture", {})
-        key = capture.get("canonical_source_key")
-        digest = artifact.get("sha256")
-        if not isinstance(key, str) or not isinstance(digest, str):
-            return None
-        upstream = capture.get("upstream_key")
-        if not isinstance(upstream, str) or not upstream.strip():
-            return None
-        return key, digest, upstream
-
-    if not isinstance(load_ids, list) or not load_ids:
-        return False
-
-    per_claim: dict[str, list[tuple[str, str, str]]] = {}
-    all_captures: list[tuple[str, str, str]] = []
-    for claim_id in load_ids:
-        claim = claims.get(claim_id)
-        links = claim.get("supporting_evidence_ids", []) if isinstance(claim, dict) else []
-        matches = [match for evidence_id in links for match in [qualifying(evidence_id)] if match is not None]
-        per_claim[claim_id] = matches
-        all_captures.extend(matches)
-
-    tier = state.get("contract", {}).get("tier")
-    if tier == "medium":
-        missing = [claim_id for claim_id, matches in per_claim.items() if not matches]
-        if missing:
-            _add(
-                issues,
-                "tier.medium_direct_capture_missing",
-                "each Medium load-bearing claim requires a directly captured source",
-                "/summary/load_bearing_claim_ids",
-                "WARNING",
-            )
-            return False
-        return not (host_permits or host_attempts)
-    if tier not in {"high", "ultra"}:
-        return True
-
-    distinct_pair = any(
-        left[0] != right[0]
-        and left[1] != right[1]
-        for index, left in enumerate(all_captures)
-        for right in all_captures[index + 1 :]
-    )
-    if not distinct_pair:
-        _add(
-            issues,
-            "tier.high_capture_diversity",
-            "High and Ultra require two linked captures with distinct source keys and content hashes",
-            "/summary/load_bearing_claim_ids",
-            "WARNING",
-        )
-        return False
-    return not (host_permits or host_attempts)
-
-
 def _qualifying_profile_capture(
     evidence_id: Any,
     evidence_map: dict[str, dict[str, Any]],
@@ -984,11 +838,8 @@ def _qualifying_profile_capture(
 ) -> tuple[str, str] | None:
     """Return (canonical_source_key, upstream_key) for one clean, available host capture.
 
-    A standalone, live-vocabulary counterpart to the `qualifying` closure
-    inside `_host_capture_tier_contract`: same qualification rules (host
-    capture provenance, available artifact, raw bytes present, non-empty
-    key/upstream), kept as a separate function rather than shared so the
-    legacy tier-gated helper above is left completely untouched.
+    Qualification rules: host capture provenance, available artifact, raw
+    bytes present, non-empty key/upstream.
     """
 
     evidence = evidence_map.get(evidence_id)
@@ -1018,9 +869,8 @@ def _has_locally_verifiable_evidence(
 ) -> bool:
     """True when a claim links at least one host-captured or local-output artifact.
 
-    The live-vocabulary analogue of the legacy Medium "direct capture"
-    floor: something the host itself fetched or produced, not solely a
-    relayed provider synthesis.
+    Something the host itself fetched or produced, not solely a relayed
+    provider synthesis.
     """
 
     for evidence_id in claim.get("supporting_evidence_ids", []):
@@ -1045,13 +895,8 @@ def _profile_evidence_contract(
     """Live-vocabulary evidence requirements keyed on the public cost profile.
 
     `contract.tier` is pinned to "custom" for every host-led draft (see
-    contracts.draft_host_led_contract), so `_host_capture_tier_contract`'s
-    Medium/High/Ultra branches can never fire for these packages -- not
-    because of tier alone, but because that function is also gated on
-    `execution == "host_native"`, an axis host-led packages never carry
-    either. Rather than loosen that legacy gate (left untouched per this
-    task's scope), this adds the equivalent requirement on the vocabulary
-    the public CLI actually emits: resource_envelope.cost_budget.profile.
+    contracts.draft_host_led_contract); this gates on the vocabulary the
+    public CLI actually emits: resource_envelope.cost_budget.profile.
 
     Scope, by design:
       * light (0 deep calls): no extra floor here. Light must stay cheap
@@ -1274,211 +1119,13 @@ def _canonical_handoff_completeness(
     return not missing
 
 
-def _high_verifier_records(
-    state: dict[str, Any], events: list[dict[str, Any]]
-) -> tuple[list[dict[str, Any]], str]:
-    load_ids = state.get("summary", {}).get("load_bearing_claim_ids")
-    claims = indexed(state.get("claims"))
-    packet_hash = None
-    if (
-        isinstance(load_ids, list)
-        and all(isinstance(claim_id, str) for claim_id in load_ids)
-        and all(claim_id in claims for claim_id in load_ids)
-    ):
-        packet_hash = sha256_hex([claims[claim_id] for claim_id in load_ids])
-
-    verifier_records = [
-        record
-        for record in state.get("verification", [])
-        if isinstance(record, dict) and record.get("kind") == "verifier"
-    ]
-    contract = state.get("contract", {})
-    requires_organizer_action = (
-        contract.get("execution") == "external_managed"
-        and contract.get("durability") == "canonical_package"
-    )
-    completed_organizer_actions = {
-        event.get("action_id")
-        for event in events
-        if event.get("event") == "permit_acquired"
-        and event.get("stage") == "context_separated_verification"
-        and event.get("category") == "organizer_pass"
-        and event.get("route") == "host"
-    }
-    completed_organizer_actions.intersection_update(
-        event.get("action_id")
-        for event in events
-        if event.get("event") == "attempt_status"
-        and event.get("status") == "completed"
-    )
-    valid = []
-    has_unbound_verifier = False
-    for record in verifier_records:
-        verifier_actor = record.get("verifier_actor")
-        candidate_actor = record.get("candidate_actor")
-        core_valid = (
-            record.get("completed") is True
-            and record.get("context_separated") is True
-            and record.get("produced_candidate") is False
-            and isinstance(verifier_actor, str)
-            and verifier_actor.strip()
-            and isinstance(candidate_actor, str)
-            and candidate_actor.strip()
-            and verifier_actor.strip() != candidate_actor.strip()
-            and record.get("packet_claim_ids") == load_ids
-            and packet_hash is not None
-            and record.get("packet_sha256") == packet_hash
-            and record.get("verdict") in HIGH_VERIFIER_VERDICTS
-            and isinstance(record.get("disposition"), str)
-            and record["disposition"].strip()
-        )
-        if core_valid and requires_organizer_action:
-            if record.get("action_id") not in completed_organizer_actions:
-                has_unbound_verifier = True
-                continue
-        if core_valid:
-            valid.append(record)
-    if not verifier_records:
-        issue_code = "tier.high_verifier_missing"
-    elif has_unbound_verifier:
-        issue_code = "tier.high_verifier_unbound"
-    else:
-        issue_code = "tier.high_verifier_invalid"
-    return valid, issue_code
-
-
-def _ultra_trace_validator(
-    state: dict[str, Any],
-    events: list[dict[str, Any]],
-    issues: list[Issue],
-    valid_verifiers: list[dict[str, Any]],
-) -> bool:
-    """Apply only the bounded Ultra lifecycle and final-packet gates."""
-
-    contract = state.get("contract", {})
-    mappings = [
-        mapping
-        for mapping in contract.get("stage_permit_map", [])
-        if isinstance(mapping, dict) and mapping.get("category") == "deep"
-    ]
-    status = state.get("summary", {}).get("status")
-    issue_level = "ERROR" if status == "PASS" else "WARNING"
-    permits = [event for event in events if event.get("event") == "permit_acquired"]
-    occurrences = [
-        occurrence
-        for occurrence in state.get("retrieval_occurrences", [])
-        if isinstance(occurrence, dict)
-    ]
-
-    def fail(code: str, message: str) -> bool:
-        _add(issues, code, message, "/events", issue_level)
-        return False
-
-    if not mappings or len(mappings) > 2:
-        return fail(
-            "tier.ultra_deep_completed_missing",
-            "Ultra permits at most two deep submissions and requires D1",
-        )
-
-    def mapped_permits(mapping: dict[str, Any]) -> list[dict[str, Any]]:
-        return [
-            permit
-            for permit in permits
-            if (permit.get("stage"), permit.get("category"), permit.get("route"))
-            == (mapping.get("stage"), mapping.get("category"), mapping.get("route"))
-        ]
-
-    def terminal_completed(action_id: Any) -> bool:
-        if not isinstance(action_id, str):
-            return False
-        statuses = [
-            event.get("status")
-            for event in events
-            if event.get("event") == "attempt_status"
-            and event.get("action_id") == action_id
-        ]
-        if not statuses or statuses[-1] != "completed":
-            return False
-        return any(
-            occurrence.get("action_id") == action_id
-            and isinstance(occurrence.get("request_action_id"), str)
-            for occurrence in occurrences
-        )
-
-    first_actions = mapped_permits(mappings[0])
-    if len(first_actions) != 1 or not terminal_completed(first_actions[0].get("action_id")):
-        return fail(
-            "tier.ultra_deep_completed_missing",
-            "Ultra D1 requires a completed terminal retrieval occurrence",
-        )
-    final_action_id = first_actions[0].get("action_id")
-
-    if len(mappings) == 2:
-        second_actions = mapped_permits(mappings[1])
-        if len(second_actions) > 1:
-            return fail(
-                "tier.ultra_deep_second_completed_missing",
-                "Ultra permits at most one D2 deep submission",
-            )
-        if second_actions:
-            second_action_id = second_actions[0].get("action_id")
-            first_completed = next(
-                (
-                    index
-                    for index, event in enumerate(events)
-                    if event.get("event") == "attempt_status"
-                    and event.get("action_id") == final_action_id
-                    and event.get("status") == "completed"
-                ),
-                None,
-            )
-            second_started = next(
-                (
-                    index
-                    for index, event in enumerate(events)
-                    if event.get("event") == "permit_acquired"
-                    and event.get("action_id") == second_action_id
-                ),
-                None,
-            )
-            if (
-                first_completed is None
-                or second_started is None
-                or first_completed >= second_started
-            ):
-                return fail(
-                    "tier.ultra_deep_completed_missing",
-                    "Ultra D1 must complete before D2 starts",
-                )
-            if not terminal_completed(second_action_id):
-                return fail(
-                    "tier.ultra_deep_second_completed_missing",
-                    "Ultra D2 cannot pass without a completed terminal occurrence",
-                )
-            final_action_id = second_action_id
-
-    if not any(
-        record.get("final_deep_action_id") == final_action_id
-        for record in valid_verifiers
-    ):
-        return fail(
-            "tier.high_verifier_invalid",
-            "Ultra final verifier must bind the final deep action and claim packet",
-        )
-    return True
-
-
 def _canonical_delivery_tier_contract(
     state: dict[str, Any],
-    events: list[dict[str, Any]],
     issues: list[Issue],
 ) -> bool:
     contract = state.get("contract", {})
     host_led = contract.get("research_workflow") == "host_led_v1"
-    if (
-        contract.get("durability") != "canonical_package"
-        or (contract.get("tier") not in {"medium", "high", "ultra"} and not host_led)
-    ):
+    if contract.get("durability") != "canonical_package" or not host_led:
         return True
 
     summary = state.get("summary", {})
@@ -1521,21 +1168,6 @@ def _canonical_delivery_tier_contract(
         )
 
     handoff_met = _canonical_handoff_completeness(state, issues)
-    verifier_met = True
-    if contract.get("tier") in {"high", "ultra"}:
-        valid_verifiers, issue_code = _high_verifier_records(state, events)
-        verifier_met = bool(valid_verifiers)
-        if not verifier_met:
-            _add_once(
-                issues,
-                issue_code,
-                "High and Ultra canonical packages require a valid claim-packet verifier attestation",
-                "/verification",
-                "ERROR" if status == "PASS" else "WARNING",
-            )
-    deep_met = True
-    if contract.get("tier") == "ultra":
-        deep_met = _ultra_trace_validator(state, events, issues, valid_verifiers)
     reverification_met = True
     if host_led:
         load_ids = summary.get("load_bearing_claim_ids")
@@ -1573,7 +1205,7 @@ def _canonical_delivery_tier_contract(
                 "/verification",
                 "ERROR" if status == "PASS" else "WARNING",
             )
-    return load_set_met and handoff_met and verifier_met and deep_met and reverification_met
+    return load_set_met and handoff_met and reverification_met
 
 
 def _validate_pass(
@@ -1667,15 +1299,11 @@ def _validate_pass(
 
     contract = state.get("contract", {})
     posture = contract.get("posture")
-    tier = contract.get("tier")
-    # `contract.tier` is pinned to "custom" for every host-led draft (see
-    # contracts.draft_host_led_contract), so the Medium/High/Ultra branches
-    # below can never fire for a host-led package no matter what a host
-    # does. `profile` is the live equivalent for the one thing this task
-    # asks these two gates to key on: heavy buys a second deep call
-    # specifically for an independent angle, so it -- and it alone among
-    # the profiles -- inherits the old High/Ultra reinforcement bar.
+    # `profile` is the live cost-tier vocabulary: heavy buys a second deep
+    # call specifically for an independent angle, so it -- and it alone
+    # among the profiles -- inherits the old High/Ultra reinforcement bar.
     profile = contract.get("resource_envelope", {}).get("cost_budget", {}).get("profile")
+    semantics = state.get("session", {}).get("contract_semantics")
     verification = [item for item in state.get("verification", []) if isinstance(item, dict)]
     if posture == "lookup":
         for claim_id in load_ids:
@@ -1685,7 +1313,7 @@ def _validate_pass(
     has_anti_lock_in = any(
         item.get("kind") == "anti_lock_in" and item.get("completed") is True for item in verification
     )
-    if posture in {"scientific", "decision"} and (tier in {"medium", "high", "ultra"} or profile == "heavy"):
+    if posture in {"scientific", "decision"} and profile == "heavy":
         if not has_anti_lock_in:
             _add(issues, "tier.anti_lock_in_missing", "anti-lock-in checkpoint is missing", "/verification")
     has_coverage_audit = any(
@@ -1695,33 +1323,41 @@ def _validate_pass(
         for item in verification
     )
     # synthesis's posture promise IS a coverage/omissions declaration (see
-    # HARNESS.md's posture table), so it shares this gate at Medium/High/Ultra
-    # (or, live, at heavy) even though it has no anti-lock-in requirement of
-    # its own.
-    if posture in {"scientific", "decision", "synthesis"} and (
-        tier in {"medium", "high", "ultra"} or profile == "heavy"
-    ):
+    # HARNESS.md's posture table), so it shares this gate at heavy even
+    # though it has no anti-lock-in requirement of its own.
+    if posture in {"scientific", "decision", "synthesis"} and profile == "heavy":
         if not has_coverage_audit:
             _add(issues, "tier.coverage_audit_missing", "coverage audit is incomplete", "/verification")
     elif posture == "decision" and not has_coverage_audit:
         # Decision posture always needs a documented coverage disposition --
         # which parts of the asked question this package does and does not
-        # address (see HARNESS.md) -- regardless of profile. This is a
-        # WARNING rather than a hard failure so it does not retroactively
-        # invalidate the four canonical packages under examples/field/: all
-        # are light/standard decision packages produced before this
-        # convention existed, and the task that introduced this gate is
-        # explicit that already-committed packages must keep validating.
-        # Heavy decision packages already get the hard-blocking version
-        # above.
-        _add(
-            issues,
-            "posture.coverage_audit_recommended",
-            "decision-posture packages should record a coverage audit stating which parts of "
-            "the asked question this package does and does not address",
-            "/verification",
-            "WARNING",
-        )
+        # address (see HARNESS.md) -- regardless of profile. A package
+        # created under the current contract semantics is held to this as a
+        # hard failure on every profile, including standard (the
+        # recommended default): a standard decision run that silently
+        # answers half the asked question is exactly the failure this gate
+        # exists to catch. A package created under an older semantics keeps
+        # the historical WARNING-only behaviour, so it does not
+        # retroactively invalidate the four canonical packages under
+        # examples/field/: all predate this convention and are gated on
+        # their recorded contract_semantics, not on their path or profile.
+        if semantics in NEW_COVERAGE_AUDIT_SEMANTICS:
+            _add(
+                issues,
+                "tier.coverage_audit_missing",
+                "decision-posture packages require a coverage audit stating which parts of "
+                "the asked question this package does and does not address",
+                "/verification",
+            )
+        else:
+            _add(
+                issues,
+                "posture.coverage_audit_recommended",
+                "decision-posture packages should record a coverage audit stating which parts of "
+                "the asked question this package does and does not address",
+                "/verification",
+                "WARNING",
+            )
     if posture == "decision" and not any(
         isinstance(joint, dict)
         and joint.get("weakest_joint") is True
@@ -1838,7 +1474,7 @@ def _validate_loaded_session(
     session_dir = Path(session_dir)
     issues: list[Issue] = []
     current_hash = state_sha256(state)
-    strict_atomic = state.get("session", {}).get("contract_semantics") == CONTRACT_SEMANTICS_V3
+    strict_atomic = state.get("session", {}).get("contract_semantics") in STRICT_ATOMIC_SEMANTICS
     for message in validate_state_document(state):
         _add(issues, "state.structural", message, "/state")
     _validate_platform_durability(state, issues)
@@ -1857,14 +1493,11 @@ def _validate_loaded_session(
         _validate_pass(state, events, artifacts, raw_payloads, evidence_map, issues)
     elif status == "PARTIAL":
         _validate_partial(state, artifacts, raw_payloads, evidence_map, issues)
-    canonical_delivery_met = _canonical_delivery_tier_contract(state, events, issues)
-    host_capture_met = _host_capture_tier_contract(
-        state, events, artifacts, raw_payloads, evidence_map, issues
-    )
+    canonical_delivery_met = _canonical_delivery_tier_contract(state, issues)
     profile_evidence_met = _profile_evidence_contract(
         state, artifacts, raw_payloads, evidence_map, issues
     )
-    tier_contract_met = canonical_delivery_met and host_capture_met and profile_evidence_met
+    tier_contract_met = canonical_delivery_met and profile_evidence_met
     integrity_prefixes = (
         "state.",
         "event.",
@@ -1874,7 +1507,6 @@ def _validate_loaded_session(
         "artifact.",
         "evidence.",
         "capture.",
-        "host.",
         "report.",
     )
     integrity_ok = not any(
