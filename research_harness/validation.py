@@ -1010,6 +1010,7 @@ def _canonical_handoff_completeness(
     issues: list[Issue],
 ) -> bool:
     summary = state.get("summary", {})
+    status = summary.get("status")
     missing = False
 
     def required_text(
@@ -1017,13 +1018,23 @@ def _canonical_handoff_completeness(
     ) -> None:
         nonlocal missing
         value = summary.get(field)
-        if (
-            not isinstance(value, str)
-            or not value.strip()
-            or (reject_human_status_sentinel and value.strip() in HUMAN_STATUS_SENTINELS)
-        ):
-            _add(issues, code, message, f"/summary/{field}", "WARNING")
+        blank = not isinstance(value, str) or not value.strip()
+        is_sentinel = (
+            not blank
+            and reject_human_status_sentinel
+            and value.strip() in HUMAN_STATUS_SENTINELS
+        )
+        if blank or is_sentinel:
             missing = True
+            # On a BLOCKED package the seal itself stamps this exact
+            # sentinel onto summary.human_status (see rendering.py) to
+            # record a genuine delivery failure -- that is the honest
+            # value, not a placeholder impersonating a real answer, so
+            # flagging it as "missing" would assert something false about
+            # a populated field. Only a non-BLOCKED package writing the
+            # sentinel is dodging the obligation to state a real judgement.
+            if not (is_sentinel and status == "BLOCKED"):
+                _add(issues, code, message, f"/summary/{field}", "WARNING")
 
     required_text(
         "human_status",

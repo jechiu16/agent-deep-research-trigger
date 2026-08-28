@@ -103,6 +103,34 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(load_state(session)["session"]["revision"], revision)
         self.assertEqual(sealed_again.state_sha256, sealed.state_sha256)
 
+    def test_finalize_state_result_seal_does_not_contradict_sealed_human_status(self) -> None:
+        # The seal stamps summary.human_status with a sentinel label
+        # (證據不足/交付不完整) when it blocks a package that failed
+        # validation. That is the honest human status for a package that
+        # already failed, so validation must not then flag the very field
+        # the seal just populated as missing.
+        session = self.root / "finalize-seal-sentinel-session"
+        contract = confirmed_contract("medium")
+        contract["execution"] = "host_native"
+        contract["durability"] = "canonical_package"
+        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
+        create_session(session, new_state(contract, NOW, None, {}))
+
+        sealed = finalize_state_result(session, NOW)
+
+        state = load_state(session)
+        self.assertEqual(state["summary"]["status"], "BLOCKED")
+        self.assertTrue(state["summary"]["human_status"].strip())
+        self.assertNotIn(
+            "tier.human_status_missing",
+            {issue.code for issue in sealed.validation.issues},
+        )
+        # The gate is scoped, not disabled: it still preserves the
+        # not-ok/tier_contract_met=False outcome for a genuinely blocked
+        # package -- sealing must never launder a failure into a pass.
+        self.assertFalse(sealed.validation.tier_contract_met)
+        self.assertFalse(sealed.validation.ok)
+
     def test_record_host_report_result_binds_existing_file_and_journals_event(self) -> None:
         session = self.root / "record-host-report-session"
         contract = confirmed_contract("medium")
