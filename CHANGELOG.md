@@ -3,6 +3,73 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## 2.0.0b10
+
+### Added
+
+- A `windows-latest` matrix leg in CI, alongside the existing Linux/macOS jobs.
+- `.gitattributes` pinning raw evidence files and fixture payloads to binary
+  checkout, so Git's line-ending translation can no longer corrupt
+  hash-pinned bytes on a Windows checkout.
+- `rejected_unbilled` permit accounting for gateway refusals a provider never
+  billed for (`invalid_request_error`, `insufficient_quota`,
+  `authentication_error`): these no longer consume a metered permit.
+- An `observations` section for host-synthesized notes that are explicitly
+  not byte-backed evidence, kept separate from the canonical claim/evidence
+  record so a report can never cite one as if it were.
+- `pure_trigger_v4` contract semantics. A package created under it with
+  `posture: "decision"` now requires a `coverage_audit` verification record
+  at every profile, including Standard; a package on an older semantics
+  keeps the prior warning-only behavior, so already-shipped packages
+  (including the four `examples/field/` packages) are not retroactively
+  invalidated. `init` records the new semantics on every session it creates.
+
+### Changed
+
+- Quality gates that used to key on the retired `low`/`medium`/`high`/`ultra`
+  tier vocabulary now key on the live `profile`/`posture` vocabulary the CLI
+  actually emits: anti-lock-in and coverage-audit reinforcement bind to the
+  Heavy profile, and evidence-diversity requirements bind to Standard/Heavy.
+  A previously-passing defective package (a Heavy, decision-posture package
+  whose load-bearing claims each rested on a single upstream) now correctly
+  fails.
+- Report delivery is split into a host-authored track and a deterministic
+  fallback track; both are bound to the exact `state_sha256` they were
+  generated from.
+- Windows evidence writes open in binary mode (`O_BINARY`) so raw artifact
+  bytes cannot be silently translated on write.
+
+### Fixed
+
+- A Windows liveness probe (`os.kill(pid, 0)`) fired a real console Ctrl+C
+  event on the target process instead of just checking whether it was
+  running, since Windows has no signal-free equivalent of POSIX's null
+  signal.
+- `openai-deep` is marked sunset (its backing models were shut down
+  2026-07-23) and is no longer preflight-selectable even with a credential
+  present.
+- `openalex` no longer lists a required credential it never needed; the
+  live API serves anonymous requests, so the route was reporting
+  permanently unavailable for anyone without a key they didn't need.
+
+### Removed
+
+- The `low`/`medium`/`high`/`ultra` tier vocabulary and every gate keyed
+  on it: the Medium/High "reserved post-result reinforcement" and
+  "context-separated verifier capacity" checks, the Ultra bounded
+  one-or-two-shot deep submission validator, the tier/durability pairing
+  rule, and the host-native Medium/High capture-tier and verifier-
+  attestation gates (`tier.capture_missing`, `tier.medium_direct_capture_
+  missing`, `tier.high_capture_diversity`, `tier.high_verifier_*`,
+  `tier.ultra_deep_*`). The CLI has emitted only `tier: "custom"` since
+  2.0.0b9, so this machinery was unreachable through any public path;
+  `profile`/`posture` gates added in b9 are its live replacement. The
+  `tier.`-prefixed names still in use (`tier.anti_lock_in_missing`,
+  `tier.coverage_audit_missing`, `tier.targeted_reverification_missing`,
+  `tier.human_status_missing`, the `tier_contract_met` field) are kept
+  unchanged: they are a public, versioned diagnostic surface, and the
+  prefix no longer implies the retired tier enum.
+
 ## 2.0.0b9
 
 ### Added
