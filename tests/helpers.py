@@ -259,10 +259,16 @@ def confirmed_demo_contract(
     # This fixture exercises a standalone probe route, not the host-led
     # workflow `draft_medium_contract` otherwise models: its stage_permit_map
     # below has no reserved verification stage, so keeping the host-led
-    # markers would trip `_host_led_budget_errors` in contracts.py.
+    # markers would trip `_host_led_budget_errors` in contracts.py. It also
+    # drops cost_budget entirely (quota.py's `_assert_cost_budget` and
+    # validation.py's cost-usage check both no-op when it is absent): this
+    # fixture is for physical-permit accounting, and a bare `search: 0` /
+    # `deep: 0` budget would reject the very search/deep-cost-class provider
+    # calls (openalex, brave, exa, ...) these tests exist to exercise.
     contract.pop("research_workflow", None)
     contract.pop("conclusion_author", None)
     contract.pop("provider_reports_role", None)
+    contract["resource_envelope"].pop("cost_budget", None)
     contract["tier"] = "custom"
     contract["execution"] = "external_managed"
     contract["durability"] = "canonical_package"
