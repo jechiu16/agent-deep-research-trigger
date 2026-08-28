@@ -31,7 +31,7 @@ from research_harness.providers import (
     provider_registry_sha256,
     referenced_provider_records,
 )
-from research_harness.state import new_state
+from research_harness.state import CONTRACT_SEMANTICS_V3, new_state
 from research_harness.storage import apply_state_patch, create_session, load_state
 from research_harness.validation import validate_session
 from tests.helpers import NOW
@@ -290,90 +290,126 @@ class ProfileGateTests(unittest.TestCase):
         self.assertNotIn("tier.anti_lock_in_missing", codes)
         self.assertNotIn("tier.coverage_audit_missing", codes)
 
-    def test_decision_posture_missing_coverage_audit_is_a_warning_at_light_and_standard(self) -> None:
-        """'Regardless of profile' is satisfied as visibility, not as a hard block.
+    def _build_decision_no_coverage_audit_session(
+        self, profile: str, label: str, *, semantics: str | None = None
+    ) -> Path:
+        """A light/standard decision package with no coverage_audit record.
+
+        `semantics=None` leaves the session on whatever `new_state` stamps
+        by default (the current CONTRACT_SEMANTICS); passing an explicit
+        older marker (e.g. CONTRACT_SEMANTICS_V3) simulates a package
+        persisted before the coverage-audit hard-failure convention
+        existed, the way `make_complete_pass_session` does elsewhere.
+        """
+
+        registry = load_provider_registry()
+        contract = _confirmed_contract("decision", profile, registry)
+        session = self.root / f"{profile}-decision-no-coverage-audit-{label}"
+        state = new_state(contract, NOW, registry, ENVIRON)
+        if semantics is not None:
+            state["session"]["contract_semantics"] = semantics
+        create_session(session, state)
+
+        hc1 = _capture(session, "HC1", "https://example.test/source", "example.gov", b"direct finding")
+        s1, e1 = _source_and_evidence(hc1, "E1", "S1", "O1", b"direct finding")
+        claim = {
+            "id": "C1",
+            "text": "Single-source fixture claim.",
+            "scope": "fixture",
+            "qualifiers": [],
+            "load_bearing": True,
+            "claim_type": "source-of-record",
+            "status": "corroborated",
+            "supporting_evidence_ids": ["E1"],
+            "counter_evidence_ids": [],
+            "source_origin_ids": ["O1"],
+            "applicability": "checked",
+            "would_change_if": "the cited source changes",
+            "engineering_implication_ids": [],
+        }
+        operations = [
+            {"op": "add", "path": "/source_origins/-", "value": {"id": "O1", "kind": "official-documentation", "independent": True}},
+            {"op": "add", "path": "/sources/-", "value": s1},
+            {"op": "add", "path": "/evidence/-", "value": e1},
+            {"op": "add", "path": "/claims/-", "value": claim},
+            {"op": "replace", "path": "/summary/status", "value": "PASS"},
+            {"op": "replace", "path": "/summary/decision", "value": "Bounded fixture decision."},
+            {"op": "replace", "path": "/summary/load_bearing_claim_ids", "value": ["C1"]},
+            {"op": "replace", "path": "/summary/human_status", "value": "已完成研究判斷"},
+            {"op": "replace", "path": "/summary/human_recommendation", "value": "採用此有界結論"},
+            {"op": "replace", "path": "/engineering_handoff/constraints", "value": ["未涵蓋費用"]},
+            {
+                "op": "replace",
+                "path": "/engineering_handoff/safe_actions",
+                "value": [{"id": "SA1", "description": "先做可逆試行", "reversible": True, "depends_on_claim_ids": []}],
+            },
+            {
+                "op": "replace",
+                "path": "/engineering_handoff/acceptance_tests",
+                "value": ["rerun validation => package remains valid"],
+            },
+            {
+                "op": "add",
+                "path": "/inference_joints/-",
+                "value": {"id": "J1", "claim_ids": ["C1"], "adversarially_reviewed": True, "weakest_joint": True},
+            },
+            {
+                "op": "add",
+                "path": "/verification/-",
+                "value": {
+                    "id": "VR1",
+                    "kind": "targeted_reverification",
+                    "completed": True,
+                    "checked_claim_ids": ["C1"],
+                    "corrected_claim_ids": [],
+                    "unverifiable_claim_ids": [],
+                    "disposition": "直接來源支持 C1。",
+                },
+            },
+        ]
+        state = load_state(session)
+        apply_state_patch(session, operations, state["session"]["revision"], NOW)
+        return session
+
+    def test_decision_posture_missing_coverage_audit_is_a_warning_under_old_semantics(self) -> None:
+        """'Regardless of profile' is satisfied as visibility, not as a hard block --
+        but only for packages recorded under an older contract semantics.
 
         Light and Standard decision packages that skip the coverage audit
-        stay `ok: true` -- otherwise the four already-shipped packages under
-        examples/field/ (all light/standard, all decision, all predating
-        this convention) would stop validating, which this task explicitly
+        stay `ok: true` under CONTRACT_SEMANTICS_V3 -- otherwise the four
+        already-shipped packages under examples/field/ (all light/standard,
+        all decision, all predating this convention, all persisted under
+        V3 or earlier) would stop validating, which this task explicitly
         forbids. The gap is still surfaced as a WARNING.
         """
 
         for profile in ("light", "standard"):
             with self.subTest(profile=profile):
-                registry = load_provider_registry()
-                contract = _confirmed_contract("decision", profile, registry)
-                session = self.root / f"{profile}-decision-no-coverage-audit"
-                state = new_state(contract, NOW, registry, ENVIRON)
-                create_session(session, state)
-
-                hc1 = _capture(session, "HC1", "https://example.test/source", "example.gov", b"direct finding")
-                s1, e1 = _source_and_evidence(hc1, "E1", "S1", "O1", b"direct finding")
-                claim = {
-                    "id": "C1",
-                    "text": "Single-source fixture claim.",
-                    "scope": "fixture",
-                    "qualifiers": [],
-                    "load_bearing": True,
-                    "claim_type": "source-of-record",
-                    "status": "corroborated",
-                    "supporting_evidence_ids": ["E1"],
-                    "counter_evidence_ids": [],
-                    "source_origin_ids": ["O1"],
-                    "applicability": "checked",
-                    "would_change_if": "the cited source changes",
-                    "engineering_implication_ids": [],
-                }
-                operations = [
-                    {"op": "add", "path": "/source_origins/-", "value": {"id": "O1", "kind": "official-documentation", "independent": True}},
-                    {"op": "add", "path": "/sources/-", "value": s1},
-                    {"op": "add", "path": "/evidence/-", "value": e1},
-                    {"op": "add", "path": "/claims/-", "value": claim},
-                    {"op": "replace", "path": "/summary/status", "value": "PASS"},
-                    {"op": "replace", "path": "/summary/decision", "value": "Bounded fixture decision."},
-                    {"op": "replace", "path": "/summary/load_bearing_claim_ids", "value": ["C1"]},
-                    {"op": "replace", "path": "/summary/human_status", "value": "已完成研究判斷"},
-                    {"op": "replace", "path": "/summary/human_recommendation", "value": "採用此有界結論"},
-                    {"op": "replace", "path": "/engineering_handoff/constraints", "value": ["未涵蓋費用"]},
-                    {
-                        "op": "replace",
-                        "path": "/engineering_handoff/safe_actions",
-                        "value": [{"id": "SA1", "description": "先做可逆試行", "reversible": True, "depends_on_claim_ids": []}],
-                    },
-                    {
-                        "op": "replace",
-                        "path": "/engineering_handoff/acceptance_tests",
-                        "value": ["rerun validation => package remains valid"],
-                    },
-                    {
-                        "op": "add",
-                        "path": "/inference_joints/-",
-                        "value": {"id": "J1", "claim_ids": ["C1"], "adversarially_reviewed": True, "weakest_joint": True},
-                    },
-                    {
-                        "op": "add",
-                        "path": "/verification/-",
-                        "value": {
-                            "id": "VR1",
-                            "kind": "targeted_reverification",
-                            "completed": True,
-                            "checked_claim_ids": ["C1"],
-                            "corrected_claim_ids": [],
-                            "unverifiable_claim_ids": [],
-                            "disposition": "直接來源支持 C1。",
-                        },
-                    },
-                ]
-                state = load_state(session)
-                apply_state_patch(session, operations, state["session"]["revision"], NOW)
-
+                session = self._build_decision_no_coverage_audit_session(
+                    profile, "old", semantics=CONTRACT_SEMANTICS_V3
+                )
                 report = validate_session(session)
                 self.assertTrue(report.ok, report.to_dict())
                 self.assertIn(
                     "posture.coverage_audit_recommended",
                     {issue.code for issue in report.warnings},
                 )
+
+    def test_decision_posture_missing_coverage_audit_is_an_error_under_new_semantics(self) -> None:
+        """The same shape, but recorded under the current contract semantics,
+        is a hard failure on every profile including Standard (the
+        recommended default) -- a standard decision run that silently
+        answers half the asked question is exactly what this gate exists
+        to catch. Left at the default (current) semantics, since new
+        sessions must record it (see `new_state`).
+        """
+
+        for profile in ("light", "standard"):
+            with self.subTest(profile=profile):
+                session = self._build_decision_no_coverage_audit_session(profile, "new")
+                report = validate_session(session)
+                self.assertFalse(report.ok, report.to_dict())
+                self.assertIn("tier.coverage_audit_missing", {issue.code for issue in report.errors})
 
     def test_draft_evidence_floor_scales_with_profile(self) -> None:
         registry = load_provider_registry()
