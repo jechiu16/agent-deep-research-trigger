@@ -4,8 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research_harness._canon import sha256_hex
-from research_harness.artifacts import ingest_fetched_source
+from research_harness.artifacts import ingest_fetched_source, ingest_host_capture
+from research_harness.contracts import contract_card_sha256, draft_host_led_contract
+from research_harness.providers import (
+    load_provider_registry,
+    provider_records_sha256,
+    provider_registry_sha256,
+    referenced_provider_records,
+)
 from research_harness.rendering import finalize_session_result
 from research_harness.state import new_state
 from research_harness.storage import apply_state_patch, create_session, load_state
@@ -21,7 +27,6 @@ from tests.helpers import (
     make_incomplete_session,
     make_partial_session,
     make_session_with_demo_evidence,
-    make_ultra_pass_session,
 )
 
 
@@ -174,11 +179,6 @@ class ValidationTests(unittest.TestCase):
 
         self.assertIn("evidence.provider_claims_forbidden", {issue.code for issue in issues})
 
-    def test_high_pass_requires_context_separated_verifier(self) -> None:
-        session = make_incomplete_session(self.root, "high", "decision", "PASS")
-        report = validate_session(session)
-        self.assertIn("tier.high_verifier_missing", {issue.code for issue in report.errors})
-
     def test_complete_medium_lookup_passes_every_gate(self) -> None:
         session = make_complete_pass_session(self.root, "medium", "lookup")
         report = validate_session(session)
@@ -223,101 +223,174 @@ class ValidationTests(unittest.TestCase):
             "tier.load_bearing_claims_missing", {issue.code for issue in report.warnings}
         )
 
-    def test_complete_high_decision_with_separated_verifier_passes(self) -> None:
+    def test_complete_decision_posture_passes_without_reinforcement(self) -> None:
+        # "high"/"decision" here: tier is cosmetic (see confirmed_contract),
+        # and decision posture at the light profile this fixture carries has
+        # no anti-lock-in or coverage-audit floor of its own -- that floor
+        # only binds at the heavy profile (see test_profile_gates.py).
         session = make_complete_pass_session(self.root, "high", "decision")
         report = validate_session(session)
         self.assertTrue(report.ok, report.to_dict())
 
-    def test_complete_ultra_inherits_captures_and_verifier_gates(self) -> None:
-        session = make_ultra_pass_session(self.root, second_shot=True)
-        report = validate_session(session)
-        self.assertTrue(report.ok, report.to_dict())
-        state = load_state(session)
-        self.assertEqual(len(state["artifact_index"]), 2)
-        self.assertTrue(any(item.get("kind") == "verifier" for item in state["verification"]))
-
-    def test_complete_ultra_one_shot_is_legal(self) -> None:
-        report = validate_session(
-            make_ultra_pass_session(self.root, second_shot=False)
-        )
-        self.assertTrue(report.ok, report.to_dict())
-
-    def test_ultra_corrupt_shortfall_is_invalid_and_not_sealed(self) -> None:
-        session = make_ultra_pass_session(
-            self.root, second_shot=True, second_outcome="failed"
-        )
-        artifact = load_state(session)["artifact_index"][0]
-        (session / artifact["relative_path"]).write_bytes(b"corrupt")
-
-        rendered = finalize_session_result(session, NOW)
-        self.assertFalse(rendered.validation.integrity_ok)
-        self.assertFalse(rendered.validation.ok)
-        self.assertEqual(load_state(session)["summary"]["status"], "PASS")
-        html = rendered.path.read_text(encoding="utf-8")
-        self.assertIn("報告驗證失敗", html)
-        self.assertNotIn("BLOCKED / DELIVERY_INCOMPLETE", html)
-
-    def test_ultra_final_action_must_be_on_same_valid_verifier_record(self) -> None:
-        session = make_ultra_pass_session(self.root, second_shot=True)
-        state = load_state(session)
-        verifier_index = next(
-            index
-            for index, item in enumerate(state["verification"])
-            if item.get("kind") == "verifier"
-        )
-        valid_d1 = state["verification"][verifier_index]
-        invalid_d2 = dict(valid_d1)
-        invalid_d2.update({"id": "V5", "final_deep_action_id": "D2", "completed": False})
-        apply_state_patch(
-            session,
-            [
-                {
-                    "op": "replace",
-                    "path": f"/verification/{verifier_index}/final_deep_action_id",
-                    "value": "D1",
-                },
-                {"op": "add", "path": "/verification/-", "value": invalid_d2},
-            ],
-            state["session"]["revision"],
-            NOW,
-        )
-        report = validate_session(session)
-        self.assertFalse(report.ok, report.to_dict())
-        self.assertIn("tier.high_verifier_invalid", {issue.code for issue in report.errors})
-
-    def test_ultra_public_shot_and_occurrence_gates(self) -> None:
-        cases = (
-            ("d2_failed", {"second_shot": True, "second_outcome": "failed"}, "tier.ultra_deep_second_completed_missing"),
-            ("d2_uncertain", {"second_shot": True, "second_outcome": "uncertain"}, "tier.ultra_deep_second_completed_missing"),
-            ("d2_accepted", {"second_shot": True, "second_outcome": "accepted"}, "tier.ultra_deep_second_completed_missing"),
-            ("d1_incomplete", {"completed": False}, "tier.ultra_deep_completed_missing"),
-            ("d1_missing_occurrence", {"first_occurrence": "remove"}, "tier.ultra_deep_completed_missing"),
-            ("d1_mismatched_occurrence", {"first_occurrence": "mismatch"}, "tier.ultra_deep_completed_missing"),
-        )
-        for index, (name, options, expected_code) in enumerate(cases):
-            with self.subTest(case=name):
-                session = make_ultra_pass_session(self.root, **options)
-                report = validate_session(session)
-                self.assertFalse(report.ok, report.to_dict())
-                self.assertFalse(report.tier_contract_met, report.to_dict())
-                self.assertIn(expected_code, {issue.code for issue in report.errors})
-                if index == 0:
-                    rendered = finalize_session_result(session, NOW)
-                    sealed = load_state(session)
-                    self.assertEqual(rendered.validation.human_status, "交付不完整")
-                    self.assertEqual(sealed["summary"]["status"], "BLOCKED")
-                    self.assertEqual(sealed["summary"]["human_status"], "交付不完整")
-                    html = rendered.path.read_text(encoding="utf-8")
-                    self.assertIn("BLOCKED / DELIVERY_INCOMPLETE", html)
-
-    def test_synthesis_medium_pass_requires_coverage_audit(self) -> None:
+    def test_synthesis_heavy_pass_requires_coverage_audit(self) -> None:
         # synthesis's posture promise IS a coverage/omissions declaration, so
-        # it shares the Medium/High/Ultra coverage-audit gate with
-        # scientific/decision even though it has no anti-lock-in requirement
-        # of its own. make_complete_pass_session only adds anti_lock_in/
-        # coverage_audit verification records for scientific/decision, so a
-        # synthesis session starts without one and must be patched by hand.
-        session = make_complete_pass_session(self.root, "medium", "synthesis")
+        # it shares the heavy coverage-audit gate with scientific/decision
+        # even though it has no anti-lock-in requirement of its own. This
+        # only binds at the heavy profile, so build a real heavy host-led
+        # contract via draft_host_led_contract rather than
+        # make_complete_pass_session (which is pinned to a light profile).
+        registry = load_provider_registry()
+        environ = {"PERPLEXITY_API_KEY": "test-key"}
+        contract = draft_host_led_contract(
+            "Choose a cache", "synthesis", "heavy", registry, environ, search_routes=[]
+        )
+        records = referenced_provider_records(contract, registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        session = self.root / "heavy-synthesis"
+        create_session(session, new_state(contract, NOW, registry, environ))
+
+        # Heavy's evidence floor requires two load-bearing claims (see
+        # draft_host_led_contract's evidence_floor); each needs two captures
+        # from distinct upstreams to satisfy profile.heavy_capture_diversity.
+        hc1 = ingest_host_capture(
+            session, "HC1", "https://example.test/a", "Source A", "noaa.gov",
+            b"finding A", "raw_http", NOW, "resolve gap A",
+        )
+        hc2 = ingest_host_capture(
+            session, "HC2", "https://example.test/b", "Source B", "usno.gov",
+            b"finding B", "raw_http", NOW, "resolve gap B",
+        )
+        hc3 = ingest_host_capture(
+            session, "HC3", "https://example.test/c", "Source C", "navy.mil",
+            b"finding C", "raw_http", NOW, "resolve gap C",
+        )
+        hc4 = ingest_host_capture(
+            session, "HC4", "https://example.test/d", "Source D", "nps.gov",
+            b"finding D", "raw_http", NOW, "resolve gap D",
+        )
+        operations = [
+            {"op": "add", "path": "/source_origins/-", "value": {"id": "O1", "kind": "official-documentation", "independent": True}},
+            {"op": "add", "path": "/source_origins/-", "value": {"id": "O2", "kind": "official-documentation", "independent": True}},
+            {
+                "op": "add", "path": "/sources/-",
+                "value": {
+                    "id": "S1", "origin_id": "O1", "tier": "T1",
+                    "title": hc1["host_capture"]["source_title"], "url": hc1["host_capture"]["source_url"],
+                    "canonical_source_key": hc1["host_capture"]["canonical_source_key"],
+                    "upstream_key": hc1["host_capture"]["upstream_key"], "direct_fetch": True,
+                },
+            },
+            {
+                "op": "add", "path": "/sources/-",
+                "value": {
+                    "id": "S2", "origin_id": "O1", "tier": "T1",
+                    "title": hc2["host_capture"]["source_title"], "url": hc2["host_capture"]["source_url"],
+                    "canonical_source_key": hc2["host_capture"]["canonical_source_key"],
+                    "upstream_key": hc2["host_capture"]["upstream_key"], "direct_fetch": True,
+                },
+            },
+            {
+                "op": "add", "path": "/sources/-",
+                "value": {
+                    "id": "S3", "origin_id": "O2", "tier": "T1",
+                    "title": hc3["host_capture"]["source_title"], "url": hc3["host_capture"]["source_url"],
+                    "canonical_source_key": hc3["host_capture"]["canonical_source_key"],
+                    "upstream_key": hc3["host_capture"]["upstream_key"], "direct_fetch": True,
+                },
+            },
+            {
+                "op": "add", "path": "/sources/-",
+                "value": {
+                    "id": "S4", "origin_id": "O2", "tier": "T1",
+                    "title": hc4["host_capture"]["source_title"], "url": hc4["host_capture"]["source_url"],
+                    "canonical_source_key": hc4["host_capture"]["canonical_source_key"],
+                    "upstream_key": hc4["host_capture"]["upstream_key"], "direct_fetch": True,
+                },
+            },
+            {
+                "op": "add", "path": "/evidence/-",
+                "value": {
+                    "id": "E1", "artifact_id": "HC1", "source_id": "S1", "origin_id": "O1", "source_tier": "T1",
+                    "excerpt": "finding A", "excerpt_start": 0, "excerpt_end": len(b"finding A"),
+                    "entailment": "entailed", "applicability": "checked", "retrieved_at": NOW,
+                },
+            },
+            {
+                "op": "add", "path": "/evidence/-",
+                "value": {
+                    "id": "E2", "artifact_id": "HC2", "source_id": "S2", "origin_id": "O1", "source_tier": "T1",
+                    "excerpt": "finding B", "excerpt_start": 0, "excerpt_end": len(b"finding B"),
+                    "entailment": "entailed", "applicability": "checked", "retrieved_at": NOW,
+                },
+            },
+            {
+                "op": "add", "path": "/evidence/-",
+                "value": {
+                    "id": "E3", "artifact_id": "HC3", "source_id": "S3", "origin_id": "O2", "source_tier": "T1",
+                    "excerpt": "finding C", "excerpt_start": 0, "excerpt_end": len(b"finding C"),
+                    "entailment": "entailed", "applicability": "checked", "retrieved_at": NOW,
+                },
+            },
+            {
+                "op": "add", "path": "/evidence/-",
+                "value": {
+                    "id": "E4", "artifact_id": "HC4", "source_id": "S4", "origin_id": "O2", "source_tier": "T1",
+                    "excerpt": "finding D", "excerpt_start": 0, "excerpt_end": len(b"finding D"),
+                    "entailment": "entailed", "applicability": "checked", "retrieved_at": NOW,
+                },
+            },
+            {
+                "op": "add", "path": "/claims/-",
+                "value": {
+                    "id": "C1", "text": "Claim resting on the first pair of diverse upstream captures.", "scope": "fixture",
+                    "qualifiers": [], "load_bearing": True, "claim_type": "source-of-record", "status": "corroborated",
+                    "supporting_evidence_ids": ["E1", "E2"], "counter_evidence_ids": [], "source_origin_ids": ["O1"],
+                    "applicability": "checked", "would_change_if": "the cited normals are superseded",
+                    "engineering_implication_ids": [],
+                },
+            },
+            {
+                "op": "add", "path": "/claims/-",
+                "value": {
+                    "id": "C2", "text": "Claim resting on the second pair of diverse upstream captures.", "scope": "fixture",
+                    "qualifiers": [], "load_bearing": True, "claim_type": "source-of-record", "status": "corroborated",
+                    "supporting_evidence_ids": ["E3", "E4"], "counter_evidence_ids": [], "source_origin_ids": ["O2"],
+                    "applicability": "checked", "would_change_if": "the cited normals are superseded",
+                    "engineering_implication_ids": [],
+                },
+            },
+            {"op": "replace", "path": "/summary/status", "value": "PASS"},
+            {"op": "replace", "path": "/summary/decision", "value": "Bounded fixture decision."},
+            {"op": "replace", "path": "/summary/load_bearing_claim_ids", "value": ["C1", "C2"]},
+            {"op": "replace", "path": "/summary/human_status", "value": "已完成研究判斷"},
+            {"op": "replace", "path": "/summary/human_recommendation", "value": "採用此有界結論"},
+            {"op": "replace", "path": "/engineering_handoff/constraints", "value": ["未涵蓋費用"]},
+            {
+                "op": "replace", "path": "/engineering_handoff/safe_actions",
+                "value": [{"id": "SA1", "description": "先做可逆試行", "reversible": True, "depends_on_claim_ids": []}],
+            },
+            {
+                "op": "replace", "path": "/engineering_handoff/acceptance_tests",
+                "value": ["rerun validation => package remains valid"],
+            },
+            {
+                "op": "add", "path": "/verification/-",
+                "value": {
+                    "id": "VR1", "kind": "targeted_reverification", "completed": True,
+                    "checked_claim_ids": ["C1", "C2"], "corrected_claim_ids": [], "unverifiable_claim_ids": [],
+                    "disposition": "直接來源支持 C1 與 C2。",
+                },
+            },
+        ]
+        state = load_state(session)
+        apply_state_patch(session, operations, state["session"]["revision"], NOW)
+
         report = validate_session(session)
         codes = {issue.code for issue in report.errors}
         self.assertIn("tier.coverage_audit_missing", codes)
@@ -331,11 +404,11 @@ class ValidationTests(unittest.TestCase):
                     "op": "add",
                     "path": "/verification/-",
                     "value": {
-                        "id": "V3",
+                        "id": "CA1",
                         "kind": "coverage_audit",
                         "completed": True,
                         "candidate_omissions_dispositioned": True,
-                        "action_id": "A3",
+                        "disposition": "本次涵蓋問題全部範圍，無未處理缺口。",
                     },
                 }
             ],
@@ -344,78 +417,7 @@ class ValidationTests(unittest.TestCase):
         )
         report = validate_session(session)
         self.assertNotIn("tier.coverage_audit_missing", {issue.code for issue in report.errors})
-
-    def test_high_verifier_record_must_bind_reserved_verifier_action(self) -> None:
-        session = make_complete_pass_session(self.root, "high", "decision")
-        state = load_state(session)
-        verifier_index = next(
-            index
-            for index, item in enumerate(state["verification"])
-            if item.get("kind") == "verifier"
-        )
-        apply_state_patch(
-            session,
-            [
-                {
-                    "op": "replace",
-                    "path": f"/verification/{verifier_index}/action_id",
-                    "value": "FORGED",
-                }
-            ],
-            state["session"]["revision"],
-            NOW,
-        )
-        report = validate_session(session)
-        self.assertIn("tier.high_verifier_unbound", {issue.code for issue in report.errors})
-
-    def test_external_high_terminal_verifier_requires_completed_organizer_action(self) -> None:
-        for status in ("PARTIAL", "BLOCKED"):
-            with self.subTest(status=status):
-                session = make_complete_pass_session(self.root, "high", "decision")
-                state = load_state(session)
-                verifier_index = next(
-                    index
-                    for index, item in enumerate(state["verification"])
-                    if item.get("kind") == "verifier"
-                )
-                apply_state_patch(
-                    session,
-                    [
-                        {"op": "replace", "path": "/summary/status", "value": status},
-                        {
-                            "op": "replace",
-                            "path": f"/verification/{verifier_index}/action_id",
-                            "value": "MISSING-ORGANIZER-ACTION",
-                        },
-                    ],
-                    state["session"]["revision"],
-                    NOW,
-                )
-
-                missing = validate_session(session)
-                self.assertFalse(missing.tier_contract_met, missing.to_dict())
-                self.assertFalse(missing.ok, missing.to_dict())
-                self.assertIn(
-                    "tier.high_verifier_unbound",
-                    {issue.code for issue in missing.warnings},
-                )
-
-                state = load_state(session)
-                apply_state_patch(
-                    session,
-                    [
-                        {
-                            "op": "replace",
-                            "path": f"/verification/{verifier_index}/action_id",
-                            "value": "O1",
-                        }
-                    ],
-                    state["session"]["revision"],
-                    NOW,
-                )
-                complete = validate_session(session)
-                self.assertTrue(complete.tier_contract_met, complete.to_dict())
-                self.assertTrue(complete.ok, complete.to_dict())
+        self.assertTrue(report.ok, report.to_dict())
 
     def test_empirical_load_bearing_claim_needs_two_independent_origins(self) -> None:
         session = make_complete_pass_session(self.root, "high", "decision")
@@ -489,11 +491,6 @@ class ValidationTests(unittest.TestCase):
                 "source_origin_ids": ["O1", "O2"],
             }
         )
-        verifier_index = next(
-            index
-            for index, record in enumerate(state["verification"])
-            if record.get("kind") == "verifier"
-        )
         apply_state_patch(
             session,
             [
@@ -518,11 +515,6 @@ class ValidationTests(unittest.TestCase):
                     "op": "replace",
                     "path": "/claims/0",
                     "value": claim,
-                },
-                {
-                    "op": "replace",
-                    "path": f"/verification/{verifier_index}/packet_sha256",
-                    "value": sha256_hex([claim]),
                 },
             ],
             state["session"]["revision"],

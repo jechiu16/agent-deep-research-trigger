@@ -475,9 +475,9 @@ def command_attempt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     """Journal one attempt-status transition for an acquired action.
 
     Boundary-executed routes journal their own transitions; host, local,
-    organizer-pass, and network-experiment actions (e.g. the High-tier
-    context-separated verifier) have no boundary call, so this is their
-    only path to `completed`. Boundary-managed categories are refused because
+    organizer-pass, and network-experiment actions have no boundary call,
+    so this is their only path to `completed`. Boundary-managed categories
+    are refused because
     their initial `attempted` event and transport request are one atomic
     boundary operation. Illegal transitions raise InvalidAttemptTransition
     from the quota core unchanged."""

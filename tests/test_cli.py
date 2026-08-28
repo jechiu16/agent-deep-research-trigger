@@ -263,10 +263,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.run_cli("validate", str(invalid), "--json", check=False).returncode, 1)
 
     def test_host_capture_cli_preserves_exact_bytes_and_lineage(self) -> None:
+        # confirmed_medium_contract already builds the live host-led shape
+        # (execution=external_managed, research_workflow=host_led_v1, ...)
+        # the host-capture command requires; overriding execution to the
+        # removed legacy "host_native" tier-gated path breaks it.
         contract = confirmed_medium_contract()
-        contract["execution"] = "host_native"
-        contract["durability"] = "canonical_package"
-        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
         contract_path = self._write_json(contract, "host-contract.json")
         session = self.root / "host-session"
         self.run_cli(
@@ -312,9 +313,6 @@ class CliTests(unittest.TestCase):
 
     def test_host_medium_cli_flow_delivers_valid_terminal_package(self) -> None:
         contract = confirmed_medium_contract()
-        contract["execution"] = "host_native"
-        contract["durability"] = "canonical_package"
-        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
         contract_path = self._write_json(contract, "host-flow-contract.json")
         session = self.root / "host-flow-session"
         self.run_cli(
@@ -407,6 +405,19 @@ class CliTests(unittest.TestCase):
                         "path": "/engineering_handoff/acceptance_tests",
                         "value": ["rerun validation => tier contract remains met"],
                     },
+                    {
+                        "op": "add",
+                        "path": "/verification/-",
+                        "value": {
+                            "id": "VR1",
+                            "kind": "targeted_reverification",
+                            "completed": True,
+                            "checked_claim_ids": ["C1"],
+                            "corrected_claim_ids": [],
+                            "unverifiable_claim_ids": [],
+                            "disposition": "直接來源支持 C1。",
+                        },
+                    },
                 ]
             },
             "host-flow-patch.json",
@@ -432,9 +443,6 @@ class CliTests(unittest.TestCase):
 
     def test_render_cli_seals_insufficient_tier_status(self) -> None:
         contract = confirmed_medium_contract()
-        contract["execution"] = "host_native"
-        contract["durability"] = "canonical_package"
-        contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
         contract_path = self._write_json(contract, "host-render-contract.json")
         session = self.root / "host-render-session"
         self.run_cli(
@@ -446,7 +454,10 @@ class CliTests(unittest.TestCase):
 
         state = load_state(session)
         self.assertEqual(state["summary"]["status"], "BLOCKED")
-        self.assertEqual(state["summary"]["human_status"], "證據不足")
+        # A freshly-initialized host-led package never reached a terminal
+        # status, which is a delivery gap (tier.terminal_status_missing),
+        # not an evidence one.
+        self.assertEqual(state["summary"]["human_status"], "交付不完整")
         self.assertEqual(state["session"]["revision"], before["session"]["revision"] + 1)
         payload = json.loads(rendered.stdout)
         self.assertFalse(payload["validation"]["tier_contract_met"])
@@ -473,9 +484,6 @@ class CliTests(unittest.TestCase):
     def test_public_view_and_render_script_finalize_current_report_consistently(self) -> None:
         def make_host_session(name: str) -> Path:
             contract = confirmed_medium_contract()
-            contract["execution"] = "host_native"
-            contract["durability"] = "canonical_package"
-            contract["confirmation"]["card_sha256"] = contract_card_sha256(contract)
             session = self.root / name
             create_session(session, new_state(contract, NOW, None, {}))
             return session
@@ -504,7 +512,9 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(stale_report.read_bytes(), stale_bytes)
         view_state = load_state(view_session)
         self.assertEqual(view_state["summary"]["status"], "BLOCKED")
-        self.assertEqual(view_state["summary"]["human_status"], "證據不足")
+        # A freshly-initialized host-led package never reached a terminal
+        # status, which is a delivery gap, not an evidence one.
+        self.assertEqual(view_state["summary"]["human_status"], "交付不完整")
         self.assertEqual(view_state["session"]["updated_at"], LATER)
         self.assertNotIn(
             "report.stale", {issue.code for issue in validate_session(view_session).errors}
@@ -524,7 +534,7 @@ class CliTests(unittest.TestCase):
         script_payload = json.loads(result.stdout)
         script_state = load_state(script_session)
         self.assertEqual(script_state["summary"]["status"], "BLOCKED")
-        self.assertEqual(script_state["summary"]["human_status"], "證據不足")
+        self.assertEqual(script_state["summary"]["human_status"], "交付不完整")
         self.assertEqual(script_state["session"]["updated_at"], LATER)
         self.assertEqual(
             script_payload["validation"]["human_status"],
@@ -532,7 +542,7 @@ class CliTests(unittest.TestCase):
         )
         for report in (stale_report, Path(script_payload["report_path"])):
             self.assertIn(
-                "BLOCKED / EVIDENCE_INSUFFICIENT",
+                "BLOCKED / DELIVERY_INCOMPLETE",
                 report.read_text(encoding="utf-8"),
             )
 
@@ -1437,20 +1447,23 @@ class CliTests(unittest.TestCase):
         self.assertTrue(Path(result["report_path"]).exists())
 
     def test_public_purge_seals_delivery_shortfall_in_state_and_html(self) -> None:
-        session = make_complete_pass_session(self.root, "high", "decision")
+        # Break the host-led targeted-reverification record (a live
+        # DELIVERY_SHORTFALL_CODES gate) rather than the removed High-tier
+        # verifier attestation this test used to corrupt.
+        session = make_complete_pass_session(self.root, "medium", "decision")
         state = load_state(session)
-        verifier_index = next(
+        reverification_index = next(
             index
             for index, item in enumerate(state["verification"])
-            if item.get("kind") == "verifier"
+            if item.get("kind") == "targeted_reverification"
         )
         apply_state_patch(
             session,
             [
                 {
                     "op": "replace",
-                    "path": f"/verification/{verifier_index}/action_id",
-                    "value": "MISSING-ORGANIZER-ACTION",
+                    "path": f"/verification/{reverification_index}/checked_claim_ids",
+                    "value": [],
                 }
             ],
             state["session"]["revision"],
