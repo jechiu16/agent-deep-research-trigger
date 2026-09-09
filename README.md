@@ -12,11 +12,12 @@ and hand the next coding session a concise evidence-bound result.
 ## Why This Exists
 
 The north star: a general framework that helps a strong model, as it works
-with its user to clarify a hard question that may have no settled answer,
-explore and -- by actually carrying out research method -- form, or help
-form, a sound conclusion. The framework allows, and even leads, the model to
-reason step by step and advance to the next step; what comes out is not a
-chat reply but a verified research process and its deliverable.
+with its user to clarify a complex question that may have neither a clear
+boundary nor an existing answer, explore and -- by actually carrying out
+research method -- form, or help form, a sound conclusion. The framework
+allows, and even leads, the model to reason step by step and advance to the
+next step; what comes out is not a chat reply but a verified research
+process and its deliverable.
 
 A direct provider call can be broad and polished while still leaving unclear
 cost, weak citation entailment, and a long report the next session must reread.
