@@ -156,12 +156,15 @@ this up next would need it.
   floor and is rendered as "not evidence".
 - **A checked fact.** `claims` with the chain
   `claim -> evidence -> source + source_origin -> raw artifact`. Capture the
-  bytes (`host-capture`, `artifact-add`); provider payloads cannot support a
+  bytes (`host-capture`, `artifact-add`); `"$CLI" excerpt` turns a verbatim
+  quotation into the exact byte bounds an evidence record needs and refuses
+  to guess when the bytes differ. Provider payloads cannot support a
   claim. Correct claims disproved by direct evidence; mark unresolved claims
   and their revisit trigger; do not convert model agreement into
   corroboration. This chain applies to any claim presented as verified, in
   every posture -- it is not optional in an exploration.
-- **What a provider report gave you.** Feed its useful hypotheses,
+- **What a provider report gave you.** The occurrence keeps the whole
+  synthesis and every citation; read all of it. Feed its useful hypotheses,
   contradictions, and citations into `hypotheses` and `planned_checks`;
   `"$CLI" citations` lists what is still unverified. Nothing from a report
   enters `claims` until you have captured the source yourself.

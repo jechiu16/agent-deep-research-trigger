@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 _DEPRECATED_QUESTION_PRESENT = object()
 
 from research_harness.artifacts import (
+    _confined_raw_path,
     ingest_fetched_source,
     ingest_host_capture,
     ingest_local_artifact,
@@ -755,6 +756,80 @@ def command_citations(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return {"citations": citations, "total": len(citations), "unverified": unverified}, 0
 
 
+def command_excerpt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Free, read-only: find verbatim text in an available raw artifact and
+    return the exact byte bounds an evidence record needs.
+
+    The match is byte-for-byte against the raw file (the UTF-8 encoding of
+    the text); nothing is normalized, so a dash or quote variant, or markup
+    between two words, simply does not match. Zero matches is an error, and
+    several matches are an error until --nth picks one, because a guessed
+    excerpt would fail validate anyway. No network, no lock, no state write.
+    """
+
+    session_dir = Path(args.session)
+    state = load_state(session_dir)
+    artifact = next(
+        (
+            item
+            for item in state.get("artifact_index", [])
+            if isinstance(item, dict) and item.get("id") == args.artifact_id
+        ),
+        None,
+    )
+    if artifact is None:
+        raise ValueError(f"artifact {args.artifact_id} is not in artifact_index")
+    if artifact.get("availability") != "available":
+        raise ValueError(
+            f"artifact {args.artifact_id} is {artifact.get('availability')}, not available"
+        )
+    raw_path = _confined_raw_path(session_dir, artifact.get("relative_path"))
+    if not raw_path.is_file():
+        raise ValueError(f"artifact {args.artifact_id} has no raw file at {raw_path.name}")
+    if args.text_file:
+        text = Path(args.text_file).read_text(encoding="utf-8")
+        if text.endswith("\r\n"):
+            text = text[:-2]
+        elif text.endswith("\n"):
+            text = text[:-1]
+    else:
+        text = args.text
+    needle = text.encode("utf-8")
+    if not needle:
+        raise ValueError("the text to locate is empty")
+    payload = raw_path.read_bytes()
+    matches: list[int] = []
+    position = payload.find(needle)
+    while position != -1:
+        matches.append(position)
+        position = payload.find(needle, position + 1)
+    if not matches:
+        raise ValueError(
+            "text not found byte-for-byte in the raw artifact "
+            "(check dashes, quotes, whitespace, and markup between words)"
+        )
+    if args.nth is None:
+        if len(matches) > 1:
+            raise ValueError(
+                f"text occurs {len(matches)} times at byte offsets {matches[:10]}; "
+                "pass --nth to choose one"
+            )
+        chosen = matches[0]
+    else:
+        if args.nth < 1 or args.nth > len(matches):
+            raise ValueError(
+                f"--nth {args.nth} is out of range; text occurs {len(matches)} times"
+            )
+        chosen = matches[args.nth - 1]
+    return {
+        "artifact_id": args.artifact_id,
+        "excerpt_start": chosen,
+        "excerpt_end": chosen + len(needle),
+        "excerpt": text,
+        "matches": len(matches),
+    }, 0
+
+
 def command_artifact_add(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.origin_kind in {"provider_payload", "processor_output"}:
         raise ValueError("provider artifacts require a bound adapter operation")
@@ -1087,6 +1162,24 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json_flag(citations)
     citations.set_defaults(handler=command_citations)
 
+    excerpt = subparsers.add_parser(
+        "excerpt",
+        help="free: byte bounds of verbatim text inside an available raw artifact",
+    )
+    excerpt.add_argument("session")
+    excerpt.add_argument("--artifact-id", required=True, help="artifact whose raw bytes to search")
+    excerpt_text = excerpt.add_mutually_exclusive_group(required=True)
+    excerpt_text.add_argument("--text", help="the verbatim text to locate")
+    excerpt_text.add_argument(
+        "--text-file",
+        help="UTF-8 file holding the verbatim text; one trailing newline is ignored",
+    )
+    excerpt.add_argument(
+        "--nth", type=int, help="which occurrence to return when the text appears more than once"
+    )
+    _add_json_flag(excerpt)
+    excerpt.set_defaults(handler=command_excerpt)
+
     add = subparsers.add_parser("artifact-add", help="securely ingest local or fetched bytes")
     add.add_argument("session")
     add.add_argument("--source", required=True)
@@ -1224,6 +1317,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     global _JSONArgumentParser_json_mode
+    # JSON output is UTF-8 wherever it is redirected; the platform locale
+    # (cp950 on a Traditional Chinese Windows) would otherwise corrupt it.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure") and not stream.isatty():
+            stream.reconfigure(encoding="utf-8")
     _load_dotenv_if_available()
     effective_argv = sys.argv[1:] if argv is None else list(argv)
     _JSONArgumentParser_json_mode = "--json" in effective_argv

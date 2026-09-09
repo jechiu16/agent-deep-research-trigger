@@ -115,7 +115,7 @@ class CrossrefAdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(len(spooled["message"]["items"]), expected_returned)
 
         # Every citation is url/title/date-shaped, one per item in the fixture.
-        self.assertEqual(len(occurrence["citations"]), min(expected_returned, 40))
+        self.assertEqual(len(occurrence["citations"]), expected_returned)
         for citation in occurrence["citations"]:
             self.assertEqual(set(citation), {"url", "title", "date"})
             self.assertTrue(citation["url"].startswith("https://doi.org/"))

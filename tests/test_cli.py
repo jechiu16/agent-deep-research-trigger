@@ -63,6 +63,7 @@ class CliTests(unittest.TestCase):
             [sys.executable, str(self.cli), *args],
             cwd=self.repo,
             text=True,
+            encoding="utf-8",
             capture_output=True,
             env=os.environ.copy(),
             check=False,
@@ -310,6 +311,97 @@ class CliTests(unittest.TestCase):
         self.assertEqual(artifact["host_capture"]["fidelity"], "host_rendered")
         self.assertEqual(artifact["host_capture"]["captured_at"], NOW)
         self.assertEqual(artifact["host_capture"]["marginal_purpose"], "resolve the named gap")
+
+    def _host_session_with_capture(self, name: str, payload: bytes) -> Path:
+        contract_path = self._write_json(confirmed_medium_contract(), f"{name}-contract.json")
+        session = self.root / name
+        self.run_cli(
+            "init", str(session), "--contract", str(contract_path), "--now", NOW, "--json"
+        )
+        payload_path = self.root / f"{name}-capture.bin"
+        payload_path.write_bytes(payload)
+        self.run_cli(
+            "host-capture", str(session), "--payload", str(payload_path),
+            "--artifact-id", "HC1", "--source-url", "https://example.test/source",
+            "--source-title", "Captured source", "--upstream-key", "upstream-1",
+            "--fidelity", "raw_http", "--marginal-purpose", "resolve the named gap",
+            "--now", NOW, "--json",
+        )
+        return session
+
+    def test_cli_excerpt_returns_exact_byte_bounds_for_verbatim_text(self) -> None:
+        payload = (
+            "<p>Accuracy rose 39\u201377% on <em>held-out</em> sets. Accuracy rose again.</p>\n"
+        ).encode("utf-8")
+        session = self._host_session_with_capture("excerpt-session", payload)
+        quote = "rose 39\u201377% on"
+
+        found = json.loads(
+            self.run_cli("excerpt", str(session), "--artifact-id", "HC1", "--text", quote, "--json").stdout
+        )
+        self.assertEqual(found["matches"], 1)
+        self.assertEqual(found["excerpt"], quote)
+        self.assertEqual(
+            payload[found["excerpt_start"]:found["excerpt_end"]].decode("utf-8"), quote
+        )
+
+        # A hyphen is not the en dash in the bytes: no normalization, no guess.
+        missing = self.run_cli(
+            "excerpt", str(session), "--artifact-id", "HC1", "--text", "rose 39-77% on", "--json",
+            check=False,
+        )
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("not found", missing.stderr)
+
+        # Ambiguous text is refused until --nth picks one occurrence.
+        repeated = self.run_cli(
+            "excerpt", str(session), "--artifact-id", "HC1", "--text", "Accuracy rose", "--json",
+            check=False,
+        )
+        self.assertEqual(repeated.returncode, 1)
+        self.assertIn("2 times", repeated.stderr)
+        second = json.loads(
+            self.run_cli(
+                "excerpt", str(session), "--artifact-id", "HC1", "--text", "Accuracy rose",
+                "--nth", "2", "--json",
+            ).stdout
+        )
+        first_at = payload.index(b"Accuracy rose")
+        self.assertEqual(second["matches"], 2)
+        self.assertEqual(second["excerpt_start"], payload.index(b"Accuracy rose", first_at + 1))
+
+        # --text-file carries text the shell cannot; one trailing newline is ignored.
+        text_file = self.root / "quote.txt"
+        text_file.write_text("held-out</em> sets\n", encoding="utf-8")
+        from_file = json.loads(
+            self.run_cli(
+                "excerpt", str(session), "--artifact-id", "HC1", "--text-file", str(text_file), "--json"
+            ).stdout
+        )
+        self.assertEqual(from_file["excerpt"], "held-out</em> sets")
+        self.assertEqual(
+            payload[from_file["excerpt_start"]:from_file["excerpt_end"]], b"held-out</em> sets"
+        )
+
+    def test_cli_json_output_is_utf8_when_redirected(self) -> None:
+        quote = "\u53ef\u8ffd\u6eaf\u6027 39\u201377%"
+        payload = f"\u4f86\u6e90\u9801\u9762\uff1a{quote}\n".encode("utf-8")
+        session = self._host_session_with_capture("utf8-session", payload)
+        env = os.environ.copy()
+        env.pop("PYTHONUTF8", None)
+        env.pop("PYTHONIOENCODING", None)
+        result = subprocess.run(
+            [
+                sys.executable, str(self.cli), "excerpt", str(session),
+                "--artifact-id", "HC1", "--text", quote, "--json",
+            ],
+            cwd=self.repo,
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout.decode("utf-8"))["excerpt"], quote)
 
     def test_host_medium_cli_flow_delivers_valid_terminal_package(self) -> None:
         contract = confirmed_medium_contract()

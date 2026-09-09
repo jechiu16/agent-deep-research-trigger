@@ -52,8 +52,6 @@ from .storage import (
 )
 
 SPOOL_DIR = "provider_spool"
-SYNTHESIS_EXCERPT_LIMIT = 4000
-CITATION_LIMIT = 40
 
 
 class BoundaryError(RuntimeError):
@@ -1121,9 +1119,12 @@ def _record_occurrence(
         "model": parsed.model,
         "cost_usd": parsed.cost_usd,
         "citation_count": len(parsed.citations),
-        "citations": parsed.citations[:CITATION_LIMIT],
-        "synthesis_excerpt": parsed.synthesis_text[:SYNTHESIS_EXCERPT_LIMIT],
-        "synthesis_truncated": len(parsed.synthesis_text) > SYNTHESIS_EXCERPT_LIMIT,
+        # The occurrence keeps the whole synthesis and every citation: the
+        # spool stays the byte-exact original, and provider text cannot
+        # support a claim at any length, so truncating here only hid data.
+        "citations": list(parsed.citations),
+        "synthesis_excerpt": parsed.synthesis_text,
+        "synthesis_truncated": False,
         "spool": spool_path.name,
     }
     if terminal_poll_event_hash is not None:

@@ -26,6 +26,12 @@ Semantic Versioning once the v2 runtime leaves development status.
   semantics for host-authored reports.
 - `examples/explore/01-framework-evolution-directions`: an offline,
   demonstration-only exploration package produced with the new flow.
+- `excerpt`: a free, read-only subcommand that locates verbatim text in an
+  available raw artifact and returns the exact `excerpt_start`,
+  `excerpt_end`, and `excerpt` an evidence record needs. It matches bytes
+  as they are (no dash, quote, or whitespace normalization) and refuses a
+  missing or ambiguous match instead of guessing; `--nth` picks one of
+  several occurrences and `--text-file` carries text the shell cannot.
 
 ### Changed
 
@@ -48,6 +54,20 @@ Semantic Versioning once the v2 runtime leaves development status.
   pre-confirmation prohibition, statuses, gates, runtime, and CLI are
   unchanged; `tests/test_docs.py` follows the new sections and no longer
   pins `SKILL.md` to 60 lines.
+- A retrieval occurrence now keeps the provider's whole synthesis text and
+  every citation. The 4000-character `synthesis_excerpt` cut and the
+  40-entry `citations` cut had no stated reason and hid data from the
+  host: a 50-citation deep report showed 40 to `citations`. The spool file
+  remains the byte-exact original, and provider text still cannot support
+  a claim at any length. `synthesis_truncated` stays in the record and is
+  always `false`.
+
+### Fixed
+
+- CLI output redirected to a file or pipe is written as UTF-8 on every
+  platform. On a Traditional Chinese Windows locale the JSON payloads
+  (`ensure_ascii=False`) were encoded as cp950 unless `PYTHONUTF8` was set,
+  which corrupted or crashed on non-ASCII text.
 
 ## 2.0.0b10
 

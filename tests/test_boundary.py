@@ -95,6 +95,28 @@ class BoundaryTests(unittest.TestCase):
         for phrase in phrases:
             self.assertIn(phrase.lower(), message)
 
+    def test_occurrence_keeps_whole_synthesis_and_every_citation(self) -> None:
+        fixture = json.loads((FIXTURES / "sonar_success.json").read_text(encoding="utf-8"))
+        long_text = fixture["choices"][0]["message"]["content"] * 4
+        self.assertGreater(len(long_text), 4000)
+        template = fixture["search_results"][0]
+        fixture["search_results"] = [
+            {**template, "url": f"https://example.test/result-{index}"} for index in range(45)
+        ]
+        fixture["citations"] = [item["url"] for item in fixture["search_results"]]
+        fixture["choices"][0]["message"]["content"] = long_text
+        payload = json.dumps(fixture).encode("utf-8")
+
+        result = execute_probe(
+            self.session, "A1", 'primary_scout', 'sonar', "current fed funds target range", NOW,
+            transport=lambda spec: (200, payload), environ=TEST_ENV,
+        )
+        occurrence = result["occurrence"]
+        self.assertEqual(occurrence["citation_count"], 45)
+        self.assertEqual(len(occurrence["citations"]), 45)
+        self.assertEqual(occurrence["synthesis_excerpt"], long_text)
+        self.assertFalse(occurrence["synthesis_truncated"])
+
     def test_success_records_occurrence_and_completes_attempt(self) -> None:
         # Expectations come from the fixture itself: it is a recorded real
         # response (live sonar call 2026-07-11) and may be re-recorded later.
