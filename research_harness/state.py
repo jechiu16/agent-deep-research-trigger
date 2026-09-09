@@ -30,14 +30,40 @@ CONTRACT_SEMANTICS_V1 = "pure_trigger_v1"
 CONTRACT_SEMANTICS_V2 = "pure_trigger_v2"
 CONTRACT_SEMANTICS_V3 = "pure_trigger_v3"
 CONTRACT_SEMANTICS_V4 = "pure_trigger_v4"
-CONTRACT_SEMANTICS = CONTRACT_SEMANTICS_V4
+CONTRACT_SEMANTICS_V5 = "pure_trigger_v5"
+CONTRACT_SEMANTICS = CONTRACT_SEMANTICS_V5
 # Semantics versions strict enough to re-derive every action's atomic
 # occurrence/quota/attempt lifecycle from the event journal. Boundary
 # actions (quota.py) and the full atomic-occurrence/quota/attempt-lifecycle
 # checks (validation.py) both gate on this set; a version stays in it for
 # as long as it preserves that guarantee, so bumping CONTRACT_SEMANTICS
 # forward does not by itself require touching either gate.
-STRICT_ATOMIC_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4})
+STRICT_ATOMIC_SEMANTICS = frozenset(
+    {CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4, CONTRACT_SEMANTICS_V5}
+)
+# Semantics versions that know the explore posture, its EXPLORED terminal
+# status, and the hypothesis-shape rules that keep a tentative lead from
+# borrowing claim vocabulary. A package recorded under an older marker keeps
+# its historical verdict semantics untouched: none of this is read into it.
+EXPLORE_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V5})
+_KNOWN_SEMANTICS = frozenset(
+    {
+        CONTRACT_SEMANTICS_V1,
+        CONTRACT_SEMANTICS_V2,
+        CONTRACT_SEMANTICS_V3,
+        CONTRACT_SEMANTICS_V4,
+        CONTRACT_SEMANTICS_V5,
+    }
+)
+# Versions whose persisted contract is validated with the full live rules and
+# whose framing question must match the contract question.
+_QUESTION_BOUND_SEMANTICS = frozenset(
+    {CONTRACT_SEMANTICS_V2, CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4, CONTRACT_SEMANTICS_V5}
+)
+# Claim-record vocabulary a hypothesis must never carry: a tentative lead is
+# promoted to `claims` (with evidence) to earn any of these, never annotated
+# into looking verified in place.
+HYPOTHESIS_FORBIDDEN_FIELDS = ("status", "load_bearing", "supporting_evidence_ids", "claim_type")
 REQUIRED_SECTIONS = (
     "schema_version",
     "session",
@@ -239,6 +265,44 @@ def _preflight_errors(
         errors.append("capability preflight provider set mismatch")
 
 
+def _hypothesis_errors(
+    state: dict[str, Any], source_ids: set[str], artifact_ids: set[str], errors: list[str]
+) -> None:
+    """Keep tentative leads tentative: no claim vocabulary, only resolvable pointers.
+
+    A hypothesis needs nothing beyond a stable id and readable text; basis,
+    next_check, excluded_reason, and pointer lists are optional and may be
+    filled in later. What it may never do is carry the fields that make a
+    claim read as verified (see HYPOTHESIS_FORBIDDEN_FIELDS)."""
+
+    hypotheses = state.get("hypotheses")
+    if not isinstance(hypotheses, list):
+        return
+    for item in hypotheses:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]:
+            continue
+        item_id = item["id"]
+        for field in HYPOTHESIS_FORBIDDEN_FIELDS:
+            if field in item:
+                errors.append(
+                    f"hypothesis {item_id} cannot carry claim vocabulary {field}; "
+                    "promote it to claims with evidence instead"
+                )
+        for field, known, label in (
+            ("source_ids", source_ids, "source"),
+            ("artifact_ids", artifact_ids, "artifact"),
+        ):
+            refs = item.get(field)
+            if refs is None:
+                continue
+            if not isinstance(refs, list):
+                errors.append(f"hypothesis {item_id} {field} must be a list")
+                continue
+            for ref in refs:
+                if ref not in known:
+                    errors.append(f"hypothesis {item_id} references missing {label} {ref}")
+
+
 def validate_state_document(state: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if not isinstance(state, dict):
@@ -260,13 +324,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         for field in ("id", "created_at", "updated_at"):
             if not isinstance(session.get(field), str) or not session.get(field):
                 errors.append(f"session {field} is required")
-        if session_semantics not in {
-            None,
-            CONTRACT_SEMANTICS_V1,
-            CONTRACT_SEMANTICS_V2,
-            CONTRACT_SEMANTICS_V3,
-            CONTRACT_SEMANTICS_V4,
-        }:
+        if session_semantics is not None and session_semantics not in _KNOWN_SEMANTICS:
             errors.append("session contract_semantics is invalid")
         # Optional and backward-compatible: sessions created before this
         # field existed (and canonical fixtures under examples/field/) omit
@@ -312,7 +370,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         snapshot_registry = {"schema_version": "1.0", "providers": copy.deepcopy(providers)}
         registry_errors = validate_provider_registry(snapshot_registry)
         errors.extend(f"capability snapshot: {error}" for error in registry_errors)
-        if session_semantics in {CONTRACT_SEMANTICS_V2, CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4}:
+        if session_semantics in _QUESTION_BOUND_SEMANTICS:
             contract_errors = validate_contract
         elif session_semantics == CONTRACT_SEMANTICS_V1:
             contract_errors = _validate_persisted_contract_v1
@@ -330,7 +388,7 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         errors.append("state contract must be an object")
 
     framing = state.get("framing")
-    if session_semantics in {CONTRACT_SEMANTICS_V2, CONTRACT_SEMANTICS_V3, CONTRACT_SEMANTICS_V4}:
+    if session_semantics in _QUESTION_BOUND_SEMANTICS:
         contract_question = contract.get("question") if isinstance(contract, dict) else None
         if not isinstance(contract_question, str) or not contract_question:
             errors.append("contract question is required")
@@ -386,6 +444,15 @@ def validate_state_document(state: dict[str, Any]) -> list[str]:
         origin_id = source.get("origin_id")
         if origin_id is not None and origin_id not in origin_ids:
             errors.append(f"source {source['id']} references missing origin {origin_id}")
+
+    if (
+        isinstance(contract, dict)
+        and contract.get("posture") == "explore"
+        and session_semantics not in EXPLORE_SEMANTICS
+    ):
+        errors.append("explore posture requires pure_trigger_v5 contract semantics")
+    if session_semantics in EXPLORE_SEMANTICS:
+        _hypothesis_errors(state, source_ids, artifact_ids, errors)
 
     provider_ids = {provider.get("id") for provider in providers if isinstance(provider, dict)}
     for occurrence in (

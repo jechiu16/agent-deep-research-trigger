@@ -17,7 +17,12 @@ from .contracts import METERED_CATEGORIES
 from .providers import action_cost_class
 from .quota import ATTEMPT_TRANSITIONS, BOUNDARY_CATEGORIES, HASH64_RE
 from .state import state_sha256, validate_state_document
-from .state import CONTRACT_SEMANTICS_V4, STRICT_ATOMIC_SEMANTICS
+from .state import (
+    CONTRACT_SEMANTICS_V4,
+    CONTRACT_SEMANTICS_V5,
+    EXPLORE_SEMANTICS,
+    STRICT_ATOMIC_SEMANTICS,
+)
 from .storage import (
     _event_chain_errors,
     _load_state_unlocked,
@@ -28,8 +33,12 @@ from .storage import (
 
 
 PASSING_CLAIM_STATUSES = frozenset({"corroborated"})
-VALID_DELIVERY_STATUSES = frozenset({"IN_PROGRESS", "PASS", "PARTIAL", "BLOCKED"})
-TERMINAL_DELIVERY_STATUSES = frozenset({"PASS", "PARTIAL", "BLOCKED"})
+# EXPLORED is the terminal status of an explore-posture run: a delivered
+# direction map whose leads are still tentative. It is neither a verdict
+# (PASS/PARTIAL) nor a failure (BLOCKED), and only a package recorded under
+# EXPLORE_SEMANTICS may carry it.
+VALID_DELIVERY_STATUSES = frozenset({"IN_PROGRESS", "PASS", "PARTIAL", "BLOCKED", "EXPLORED"})
+TERMINAL_DELIVERY_STATUSES = frozenset({"PASS", "PARTIAL", "BLOCKED", "EXPLORED"})
 EVIDENCE_SHORTFALL_CODES = frozenset(
     {
         "tier.load_bearing_claims_missing",
@@ -51,6 +60,7 @@ DELIVERY_SHORTFALL_CODES = frozenset(
         "tier.coverage_audit_missing",
         "tier.targeted_reverification_missing",
         "posture.decision_joint_missing",
+        "explore.findings_missing",
     }
 )
 HUMAN_STATUS_SENTINELS = frozenset(
@@ -61,7 +71,7 @@ DELIVERY_HUMAN_STATUS_SENTINELS = frozenset({"交付不完整", "DELIVERY_INCOMP
 # coverage_audit record on every profile (ERROR), not just heavy. Packages
 # recorded under an older semantics keep the historical WARNING-only
 # behaviour so already-shipped packages are not retroactively invalidated.
-NEW_COVERAGE_AUDIT_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V4})
+NEW_COVERAGE_AUDIT_SEMANTICS = frozenset({CONTRACT_SEMANTICS_V4, CONTRACT_SEMANTICS_V5})
 REPORT_HASH_RE = re.compile(r'data-state-sha256=["\']([0-9a-f]{64})["\']')
 
 
@@ -1005,6 +1015,38 @@ def _renderable_human_reasons(
     return renderable
 
 
+def _required_summary_text(
+    summary: dict[str, Any],
+    status: Any,
+    field: str,
+    code: str,
+    message: str,
+    issues: list[Issue],
+    *,
+    reject_human_status_sentinel: bool = False,
+) -> bool:
+    """True when summary[field] carries real text; otherwise warn and return False."""
+
+    value = summary.get(field)
+    blank = not isinstance(value, str) or not value.strip()
+    is_sentinel = (
+        not blank
+        and reject_human_status_sentinel
+        and value.strip() in HUMAN_STATUS_SENTINELS
+    )
+    if not (blank or is_sentinel):
+        return True
+    # On a BLOCKED package the seal itself stamps this exact sentinel onto
+    # summary.human_status (see rendering.py) to record a genuine delivery
+    # failure -- that is the honest value, not a placeholder impersonating a
+    # real answer, so flagging it as "missing" would assert something false
+    # about a populated field. Only a non-BLOCKED package writing the
+    # sentinel is dodging the obligation to state a real judgement.
+    if not (is_sentinel and status == "BLOCKED"):
+        _add(issues, code, message, f"/summary/{field}", "WARNING")
+    return False
+
+
 def _canonical_handoff_completeness(
     state: dict[str, Any],
     issues: list[Issue],
@@ -1013,41 +1055,34 @@ def _canonical_handoff_completeness(
     status = summary.get("status")
     missing = False
 
-    def required_text(
-        field: str, code: str, message: str, reject_human_status_sentinel: bool = False
-    ) -> None:
-        nonlocal missing
-        value = summary.get(field)
-        blank = not isinstance(value, str) or not value.strip()
-        is_sentinel = (
-            not blank
-            and reject_human_status_sentinel
-            and value.strip() in HUMAN_STATUS_SENTINELS
-        )
-        if blank or is_sentinel:
-            missing = True
-            # On a BLOCKED package the seal itself stamps this exact
-            # sentinel onto summary.human_status (see rendering.py) to
-            # record a genuine delivery failure -- that is the honest
-            # value, not a placeholder impersonating a real answer, so
-            # flagging it as "missing" would assert something false about
-            # a populated field. Only a non-BLOCKED package writing the
-            # sentinel is dodging the obligation to state a real judgement.
-            if not (is_sentinel and status == "BLOCKED"):
-                _add(issues, code, message, f"/summary/{field}", "WARNING")
-
-    required_text(
+    if not _required_summary_text(
+        summary,
+        status,
         "human_status",
         "tier.human_status_missing",
         "canonical package requires an explicit human status",
+        issues,
         reject_human_status_sentinel=True,
-    )
-    required_text(
+    ):
+        missing = True
+    if not _required_summary_text(
+        summary,
+        status,
         "human_recommendation",
         "tier.human_recommendation_missing",
         "canonical package requires an explicit human recommendation",
-    )
-    required_text("decision", "tier.decision_missing", "canonical package requires a bounded decision")
+        issues,
+    ):
+        missing = True
+    if not _required_summary_text(
+        summary,
+        status,
+        "decision",
+        "tier.decision_missing",
+        "canonical package requires a bounded decision",
+        issues,
+    ):
+        missing = True
 
     if not _renderable_human_reasons(state):
         _add(
@@ -1126,6 +1161,83 @@ def _canonical_handoff_completeness(
     return not missing
 
 
+def _has_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def exploration_findings(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Readable exploration output: hypotheses (kept or excluded) and open questions with text.
+
+    One definition of "what counts as a finding", shared by the EXPLORED
+    delivery gate and the deterministic renderer."""
+
+    findings: list[dict[str, Any]] = []
+    hypotheses = state.get("hypotheses")
+    for item in hypotheses if isinstance(hypotheses, list) else []:
+        if isinstance(item, dict) and _has_text(item.get("text")):
+            findings.append(item)
+    questions = state.get("open_questions")
+    for item in questions if isinstance(questions, list) else []:
+        if isinstance(item, dict) and (_has_text(item.get("question")) or _has_text(item.get("text"))):
+            findings.append(item)
+    return findings
+
+
+def _explore_delivery_contract(state: dict[str, Any], issues: list[Issue]) -> bool:
+    """Minimum structure of an exploration delivery.
+
+    An explore run owes the reader a direction map, not a verdict: no
+    load-bearing claim set, engineering handoff, acceptance test, or
+    targeted re-verification record is required, and none is fabricated to
+    satisfy a gate. A blank package is still not a delivery -- it needs at
+    least one readable lead, exclusion, or open question, a one-line human
+    status, and a next step or an explicit reason to stop
+    (summary.human_recommendation). Whether the leads are any good is a
+    human judgement the validator does not attempt."""
+
+    summary = state.get("summary", {})
+    status = summary.get("status")
+    if status not in TERMINAL_DELIVERY_STATUSES:
+        _add_once(
+            issues,
+            "tier.terminal_status_missing",
+            "canonical packages require a terminal summary status",
+            "/summary/status",
+            "WARNING",
+        )
+        return False
+    met = True
+    if not exploration_findings(state):
+        _add_once(
+            issues,
+            "explore.findings_missing",
+            "exploration delivery requires at least one hypothesis, exclusion, or open question with readable text",
+            "/hypotheses",
+            "WARNING",
+        )
+        met = False
+    if not _required_summary_text(
+        summary,
+        status,
+        "human_status",
+        "tier.human_status_missing",
+        "exploration delivery requires an explicit human status",
+        issues,
+        reject_human_status_sentinel=True,
+    ):
+        met = False
+    if not _required_summary_text(
+        summary,
+        status,
+        "human_recommendation",
+        "tier.human_recommendation_missing",
+        "exploration delivery requires a next step or an explicit reason to stop",
+        issues,
+    ):
+        met = False
+    return met
+
+
 def _canonical_delivery_tier_contract(
     state: dict[str, Any],
     issues: list[Issue],
@@ -1134,6 +1246,8 @@ def _canonical_delivery_tier_contract(
     host_led = contract.get("research_workflow") == "host_led_v1"
     if contract.get("durability") != "canonical_package" or not host_led:
         return True
+    if contract.get("posture") == "explore":
+        return _explore_delivery_contract(state, issues)
 
     summary = state.get("summary", {})
     status = summary.get("status")
@@ -1215,6 +1329,77 @@ def _canonical_delivery_tier_contract(
     return load_set_met and handoff_met and reverification_met
 
 
+def _validate_claim_chain(
+    claim_id: str,
+    claim: dict[str, Any],
+    evidence_map: dict[str, dict[str, Any]],
+    artifacts: dict[str, dict[str, Any]],
+    raw_payloads: dict[str, bytes],
+    sources: dict[str, dict[str, Any]],
+    origins: dict[str, dict[str, Any]],
+    issues: list[Issue],
+) -> None:
+    """The evidence-chain bar for one claim presented as verified.
+
+    Shared by every terminal status that carries such a claim: each
+    load-bearing claim on a PASS package, and any claim an EXPLORED package
+    marks load-bearing or corroborated. A completion status alone never
+    confers verified semantics; only this chain does."""
+
+    path = f"/claims/{claim_id}"
+    if claim.get("status") not in PASSING_CLAIM_STATUSES:
+        _add(issues, "claim.status", "claim presented as verified is not corroborated", path)
+    claim_type = claim.get("claim_type")
+    if claim_type not in {"source-of-record", "empirical", "local-observation"}:
+        _add(issues, "claim.type", "load-bearing claim type is missing or invalid", path)
+    supporting = claim.get("supporting_evidence_ids")
+    if not isinstance(supporting, list) or not supporting:
+        _add(issues, "claim.evidence_missing", "load-bearing claim has no supporting evidence", path)
+        return
+    if not _claim_has_available_evidence(claim, evidence_map, artifacts, raw_payloads):
+        _add(issues, "claim.raw_missing", "load-bearing claim has no available raw artifact", path)
+    if claim.get("applicability") != "checked":
+        _add(issues, "claim.applicability", "load-bearing claim applicability is not checked", path)
+    origin_ids = claim.get("source_origin_ids")
+    if not isinstance(origin_ids, list) or not origin_ids:
+        _add(issues, "claim.origin_missing", "load-bearing claim has no source origin", path)
+    evidence_origins = {
+        evidence_map[evidence_id].get("origin_id")
+        for evidence_id in supporting
+        if evidence_id in evidence_map
+    }
+    if isinstance(origin_ids, list) and set(origin_ids) != evidence_origins:
+        _add(issues, "claim.origin_mismatch", "claim origins differ from supporting evidence", path)
+    if claim_type == "empirical":
+        independent = {
+            origin_id
+            for origin_id in evidence_origins
+            if origins.get(origin_id, {}).get("independent") is True
+        }
+        if len(independent) < 2:
+            _add(
+                issues,
+                "claim.origin_independence",
+                "empirical load-bearing claims require two independent source origins",
+                path,
+            )
+    for evidence_id in supporting:
+        evidence = evidence_map.get(evidence_id)
+        if evidence is None:
+            continue
+        if evidence.get("entailment") != "entailed":
+            _add(issues, "claim.entailment", "load-bearing evidence is not marked entailing", path)
+        if evidence.get("applicability") != "checked":
+            _add(issues, "claim.applicability", "load-bearing evidence applicability is not checked", path)
+    if claim_type == "source-of-record" and not _has_direct_t1_evidence(supporting, evidence_map, sources):
+        _add(
+            issues,
+            "claim.source_of_record_missing",
+            "source-of-record claim requires a directly fetched T1 source",
+            path,
+        )
+
+
 def _validate_pass(
     state: dict[str, Any],
     events: list[dict[str, Any]],
@@ -1249,60 +1434,11 @@ def _validate_pass(
     origins = indexed(state.get("source_origins"))
     for claim_id in load_ids:
         claim = claims.get(claim_id)
-        path = f"/claims/{claim_id}"
         if claim is None:
             continue
-        if claim.get("status") not in PASSING_CLAIM_STATUSES:
-            _add(issues, "claim.status", "load-bearing claim status cannot clear PASS", path)
-        claim_type = claim.get("claim_type")
-        if claim_type not in {"source-of-record", "empirical", "local-observation"}:
-            _add(issues, "claim.type", "load-bearing claim type is missing or invalid", path)
-        supporting = claim.get("supporting_evidence_ids")
-        if not isinstance(supporting, list) or not supporting:
-            _add(issues, "claim.evidence_missing", "load-bearing claim has no supporting evidence", path)
-            continue
-        if not _claim_has_available_evidence(claim, evidence_map, artifacts, raw_payloads):
-            _add(issues, "claim.raw_missing", "load-bearing claim has no available raw artifact", path)
-        if claim.get("applicability") != "checked":
-            _add(issues, "claim.applicability", "load-bearing claim applicability is not checked", path)
-        origin_ids = claim.get("source_origin_ids")
-        if not isinstance(origin_ids, list) or not origin_ids:
-            _add(issues, "claim.origin_missing", "load-bearing claim has no source origin", path)
-        evidence_origins = {
-            evidence_map[evidence_id].get("origin_id")
-            for evidence_id in supporting
-            if evidence_id in evidence_map
-        }
-        if isinstance(origin_ids, list) and set(origin_ids) != evidence_origins:
-            _add(issues, "claim.origin_mismatch", "claim origins differ from supporting evidence", path)
-        if claim_type == "empirical":
-            independent = {
-                origin_id
-                for origin_id in evidence_origins
-                if origins.get(origin_id, {}).get("independent") is True
-            }
-            if len(independent) < 2:
-                _add(
-                    issues,
-                    "claim.origin_independence",
-                    "empirical load-bearing claims require two independent source origins",
-                    path,
-                )
-        for evidence_id in supporting:
-            evidence = evidence_map.get(evidence_id)
-            if evidence is None:
-                continue
-            if evidence.get("entailment") != "entailed":
-                _add(issues, "claim.entailment", "load-bearing evidence is not marked entailing", path)
-            if evidence.get("applicability") != "checked":
-                _add(issues, "claim.applicability", "load-bearing evidence applicability is not checked", path)
-        if claim_type == "source-of-record" and not _has_direct_t1_evidence(supporting, evidence_map, sources):
-            _add(
-                issues,
-                "claim.source_of_record_missing",
-                "source-of-record claim requires a directly fetched T1 source",
-                path,
-            )
+        _validate_claim_chain(
+            claim_id, claim, evidence_map, artifacts, raw_payloads, sources, origins, issues
+        )
 
     contract = state.get("contract", {})
     posture = contract.get("posture")
@@ -1414,6 +1550,47 @@ def _validate_partial(
         )
 
 
+def _validate_explored(
+    state: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    raw_payloads: dict[str, bytes],
+    evidence_map: dict[str, dict[str, Any]],
+    issues: list[Issue],
+) -> None:
+    """EXPLORED delivers a direction map; whatever it presents as verified is still checked.
+
+    Tentative leads live in hypotheses/open_questions and owe no evidence.
+    Any claim the package marks load-bearing or corroborated, or lists in
+    summary.load_bearing_claim_ids, must clear the same chain a PASS claim
+    clears -- finishing an explore run cannot launder an unverified lead
+    into a decision premise."""
+
+    if state.get("contract", {}).get("posture") != "explore":
+        _add(
+            issues,
+            "status.explored_posture_mismatch",
+            "EXPLORED is only valid for an explore-posture contract",
+            "/summary/status",
+        )
+    claims = indexed(state.get("claims"))
+    load_ids = state.get("summary", {}).get("load_bearing_claim_ids", [])
+    presented = [claim_id for claim_id in load_ids if isinstance(claim_id, str)] if isinstance(load_ids, list) else []
+    presented.extend(
+        claim_id
+        for claim_id, claim in claims.items()
+        if claim.get("load_bearing") is True or claim.get("status") in PASSING_CLAIM_STATUSES
+    )
+    sources = indexed(state.get("sources"))
+    origins = indexed(state.get("source_origins"))
+    for claim_id in dict.fromkeys(presented):
+        claim = claims.get(claim_id)
+        if claim is None:
+            continue
+        _validate_claim_chain(
+            claim_id, claim, evidence_map, artifacts, raw_payloads, sources, origins, issues
+        )
+
+
 def _validate_report_hash(
     session_dir: Path, current_hash: str, issues: list[Issue]
 ) -> None:
@@ -1494,12 +1671,30 @@ def _validate_loaded_session(
     evidence_map = _validate_evidence(state, artifacts, raw_payloads, issues)
 
     status = state.get("summary", {}).get("status")
+    posture = state.get("contract", {}).get("posture")
+    semantics = state.get("session", {}).get("contract_semantics")
     if status not in VALID_DELIVERY_STATUSES:
         _add(issues, "status.invalid", "delivery status is invalid", "/summary/status")
+    elif status == "EXPLORED" and semantics not in EXPLORE_SEMANTICS:
+        _add(
+            issues,
+            "status.explored_semantics",
+            "EXPLORED requires pure_trigger_v5 contract semantics; an older package keeps its recorded verdict vocabulary",
+            "/summary/status",
+        )
+    elif posture == "explore" and status in {"PASS", "PARTIAL"}:
+        _add(
+            issues,
+            "status.explore_verdict_forbidden",
+            "explore posture delivers EXPLORED or BLOCKED; a PASS/PARTIAL verdict needs a lookup, synthesis, scientific, or decision contract",
+            "/summary/status",
+        )
     elif status == "PASS":
         _validate_pass(state, events, artifacts, raw_payloads, evidence_map, issues)
     elif status == "PARTIAL":
         _validate_partial(state, artifacts, raw_payloads, evidence_map, issues)
+    elif status == "EXPLORED":
+        _validate_explored(state, artifacts, raw_payloads, evidence_map, issues)
     canonical_delivery_met = _canonical_delivery_tier_contract(state, issues)
     profile_evidence_met = _profile_evidence_contract(
         state, artifacts, raw_payloads, evidence_map, issues

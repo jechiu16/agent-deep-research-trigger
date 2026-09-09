@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta data-state-sha256="01640382d4332f3e749c2b54ea084d7a004afa633c4085e5dc1742c95a3192eb" content="canonical-state-binding">
+  <title>研究工作階段 deep-2e712a5c9ec7464db3dbb1771ceacde0</title>
+  <style>
+    :root { --ink:#18201f; --muted:#60706b; --paper:#f4f0e6; --panel:#fffdf7;
+      --line:#c8c0ad; --accent:#a33b20; --forest:#21564a; --gold:#c49335; --bad:#8d2118; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:
+      radial-gradient(circle at 9% 4%, #e7d8b5 0, transparent 28rem),
+      linear-gradient(135deg, #f8f4e9, var(--paper));
+      font-family:"Noto Serif TC","PingFang TC","Songti TC","Iowan Old Style","Palatino Linotype",Georgia,serif; line-height:1.55; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.22;
+      background-image:repeating-linear-gradient(90deg, transparent 0 79px, #998d7330 80px); }
+    main,header { position:relative; width:min(1120px,calc(100% - 32px)); margin:auto; }
+    header { padding:64px 0 32px; border-bottom:2px solid var(--ink); }
+    .eyebrow { text-transform:uppercase; letter-spacing:.18em; font:700 12px/1.2 Georgia,serif; color:var(--accent); }
+    h1 { margin:.25rem 0 .5rem; font-size:clamp(1.6rem,3.4vw,2.4rem); line-height:1.3; max-width:22ch; }
+    .kicker { margin:0 0 .5rem; color:var(--muted); font-size:.95rem; max-width:60ch; }
+    h2 { margin:0 0 1.25rem; font-size:clamp(1.65rem,3vw,2.5rem); }
+    h3 { margin:.45rem 0; }
+    .status-line { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:22px; }
+    .verdict { border:2px solid currentColor; padding:6px 11px; font-weight:800; letter-spacing:.08em; }
+    .verdict.pass { color:var(--forest); } .verdict.invalid { color:var(--bad); }
+    .verdict.partial { color:#78530c; } .verdict.blocked { color:var(--bad); }
+    .hash { color:var(--muted); word-break:break-all; font:12px/1.4 Menlo,Consolas,monospace; }
+    main { padding:24px 0 80px; display:grid; gap:18px; }
+    section { background:color-mix(in srgb,var(--panel) 94%,transparent); border:1px solid var(--line);
+      padding:clamp(22px,4vw,44px); box-shadow:0 14px 38px #4e46351a; }
+    .decision { border-left:8px solid var(--accent); }
+    .decision-text { font-size:1.08rem; line-height:1.75; max-width:46ch; }
+    .human-first { border-left:8px solid var(--forest); }
+    .human-first h2 { font-size:clamp(1.8rem,4vw,3.2rem); }
+    .reason-list { padding-left:1.2rem; } .reason-list li { margin:.55rem 0; }
+    .kernel-details { margin-top:4px; }
+    .meta-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+    .meta-card,.verification,.safe-action { background:#f6f0e1; border:1px solid var(--line); padding:15px; }
+    .claim { padding:22px 0; border-top:1px solid var(--line); } .claim:first-child { border-top:0; }
+    .claim-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px;
+      font:700 11px/1.5 Menlo,Consolas,monospace; text-transform:uppercase; }
+    .pill.critical { color:var(--accent); border-color:var(--accent); }
+    .pill.advisory { color:var(--gold); border-color:var(--gold); }
+    .observations { border-left:8px solid var(--gold); }
+    .observation { padding:16px 18px; margin:10px 0; background:#f6f0e1; border:1px dashed var(--gold); }
+    .observation-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+    .human-first.explore { border-left-color:var(--gold); }
+    .hypothesis { padding:14px 18px; margin:10px 0; background:#f6f0e1; border:1px dashed var(--line); }
+    .pill.excluded { color:var(--muted); border-color:var(--muted); }
+    .verdict.explored { color:var(--forest); }
+    details { margin:.8rem 0; } summary { cursor:pointer; font-weight:700; }
+    .evidence { border:1px solid var(--line); background:#fbf7ed; padding:14px 17px; }
+    .evidence-meta { display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--muted); margin:12px 0; }
+    blockquote { margin:14px 0; padding:16px 20px; border-left:4px solid var(--gold); background:#efe8d8;
+      white-space:pre-wrap; overflow-wrap:anywhere; }
+    .offsets,.note,.empty { color:var(--muted); }
+    .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; padding:10px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-size:.75rem; }
+    .verification-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+    .issues { padding-left:1.2rem; } .issues li { margin:.55rem 0; } .issues .error { color:var(--bad); }
+    .gate-ok { color:var(--forest); font-weight:800; }
+    code { font-family:Menlo,Consolas,monospace; font-size:.86em; }
+    a { color:var(--forest); text-underline-offset:3px; }
+    footer { margin-top:20px; color:var(--muted); font-size:.85rem; }
+    @media (max-width:620px) { header { padding-top:38px; } section { padding:20px; }
+      .hash { font-size:10px; } th,td { padding:8px; } }
+    @media print { body { background:white; } body::before { display:none; } section { box-shadow:none; break-inside:avoid; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">研究報告</div>
+    <h1>方向已列出，先測跨 host 接手</h1>
+    <p class="kicker">研究問題：除了繼續加 provider，這個框架還有哪些值得探索的演進方向？</p>
+    <div class="status-line"><span class="pill status">light</span></div>
+  </header>
+  <main>
+    <section class="human-first explore"><div class="eyebrow">探索結果</div><h2>先做 P1 的跨 host 接手測試；若第二個 host 找不到下一步，回頭調整 hypotheses 的欄位，而不是急著進入選型。</h2><p><strong>研究狀態:</strong> 探索完成，方向仍待驗證；示範資料</p><p class="note">探索完成，方向仍待驗證：以下方向與假說皆為暫定，不是已證實的結論，也不代表已完成選型。</p><h3>有希望的方向</h3><article class="hypothesis"><div class="observation-head"><code>H1</code><span class="pill advisory">暫定假說</span></div><p>保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。</p><p class="note"><strong>依據:</strong> 暫定假說；依據 SKILL.md／HARNESS.md 以 host 為唯一 Organizer 的設計，以及 .claude／.agents 兩個 wrapper 都只轉指向同一份 SKILL.md。尚未測試跨 host 接手成本。</p><p><strong>下一個檢查:</strong> 用同一份研究資料測試另一個 host 能否找到下一步。</p></article><article class="hypothesis"><div class="observation-head"><code>H2</code><span class="pill advisory">暫定假說</span></div><p>探索與決策分流之後，最值得做的下一步是「接手」：讓下一個 host 只讀 state.json 就能延續探索，不需要跨專案資料庫。</p><p class="note"><strong>依據:</strong> 暫定；hypotheses、planned_checks、open_questions 三個容器在基準版本已存在且可 patch，但四個 field packages 裡全是空的，先前沒有任何 gate 或 render 使用它們。</p><p><strong>下一個檢查:</strong> 讓第二個 host 在不看 report.html 的情況下只讀 state.json，指出下一個檢查，比對是否與 planned_checks 一致。</p></article><article class="hypothesis"><div class="observation-head"><code>H3</code><span class="pill advisory">暫定假說</span></div><p>先前發現的免費 route 缺口，對探索廣度的影響可能大於再加一個付費 provider。</p><p class="note"><strong>依據:</strong> 暫定；規格已將此缺口另行追蹤，本輪未驗證，也未讀取任何 route 的實際使用資料。</p><p><strong>下一個檢查:</strong> 盤點四個 field packages 的 events.jsonl，統計 free route 與 paid route 的實際使用比例。</p></article><h3>已排除的方向</h3><article class="hypothesis"><div class="observation-head"><code>H4</code><span class="pill excluded">已排除</span></div><p>同一 session 內從 explore 自動升格為 decision 合約。</p><p class="note"><strong>依據:</strong> 暫定判斷；來自規格第 79 行的範圍說明。</p><p><strong>排除原因:</strong> 規格明確將同 session 合約切換與自動升格排除在本輪之外；而且若探索與決策共用同一個 status 生命週期，「本輪在找方向還是做決策」會再度變得不可分辨。</p></article><article class="hypothesis"><div class="observation-head"><code>H5</code><span class="pill excluded">已排除</span></div><p>以分支數或文件數作為探索品質分數。</p><p class="note"><strong>依據:</strong> 暫定判斷；來自規格第 111 行的人工評估說明。</p><p><strong>排除原因:</strong> 規格反對以篇數或分支數評分；這類指標會把探索變回填表，與本輪「降低操作負擔」的目的相反。</p></article><h3>本輪仍不知道的事</h3><ul><li>另一個 host 接手探索結果的成本要怎麼量測？目前沒有基準，也沒有失敗案例。</li><li>先前發現的 HTML report hash 缺口是否影響探索型報告的可信度？本輪未處理。</li><li>探索途中若真的驗到一條正式主張，應留在同一 package 記錄為 claim，還是另開 decision 合約？本輪只允許前者的記錄，不產生 verdict。</li></ul><h3>最值得做的下一個檢查</h3><ul><li><code>P1</code> 用同一份 state.json 讓第二個 host（未讀報告）指出下一步，比對其答案與 planned_checks 是否一致。 <span class="note">（針對 H1, H2）</span></li><li><code>P2</code> 盤點四個 field packages 的 free／paid route 使用比例，判斷 H3 是否值得深入。 <span class="note">（針對 H3）</span></li></ul></section>
+    <details class="kernel-details" open><summary>技術細節</summary>
+    <section class="decision"><div class="eyebrow">探索摘要</div><h2>摘要</h2>
+      <p class="decision-text">示範性質：本 package 由 FABLE 依 2026-09-07 探索規格離線產生，依據僅為閱讀本 repository 的程式碼與規格，未進行外部研究或任何付費呼叫。五條方向中三條保留、兩條排除，皆為暫定；本輪未做選型。</p>
+      <p><strong>更新時間:</strong> 2026-09-07T09:00:00Z</p>
+      <p><strong>status:</strong> <span class="verdict explored">EXPLORED</span></p>
+      <p><strong>posture:</strong> explore</p></section>
+    <section><h2>研究契約</h2><div class="meta-grid">
+      <div class="meta-card"><strong>成本檔位</strong><br>light</div>
+      <div class="meta-card"><strong>研究模式</strong><br>explore</div>
+      <div class="meta-card"><strong>初始搜尋路由</strong><br>host-web</div>
+      
+    </div><details><summary>成本向量</summary><table><tbody><tr><td>deep</td><td>0</td></tr><tr><td>search</td><td>5</td></tr><tr><td>free</td><td>unlimited</td></tr></tbody></table></details>
+    <details><summary>實體請求上限</summary><table><tbody><tr><td>deep</td><td>0</td></tr><tr><td>host_retrieval</td><td>3</td></tr><tr><td>local</td><td>1</td></tr><tr><td>network_experiment</td><td>0</td></tr><tr><td>organizer_pass</td><td>1</td></tr><tr><td>probe</td><td>5</td></tr><tr><td>processor</td><td>0</td></tr><tr><td>transport</td><td>0</td></tr></tbody></table></details></section>
+    
+    <section><h2>待釐清問題</h2><ul><li>另一個 host 接手探索結果的成本要怎麼量測？目前沒有基準，也沒有失敗案例。</li><li>先前發現的 HTML report hash 缺口是否影響探索型報告的可信度？本輪未處理。</li><li>探索途中若真的驗到一條正式主張，應留在同一 package 記錄為 claim，還是另開 decision 合約？本輪只允許前者的記錄，不產生 verdict。</li></ul></section>
+    <section><h2>決定性檢查結果</h2>
+      <p><strong>integrity_ok:</strong> 是</p>
+      <p><strong>tier_contract_met:</strong> 是</p>
+      <p><strong>human_recommendation:</strong> 先做 P1 的跨 host 接手測試；若第二個 host 找不到下一步，回頭調整 hypotheses 的欄位，而不是急著進入選型。</p>
+      <ul class="issues"><li class="warning"><strong>WARNING session.degraded_durability</strong>: session was produced on a host that cannot fsync a directory (e.g. Windows); a crash between a rename/unlink and its directory fsync could leave this package&#x27;s most recent write unconfirmed on disk <code>/session/durability_capabilities/directory_fsync</code></li><li class="warning"><strong>WARNING session.degraded_privacy</strong>: session was produced on a host without POSIX private file modes (e.g. Windows); state.json, events.jsonl, and raw artifact bytes are not confined to the owning user by filesystem permissions <code>/session/durability_capabilities/private_file_mode</code></li></ul></section>
+    <p class="hash">state sha256 01640382d4332f3e749c2b54ea084d7a004afa633c4085e5dc1742c95a3192eb</p></details>
+    <footer>本報告由決定性渲染器直接從唯一正式 JSON 狀態產生，作為 host 撰寫報告的備援視圖；不含 JavaScript 或遠端資產。</footer>
+  </main>
+</body>
+</html>

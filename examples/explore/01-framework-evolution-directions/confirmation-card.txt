@@ -1,0 +1,14 @@
+Query Brief
+問題：除了繼續加 provider，這個框架還有哪些值得探索的演進方向？
+研究模式：explore
+交付：背景執行；host 撰寫結論；canonical JSON + 繁體中文 HTML
+探索：交付暫定方向、排除結果與下一個檢查，不做選型；寫入的正式主張仍逐項查核
+
+成本選擇（deep, search, free）
+- light: (0, 5, unlimited)
+- standard: (1, 15, unlimited)
+- heavy: (2, 30, unlimited)
+
+D1 候選（低價優先）：perplexity[rank=1, missing-key], gemini-deep[rank=2, missing-key]；Search：brave[missing-key], exa[missing-key], openalex[locally-verified], sonar[missing-key]；外送：研究問題，不含本機檔案
+規則：D1 只買廣度與結構；host 複驗、修正並下結論；超限即停外呼並標註缺口。
+請回覆 light、standard、heavy 或 cancel。

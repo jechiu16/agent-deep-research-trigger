@@ -135,6 +135,118 @@ def _human_open_questions(state: dict[str, Any]) -> str:
     return _text_list(state.get("open_questions", []), "尚未記錄待釐清問題")
 
 
+def _is_excluded(hypothesis: dict[str, Any]) -> bool:
+    reason = hypothesis.get("excluded_reason")
+    return isinstance(reason, str) and bool(reason.strip())
+
+
+def _render_hypotheses(state: dict[str, Any], *, excluded: bool) -> str:
+    """Tentative leads (or excluded ones). Never a verified-looking status pill.
+
+    The deterministic counterpart of HARNESS.md's exploration report rules:
+    a lead shows its text, basis, next check, pointers, and -- when it was
+    excluded -- the reason; it never shows a claim status, a load-bearing
+    marker, or an evidence link that could read as proof. Returns "" when
+    there is nothing to show so the caller can omit the block."""
+
+    rows: list[str] = []
+    for item in state.get("hypotheses", []):
+        if not isinstance(item, dict) or _is_excluded(item) != excluded:
+            continue
+        details: list[str] = []
+        basis = item.get("basis")
+        if isinstance(basis, str) and basis.strip():
+            details.append(f'<p class="note"><strong>依據:</strong> {_escape(basis)}</p>')
+        if excluded:
+            details.append(f'<p><strong>排除原因:</strong> {_escape(item.get("excluded_reason"))}</p>')
+        next_check = item.get("next_check")
+        if isinstance(next_check, str) and next_check.strip():
+            details.append(f'<p><strong>下一個檢查:</strong> {_escape(next_check)}</p>')
+        pointers = [
+            str(ref)
+            for field in ("source_ids", "artifact_ids")
+            for ref in (item.get(field) if isinstance(item.get(field), list) else [])
+        ]
+        if pointers:
+            details.append(
+                f'<p class="note"><strong>來源指標:</strong> {_escape(", ".join(pointers))}</p>'
+            )
+        pill = _pill("已排除", "excluded") if excluded else _pill("暫定假說", "advisory")
+        rows.append(
+            '<article class="hypothesis">'
+            f'<div class="observation-head"><code>{_escape(item.get("id"))}</code>{pill}</div>'
+            f'<p>{_escape(item.get("text", "未記錄假說內容"))}</p>'
+            + "".join(details)
+            + "</article>"
+        )
+    return "".join(rows)
+
+
+def _render_next_checks(state: dict[str, Any]) -> str:
+    """planned_checks first; else the next_check of each still-open hypothesis; else ""."""
+
+    rows: list[str] = []
+    for item in state.get("planned_checks", []):
+        if not isinstance(item, dict):
+            continue
+        refs = item.get("hypothesis_ids")
+        suffix = (
+            f' <span class="note">（針對 {_escape(", ".join(str(ref) for ref in refs))}）</span>'
+            if isinstance(refs, list) and refs
+            else ""
+        )
+        rows.append(f"<li><code>{_escape(item.get('id'))}</code> {_escape(_list_entry_text(item))}{suffix}</li>")
+    if rows:
+        return "<ul>" + "".join(rows) + "</ul>"
+    fallback = [
+        item["next_check"]
+        for item in state.get("hypotheses", [])
+        if isinstance(item, dict)
+        and not _is_excluded(item)
+        and isinstance(item.get("next_check"), str)
+        and item["next_check"].strip()
+    ]
+    return _text_list(fallback) if fallback else ""
+
+
+def _render_explore_first_screen(
+    state: dict[str, Any], recommendation: str, human_status: str, delivered: bool
+) -> str:
+    """First screen of an explore run: direction map, unknowns, next check.
+
+    Same semantics HARNESS.md asks of a host-authored exploration report:
+    leads render as tentative, exclusions keep their reason, the unknowns
+    block is always present, and no engineering-decision block (bounded
+    decision, load-bearing reasons, safe action, acceptance test) is shown
+    or reported as missing."""
+
+    kept = _render_hypotheses(state, excluded=False)
+    excluded = _render_hypotheses(state, excluded=True)
+    if delivered:
+        framing = (
+            '<p class="note">探索完成，方向仍待驗證：以下方向與假說皆為暫定，'
+            "不是已證實的結論，也不代表已完成選型。</p>"
+        )
+        next_step = ""
+    else:
+        framing = '<p class="note">探索成果不完整：以下為目前已保存的暫定內容。</p>'
+        next_step = (
+            '<h3>下一步</h3><article class="safe-action"><h3>補齊探索成果後重新產生報告</h3>'
+            "<p>可逆：是</p></article>"
+        )
+    next_checks = _render_next_checks(state)
+    return (
+        '<section class="human-first explore"><div class="eyebrow">探索結果</div>'
+        f"<h2>{_escape(recommendation)}</h2>"
+        f"<p><strong>研究狀態:</strong> {_escape(human_status)}</p>{framing}"
+        f"<h3>有希望的方向</h3>{kept or _empty('尚未記錄方向')}"
+        + (f"<h3>已排除的方向</h3>{excluded}" if excluded else "")
+        + f"<h3>本輪仍不知道的事</h3>{_human_open_questions(state)}"
+        f"<h3>最值得做的下一個檢查</h3>{next_checks or _empty('尚未記錄下一個檢查')}"
+        f"{next_step}</section>"
+    )
+
+
 def _artifact_link(artifact: dict[str, Any] | None) -> str:
     if not artifact:
         return ""
@@ -386,8 +498,11 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
         if not report.tier_contract_met
         else "pass"
         if status == "PASS"
+        else "explored"
+        if status == "EXPLORED"
         else "partial"
     )
+    explore = contract.get("posture") == "explore"
     recommendation = organizer_recommendation
     human_status = report.human_status or summary.get("human_status") or "尚未記錄研究判斷"
     if not valid:
@@ -435,6 +550,10 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
       <p><strong>建議:</strong> 驗證未通過，暫不作建議</p>
       <p class="decision-text">{_escape(failure_summary)}</p>
       <h3>安全下一步</h3><p>修正驗證問題後重新產生報告</p></section>'''
+    elif explore:
+        human_first_html = _render_explore_first_screen(
+            state, recommendation, human_status, report.tier_contract_met
+        )
     else:
         if report.tier_contract_met:
             fallback_action = first_safe_action_html
@@ -461,6 +580,36 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     has_headline = isinstance(summary_headline, str) and bool(summary_headline.strip())
     headline_text = (
         summary_headline if valid and report.tier_contract_met and has_headline else recommendation
+    )
+    decision_eyebrow, decision_title = ("探索摘要", "摘要") if explore else ("有界結論", "結論")
+    decision_text = summary.get("decision", "尚未記錄結論")
+    if explore and not (isinstance(summary.get("decision"), str) and summary["decision"].strip()):
+        decision_text = "本輪為探索型交付，不做出有界結論。"
+    floor_card = (
+        ""
+        if explore
+        else '<div class="meta-card"><strong>關鍵主張下限</strong><br>'
+        f'{_escape(contract.get("evidence_floor", {}).get("minimum_load_bearing_claims"))}</div>'
+    )
+    record_sections = [
+        ("正式主張", "", _render_claims(state), bool(state.get("claims"))),
+        ("Host 綜合觀察", "observations", _render_observations(state), bool(state.get("observations"))),
+        ("證據紀錄", "", _render_evidence(state), bool(state.get("evidence"))),
+        ("來源與起源", "", _render_sources(state), bool(state.get("sources"))),
+        ("驗證", "", _render_verification(state), bool(state.get("verification"))),
+    ]
+    record_sections_html = "\n    ".join(
+        (f'<section class="{css}">' if css else "<section>") + f"<h2>{title}</h2>{body}</section>"
+        for title, css, body, present in record_sections
+        if present or not explore
+    )
+    handoff_html = (
+        ""
+        if explore
+        else f"""<section><h2>工程交接</h2>{safe_action_html}
+      <h3>限制條件</h3>{_text_list(state.get("engineering_handoff", {}).get("constraints", []))}
+      <h3>驗收測試</h3>{_text_list(state.get("engineering_handoff", {}).get("acceptance_tests", []))}</section>
+    """
     )
 
     return f"""<!doctype html>
@@ -512,6 +661,10 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
     .observations {{ border-left:8px solid var(--gold); }}
     .observation {{ padding:16px 18px; margin:10px 0; background:#f6f0e1; border:1px dashed var(--gold); }}
     .observation-head {{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }}
+    .human-first.explore {{ border-left-color:var(--gold); }}
+    .hypothesis {{ padding:14px 18px; margin:10px 0; background:#f6f0e1; border:1px dashed var(--line); }}
+    .pill.excluded {{ color:var(--muted); border-color:var(--muted); }}
+    .verdict.explored {{ color:var(--forest); }}
     details {{ margin:.8rem 0; }} summary {{ cursor:pointer; font-weight:700; }}
     .evidence {{ border:1px solid var(--line); background:#fbf7ed; padding:14px 17px; }}
     .evidence-meta {{ display:flex; flex-wrap:wrap; gap:8px 20px; color:var(--muted); margin:12px 0; }}
@@ -542,8 +695,8 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
   <main>
     {human_first_html}
     <details class="kernel-details" open><summary>技術細節</summary>
-    <section class="decision"><div class="eyebrow">有界結論</div><h2>結論</h2>
-      <p class="decision-text">{_escape(summary.get("decision", "尚未記錄結論"))}</p>
+    <section class="decision"><div class="eyebrow">{decision_eyebrow}</div><h2>{decision_title}</h2>
+      <p class="decision-text">{_escape(decision_text)}</p>
       <p><strong>更新時間:</strong> {_escape(state.get("session", {}).get("updated_at"))}</p>
       <p><strong>status:</strong> <span class="verdict {status_class}">{_escape(display_status)}</span></p>
       <p><strong>posture:</strong> {_escape(contract.get("posture", "未記錄研究模式"))}</p></section>
@@ -551,18 +704,11 @@ def render_html(state: dict[str, Any], report: ValidationReport) -> str:
       <div class="meta-card"><strong>成本檔位</strong><br>{_escape(public_profile)}</div>
       <div class="meta-card"><strong>研究模式</strong><br>{_escape(contract.get("posture"))}</div>
       <div class="meta-card"><strong>初始搜尋路由</strong><br>{_escape(contract.get("scout_route"))}</div>
-      <div class="meta-card"><strong>關鍵主張下限</strong><br>{_escape(contract.get("evidence_floor", {}).get("minimum_load_bearing_claims"))}</div>
+      {floor_card}
     </div>{f'<details><summary>成本向量</summary><table><tbody>{cost_rows}</tbody></table></details>' if cost_rows else ''}
     <details><summary>實體請求上限</summary><table><tbody>{quota_rows}</tbody></table></details></section>
-    <section><h2>正式主張</h2>{_render_claims(state)}</section>
-    <section class="observations"><h2>Host 綜合觀察</h2>{_render_observations(state)}</section>
-    <section><h2>證據紀錄</h2>{_render_evidence(state)}</section>
-    <section><h2>來源與起源</h2>{_render_sources(state)}</section>
-    <section><h2>驗證</h2>{_render_verification(state)}</section>
-    <section><h2>工程交接</h2>{safe_action_html}
-      <h3>限制條件</h3>{_text_list(state.get("engineering_handoff", {}).get("constraints", []))}
-      <h3>驗收測試</h3>{_text_list(state.get("engineering_handoff", {}).get("acceptance_tests", []))}</section>
-    <section><h2>待釐清問題</h2>{_text_list(state.get("open_questions", []))}</section>
+    {record_sections_html}
+    {handoff_html}<section><h2>待釐清問題</h2>{_text_list(state.get("open_questions", []))}</section>
     <section><h2>決定性檢查結果</h2>
       <p><strong>integrity_ok:</strong> {_boolean_label(report.integrity_ok)}</p>
       <p><strong>tier_contract_met:</strong> {_boolean_label(report.tier_contract_met)}</p>

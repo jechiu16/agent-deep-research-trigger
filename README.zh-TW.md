@@ -30,7 +30,7 @@ coding session。
 - Provider synthesis 僅供 discovery；load-bearing claims 必須追到 direct capture 的 exact excerpt。
 - Host 自主做 targeted re-verification，錯的改，驗不到的標註。
 - 成本只用呼叫次數控制：`deep`、`search` 與不限次數的 `free`。
-- Integrity 仍 fail closed；不確定性產生有標註的 package，而不是不交付。
+- Integrity 仍 fail closed；不確定性產生有標註的 package，而不是不交付。探索型（`explore`）以 `EXPLORED` 交付暫定方向與下一個檢查，不做選型。
 
 ## Architecture
 

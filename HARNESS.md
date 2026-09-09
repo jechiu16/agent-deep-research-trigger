@@ -174,6 +174,73 @@ as it is disclosed here (and, for the parts not addressed, usually also in
 }
 ```
 
+## Exploration Runs
+
+Choose `--posture explore` when the user is asking for directions or
+possibilities ("what else is worth exploring?") rather than a decision. An
+explore run delivers a direction map and ends `EXPLORED`, never `PASS` or
+`PARTIAL`; when the user later asks to pick one, start a formal `decision`
+contract. Same card, same profiles, same quota: `light/standard/heavy` cap
+what the run may spend, and D1/D2 are used when the host expects them to pay
+off, not because the profile bought them.
+
+Save leads as they appear, in the sections that already exist:
+
+- `hypotheses`: one record per direction. The minimum is a stable `id` and a
+  readable `text`; add `basis`, `next_check`, `source_ids`, `artifact_ids`
+  as they become known, and `excluded_reason` once a direction is ruled out
+  (keep the record -- an exclusion is a finding). A hypothesis must not carry
+  `status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`;
+  promote it to `claims` with evidence to earn those.
+- `planned_checks`: the next checks worth doing, optionally with
+  `hypothesis_ids`.
+- `open_questions`: what this run still does not know.
+
+```json
+{
+  "id": "H1",
+  "text": "保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。",
+  "basis": "暫定假說；尚未測試跨 host 接手成本。",
+  "next_check": "用同一份研究資料測試另一個 host 能否找到下一步。"
+}
+```
+
+Switch breadth and depth on what you find; leave a one-line reason (in
+`basis` or `open_questions`) only when the route materially changes:
+
+| Current finding | Reasonable next move |
+|---|---|
+| Sources keep repeating the same view | Change source type or angle, or stop that branch |
+| Several routes hold and nothing separates them | Find the check, counterexample, or small experiment that would |
+| The original premise fails, or a lead could change direction | Re-cut the sub-question and open the new direction; keep what still holds |
+| Remaining detail does not affect this run's goal | Mark the gap and deliver |
+
+No branch count, document count, or scan/deepen ratio is required.
+
+Delivery: set `summary.status` to `EXPLORED`, a one-line `human_status`
+(e.g. 探索完成，方向仍待驗證), and put the next step -- or the reason to stop
+-- in `human_recommendation`. `finalize`/`render` require only that: at least
+one hypothesis or open question with text, plus those two lines. No
+load-bearing claim set, `decision`, safe action, acceptance test, or
+`targeted_reverification` record is required, and finalize does not turn
+their absence into `BLOCKED`. An empty package is still not a delivery.
+
+What stays checked: any claim the package marks `load_bearing` or
+`corroborated` (or lists in `load_bearing_claim_ids`) must clear the same
+`claim -> evidence -> source + source_origin -> raw artifact` chain a PASS
+claim clears; raw-artifact integrity, quota, and confirmation binding are
+unchanged. Finishing as `EXPLORED` confers no verified semantics.
+
+Report (both tracks): leads render as tentative (`暫定假說`), exclusions keep
+their reason, the unknowns block is always present, and no bounded decision,
+load-bearing reasons, safe action, or acceptance test is shown or reported
+missing. A host-authored exploration report must keep those semantics; the
+deterministic fallback implements them in
+`rendering.py::_render_explore_first_screen`. Only packages recorded under
+`pure_trigger_v5` know this posture and status; older packages keep their
+recorded verdict vocabulary. `examples/explore/` holds an offline,
+demonstration-only package produced with this flow.
+
 ## Execution And Delivery
 
 Use boundary-owned calls; do not send a separate paid permit:

@@ -31,7 +31,7 @@ report. Budget or evidence gaps are visible but never prevent delivery.
 - Provider synthesis is discovery-only; load-bearing claims trace to exact direct captures.
 - The host performs targeted re-verification, fixes errors, and marks what cannot be verified.
 - Cost is bounded by call counts: `deep`, `search`, and unlimited `free` routes.
-- Integrity still fails closed; uncertainty produces an annotated package, not silence.
+- Integrity still fails closed; uncertainty produces an annotated package, not silence. An `explore` run ends `EXPLORED` with tentative directions and a next check instead of a verdict.
 
 ## Architecture
 

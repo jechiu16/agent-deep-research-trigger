@@ -3,6 +3,42 @@
 All notable changes to this project are documented here. The project follows
 Semantic Versioning once the v2 runtime leaves development status.
 
+## Unreleased
+
+### Added
+
+- An `explore` posture for "what is worth exploring?" questions, accepted by
+  `card` and `draft`, and an `EXPLORED` terminal status handled consistently
+  by state validation, `validate`, `finalize`, `render`, and `status`. An
+  exploration delivers tentative directions (`hypotheses`, with optional
+  `basis`, `next_check`, `excluded_reason`, `source_ids`, `artifact_ids`),
+  `planned_checks`, and `open_questions`; it needs no load-bearing claim
+  set, bounded decision, safe action, acceptance test, or targeted
+  re-verification record, and finalize no longer seals their absence as
+  `BLOCKED`. An empty package is still delivery-incomplete.
+- `pure_trigger_v5` contract semantics. Only a package recorded under it
+  knows the explore posture, the `EXPLORED` status, and the hypothesis-shape
+  rules; older packages (including `examples/field/`) keep their recorded
+  verdict vocabulary unchanged.
+- A deterministic exploration first screen (directions, exclusions with
+  reasons, unknowns, next check) that never renders a lead as verified and
+  omits the engineering-decision blocks; HARNESS.md states the same
+  semantics for host-authored reports.
+- `examples/explore/01-framework-evolution-directions`: an offline,
+  demonstration-only exploration package produced with the new flow.
+
+### Changed
+
+- The per-claim evidence-chain checks are shared (`_validate_claim_chain`):
+  a PASS package runs them on every load-bearing claim as before, and an
+  EXPLORED package runs them on any claim it marks `load_bearing` or
+  `corroborated`, so finishing an exploration confers no verified
+  semantics. Hypotheses cannot carry `status`, `load_bearing`,
+  `supporting_evidence_ids`, or `claim_type`.
+- `explore` contracts draft with `minimum_load_bearing_claims: 0`; every
+  other posture keeps its positive floor. An explore run cannot end `PASS`
+  or `PARTIAL`, and `EXPLORED` is rejected on any other posture.
+
 ## 2.0.0b10
 
 ### Added

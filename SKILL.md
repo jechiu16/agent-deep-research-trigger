@@ -19,9 +19,9 @@ D1：{最低成本 ready provider；候選與資料外送範圍}
 
 `SKILL.md` is the sole public protocol shared by Claude Code and Codex. On
 explicit `/deep`, normalize the question from conversation context, run only
-the local `deep-research-state card` command, and show exactly one completed
-card with no prose around it. If the question is missing, set the recommendation
-to `調整`; do not start research.
+the local `deep-research-state card` command (`--posture explore` when the
+user wants directions rather than a decision), and show exactly one completed
+card with no prose around it. Without a question, recommend `調整` and stop.
 
 ## Before Confirmation
 
@@ -55,6 +55,6 @@ gate and no automatic provider bundle.
 Always deliver canonical `state.json`, `events.jsonl`, `raw/`, and a
 hash-bound `report.html`, host-authored or, failing that, deterministically
 rendered. Human-facing fields and HTML are Traditional Chinese; exact
-excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged.
-Integrity failure remains unsafe; evidence insufficiency remains an
-annotated status. Neither prevents producing the package.
+excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged. Integrity
+failure remains unsafe; evidence insufficiency remains an annotated status.
+Neither prevents the package. An `explore` run ends `EXPLORED`, not a verdict.

@@ -23,7 +23,7 @@ from .providers import (
 )
 
 
-POSTURES = frozenset({"lookup", "synthesis", "scientific", "decision"})
+POSTURES = frozenset({"lookup", "synthesis", "scientific", "decision", "explore"})
 EXECUTIONS = frozenset({"host_native", "external_managed"})
 DURABILITIES = frozenset({"chat_only", "canonical_package"})
 ACTION_CATEGORIES = (
@@ -225,8 +225,13 @@ def draft_host_led_contract(
             # specifically to substantiate more than a single claim; keep
             # light/standard at the historical floor of one so a light run
             # stays genuinely cheap and a standard run is not re-tightened.
+            # explore delivers a direction map, not a verdict, so it carries
+            # no load-bearing floor at any profile: the extra Heavy capacity
+            # is a ceiling the host may use, never a claim quota to fill.
             "evidence_floor": {
-                "minimum_load_bearing_claims": 2 if profile["profile"] == "heavy" else 1,
+                "minimum_load_bearing_claims": (
+                    0 if posture == "explore" else 2 if profile["profile"] == "heavy" else 1
+                ),
                 "require_raw_artifacts": True,
             },
             "artifact_policy": {"default_retention": "session", "allow_provider_payloads": False},
@@ -532,9 +537,11 @@ def _validate_contract_core(
     _host_led_budget_errors(contract, registry, mappings, errors)
 
     evidence_floor = contract.get("evidence_floor")
-    if not isinstance(evidence_floor, dict) or not _is_positive_count(
-        evidence_floor.get("minimum_load_bearing_claims") if isinstance(evidence_floor, dict) else None
-    ):
+    floor = evidence_floor.get("minimum_load_bearing_claims") if isinstance(evidence_floor, dict) else None
+    if contract.get("posture") == "explore":
+        if not _is_count(floor):
+            errors.append("explore evidence floor must be a non-negative integer")
+    elif not _is_positive_count(floor):
         errors.append("evidence floor must require at least one load-bearing claim")
     return errors
 

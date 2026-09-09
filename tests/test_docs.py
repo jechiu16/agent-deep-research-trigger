@@ -132,6 +132,26 @@ class DocumentationTests(unittest.TestCase):
         ):
             self.assertIn(phrase, text)
 
+    def test_exploration_runs_are_documented_with_runtime_semantics(self) -> None:
+        harness = self.read("HARNESS.md")
+        section = self.section(harness, "## Exploration Runs", "## Execution And Delivery")
+        for phrase in (
+            "--posture explore",
+            "`EXPLORED`",
+            "never `PASS` or",
+            "excluded_reason",
+            "next_check",
+            "must not carry",
+            "No branch count",
+            "confers no verified semantics",
+            "暫定假說",
+            "pure_trigger_v5",
+        ):
+            self.assertIn(phrase, section)
+        self.assertIn("explore", self.read("SKILL.md"))
+        for relative in ("README.md", "README.zh-TW.md"):
+            self.assertIn("`explore`", self.read(relative))
+
     def test_agents_and_wrappers_keep_one_protocol(self) -> None:
         agents = self.read("AGENTS.md")
         self.assertIn("not a second public", agents)

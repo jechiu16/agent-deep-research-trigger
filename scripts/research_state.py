@@ -35,6 +35,7 @@ from research_harness.boundary import (
     execute_probe,
 )
 from research_harness.contracts import (
+    POSTURES,
     contract_card_sha256,
     draft_host_led_contract,
     normalize_contract,
@@ -205,9 +206,10 @@ def _format_confirmation_card(payload: dict[str, Any]) -> str:
         f"問題：{brief['question']}",
         f"研究模式：{brief['posture']}",
         "交付：背景執行；host 撰寫結論；canonical JSON + 繁體中文 HTML",
-        "",
-        "成本選擇（deep, search, free）",
     ]
+    if brief["posture"] == "explore":
+        lines.append("探索：交付暫定方向、排除結果與下一個檢查，不做選型；寫入的正式主張仍逐項查核")
+    lines.extend(["", "成本選擇（deep, search, free）"])
     for name in ("light", "standard", "heavy"):
         profile = payload["profiles"][name]
         lines.append(
@@ -899,7 +901,7 @@ def build_parser() -> argparse.ArgumentParser:
         "card", help="render the single local-only budget confirmation card"
     )
     card.add_argument("--question", required=True)
-    card.add_argument("--posture", choices=["lookup", "synthesis", "scientific", "decision"], default="decision")
+    card.add_argument("--posture", choices=sorted(POSTURES), default="decision")
     card.add_argument("--profiles", help="optional budget profile JSON override")
     card.add_argument("--registry-overlay")
     _add_json_flag(card)
@@ -909,7 +911,7 @@ def build_parser() -> argparse.ArgumentParser:
         "draft", help="build an unconfirmed host-led contract after profile selection"
     )
     draft.add_argument("--question", required=True)
-    draft.add_argument("--posture", choices=["lookup", "synthesis", "scientific", "decision"], default="decision")
+    draft.add_argument("--posture", choices=sorted(POSTURES), default="decision")
     draft.add_argument("--profile", choices=["light", "standard", "heavy"], required=True)
     draft.add_argument("--profiles", help="optional budget profile JSON override")
     draft.add_argument("--registry-overlay")
