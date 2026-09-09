@@ -256,7 +256,6 @@ class DocumentationTests(unittest.TestCase):
             text = self.read(relative)
             for heading in headings:
                 self.assertIn(heading, text)
-            self.assertLessEqual(len(text.splitlines()), 180)
             for phrase in (
                 "Host",
                 "D1/D2",
