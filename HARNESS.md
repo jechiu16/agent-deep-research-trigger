@@ -36,11 +36,15 @@ CLI="$ROOT/.venv/bin/deep-research-state"
 SESSION="/absolute/path/to/this-run-package"
 ```
 
-Before confirmation, the only permitted command is local and read-only:
+Before confirmation, the only research CLI command is local and read-only:
 
 ```bash
 "$CLI" card --question '<question>' --posture decision
 ```
+
+Orientation before the card (SKILL.md, Boundaries) uses the host's own
+read-only file tools, not this CLI; no package exists yet, and none is
+created to wait for a clarifying answer.
 
 After confirmation, bind and start one contract (`--posture explore` uses the
 same commands):
@@ -57,7 +61,12 @@ same commands):
 ```
 
 The choice on the public card is the only user confirmation. `prepare` and
-`confirm` are internal hash-binding steps, not a second prompt.
+`confirm` are internal hash-binding steps, not a second prompt. A question
+asked to understand the user -- before the card, or while the run waits on
+an answer -- is not a confirmation and authorizes nothing. The contract's
+`local_file_egress` stays `false`: orientation may help form the research
+question the card disclosed, but it authorizes no egress of local content,
+not excerpts, not secrets, not a detailed summary.
 
 ## Contract Shape
 
@@ -207,7 +216,11 @@ changed. When an input is in doubt, pause what depends on it: `excerpt`
 reporting several matches is an ambiguity to settle by reading the
 contexts -- `--nth` records a choice, it does not justify one; a list you
 hold only part of supports a statement about that part, so before any
-count or coverage comparison confirm the range you actually used.
+count or coverage comparison confirm the range you actually used. A
+confusion about what the user means or values is settled by asking, not
+by more material: pause what depends on that reading, leave the package
+`IN_PROGRESS` while you wait, and resume on the answer -- no status,
+record, or field marks the wait.
 
 ## Checking What Carries Weight
 

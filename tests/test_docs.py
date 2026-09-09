@@ -45,18 +45,21 @@ class DocumentationTests(unittest.TestCase):
         boundaries = " ".join(self.section(text, "## Boundaries", "## Delivery").split())
         for phrase in (
             "Before confirmation",
-            "do not search, inspect the project, call a provider, or start a worker",
+            "do not search, call a provider, start a worker",
             "Local profile/registry reads",
             "make no external request",
+            # Round 5: in-scope read-only orientation is allowed; what it
+            # read is not evidence and does not widen the disclosed egress.
+            "material for understanding, not evidence",
+            "widening egress is a new card",
             "do not invent project knowledge",
             "one run",
             "spend nothing",
-            "Re-card only when the vector, provider set, or egress scope changes",
+            "or when the purpose or research scope moves past what was confirmed",
             "read [HARNESS.md](HARNESS.md)",
         ):
             self.assertIn(phrase, boundaries)
-        # The not-yet-in-force orientation rule lives in the design record;
-        # the live protocol carries no candidate rule marked as such.
+        # The live protocol carries no candidate rule marked as not in force.
         self.assertNotIn("Target wording", text)
         self.assertNotIn("not in force", boundaries)
 
@@ -69,7 +72,8 @@ class DocumentationTests(unittest.TestCase):
         normalized = " ".join(text.split())
         for phrase in (
             "traced to a captured source",
-            "Ask the user again only for",
+            "New authorization is needed only for",
+            "bounds authorization, not questions",
             "permission to act",
         ):
             self.assertIn(phrase, normalized)

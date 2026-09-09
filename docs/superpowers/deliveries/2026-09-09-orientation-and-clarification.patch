@@ -1,0 +1,282 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9fc765b..99b93ac 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -61,6 +61,20 @@ Semantic Versioning once the v2 runtime leaves development status.
+   remains the byte-exact original, and provider text still cannot support
+   a claim at any length. `synthesis_truncated` stays in the record and is
+   always `false`.
++- Before confirmation, `SKILL.md` now allows read-only orientation inside
++  the session's project and the files the user named -- as far as it takes
++  to understand the situation, ask a necessary question, or write the
++  brief -- and asks the host to ask the user, before the card, when it is
++  confused about what they mean, want, or value instead of filling in a
++  reading for them. The prohibition on search, providers, workers, project
++  code, and package creation before confirmation is unchanged; what
++  orientation read is not evidence and does not widen egress
++  (`local_file_egress` stays `false`). The research core's
++  re-authorization sentence now says it bounds authorization, not
++  questions: a mid-run confusion is settled by asking, with the package
++  left `IN_PROGRESS`. `HARNESS.md`, `SCENARIOS.md`, and the README demo
++  line follow. Round 3 kept the pre-confirmation prohibition; round 5
++  enables in-scope orientation by the user's decision in that round.
+ 
+ ### Fixed
+ 
+diff --git a/HARNESS.md b/HARNESS.md
+index 8bdd54d..e061478 100644
+--- a/HARNESS.md
++++ b/HARNESS.md
+@@ -36,12 +36,16 @@ CLI="$ROOT/.venv/bin/deep-research-state"
+ SESSION="/absolute/path/to/this-run-package"
+ ```
+ 
+-Before confirmation, the only permitted command is local and read-only:
++Before confirmation, the only research CLI command is local and read-only:
+ 
+ ```bash
+ "$CLI" card --question '<question>' --posture decision
+ ```
+ 
++Orientation before the card (SKILL.md, Boundaries) uses the host's own
++read-only file tools, not this CLI; no package exists yet, and none is
++created to wait for a clarifying answer.
++
+ After confirmation, bind and start one contract (`--posture explore` uses the
+ same commands):
+ 
+@@ -57,7 +61,12 @@ same commands):
+ ```
+ 
+ The choice on the public card is the only user confirmation. `prepare` and
+-`confirm` are internal hash-binding steps, not a second prompt.
++`confirm` are internal hash-binding steps, not a second prompt. A question
++asked to understand the user -- before the card, or while the run waits on
++an answer -- is not a confirmation and authorizes nothing. The contract's
++`local_file_egress` stays `false`: orientation may help form the research
++question the card disclosed, but it authorizes no egress of local content,
++not excerpts, not secrets, not a detailed summary.
+ 
+ ## Contract Shape
+ 
+@@ -207,7 +216,11 @@ changed. When an input is in doubt, pause what depends on it: `excerpt`
+ reporting several matches is an ambiguity to settle by reading the
+ contexts -- `--nth` records a choice, it does not justify one; a list you
+ hold only part of supports a statement about that part, so before any
+-count or coverage comparison confirm the range you actually used.
++count or coverage comparison confirm the range you actually used. A
++confusion about what the user means or values is settled by asking, not
++by more material: pause what depends on that reading, leave the package
++`IN_PROGRESS` while you wait, and resume on the answer -- no status,
++record, or field marks the wait.
+ 
+ ## Checking What Carries Weight
+ 
+diff --git a/README.md b/README.md
+index 0002fc5..faa499c 100644
+--- a/README.md
++++ b/README.md
+@@ -123,7 +123,8 @@ candidate. Adding a tool changes only its registry class.
+ 
+ ## Demo
+ 
+-The first response is one card, not an automatic research call:
++The first response is one card -- or a clarifying question when the host
++is unsure what you mean -- never an automatic research call:
+ 
+ ```text
+ 問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
+diff --git a/README.zh-TW.md b/README.zh-TW.md
+index 03b722c..6022df1 100644
+--- a/README.zh-TW.md
++++ b/README.zh-TW.md
+@@ -117,7 +117,7 @@ source fit 或 privacy 更重要，host 可以改選卡片已揭露的候選。
+ 
+ ## Demo
+ 
+-第一次回覆只是一張卡，不會自動開始研究：
++第一次回覆是一張卡，或在 host 不確定你的意思時先問一句；不會自動開始研究：
+ 
+ ```text
+ 問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
+diff --git a/SCENARIOS.md b/SCENARIOS.md
+index d82654c..910916b 100644
+--- a/SCENARIOS.md
++++ b/SCENARIOS.md
+@@ -51,7 +51,8 @@ state what remains unverified when the budget stops.
+ 
+ ## Anti-Patterns
+ 
+-- Research before profile confirmation.
++- Research before profile confirmation beyond the read-only orientation the
++  protocol allows.
+ - Provider report presented as evidence or final verdict.
+ - Automatic D1/D2 provider bundle.
+ - Token estimates presented as hard cost control.
+diff --git a/SKILL.md b/SKILL.md
+index 9da0ac9..f1ad3dd 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -18,12 +18,19 @@ D1：{最低成本 ready provider；候選與資料外送範圍}
+ # /deep
+ 
+ `SKILL.md` is the sole public protocol shared by Claude Code and Codex. On
+-explicit `/deep`, normalize the question from conversation context, run only
+-the local `deep-research-state card` command, and show exactly one completed
+-card with no prose around it. Without a question, recommend `調整` and stop.
+-The posture on the card -- `decision` by default, `explore` when the user
+-wants directions rather than a verdict -- says what this run hands back, not
+-how you think along the way.
++explicit `/deep`, first understand what the user wants to clarify, from the
++conversation and, where it helps, a read-only look at the project (see
++Boundaries). When you have a reading of their question, purpose, and
++priorities that you are not confused about, run the local
++`deep-research-state card` command and show exactly one completed card with
++no prose around it; the brief states that reading for the user to confirm.
++When you are still confused about what they mean, want, or value, ask
++first -- say where the confusion is and what each reading would have you
++do differently -- and card after the answer. Without enough of a question
++to card, ask; do not print an empty card. The posture on the card --
++`decision` by default, `explore` when the user wants directions rather than
++a verdict -- says what this run hands back, not how you think along the
++way.
+ 
+ ## How To Research
+ 
+@@ -33,13 +40,28 @@ in what you write; never force the whole run to become one of them.
+ 
+ Start where you are. The brief says what this round is meant to find out;
+ add what is known or uncertain only where it helps. If the question is not
+-yet located, say so and make locating it the purpose. Recommend a profile by
+-the scope and checks you expect, not by how little you know. Framing is
+-deciding what this round is to understand and within what scope, and it
+-moves as material comes in; it is not query decomposition, a retrieval
+-choice about sub-queries, and findings about query decomposition do not,
+-by themselves, establish whether a way of framing the problem is helpful
+-or harmful.
++yet located, say so and make locating it the purpose. Keep two kinds of
++not-knowing apart. A fact you have not researched, an assumption you can
++name, or the consequences of a trade-off can be what the round is for. Not
++understanding what the user means, wants, or values cannot be settled by
++more searching, and it is not settled by a fluent reading that quietly
++picks a value ordering for them: ask before you run, and you need not
++first show that the readings diverge widely. If "better" could mean speed
++or maintainability, ask which; that example does not make it a question
++for every comparison. When what to weigh is itself what the user wants to
++explore, write the purpose as exploring the trade-offs and their
++consequences -- neither making them choose weights first nor filling the
++weights in yourself. Do not re-ask what they have already said, and do not
++manufacture a question to look careful; there is no set number of
++questions or turns. A reading you are not confused about goes into the
++brief for the user to confirm: the card is where the two of you confirm a
++reading, not where an unresolved confusion is left for the user to notice.
++Recommend a profile by the scope and checks you expect, not by how little
++you know. Framing is deciding what this round is to understand and within
++what scope, and it moves as material comes in; it is not query
++decomposition, a retrieval choice about sub-queries, and findings about
++query decomposition do not, by themselves, establish whether a way of
++framing the problem is helpful or harmful.
+ 
+ Choose each step by what could change your mind: which one thing, if known,
+ would most move your understanding or your next move? Learn it in a way that
+@@ -96,10 +118,16 @@ not checking it -- the check still follows the use.
+ 
+ Changing path is not changing authority. Inside the confirmed question,
+ count vector, provider set, and egress scope, re-cut sub-questions and
+-methods freely; note a major turn in one line. Ask the user again only for a
+-purpose, spend, data egress, or change to their system that goes beyond
++methods freely; note a major turn in one line. New authorization is needed
++only for a purpose, spend, data egress, or change to their system beyond
+ what was confirmed; operations the confirmation already covers are not
+-re-asked one by one. A research conclusion adds no permission to act on it.
++re-asked one by one. That bounds authorization, not questions: a confusion
++about what the user means or values that surfaces mid-run is settled by
++asking, as before the card -- pause what depends on that reading, keep the
++covered work the answer does not touch, and resume on the answer. An
++answer authorizes nothing beyond what was confirmed; if it moves the
++purpose or scope past the confirmation, re-card. A research conclusion
++adds no permission to act on it.
+ 
+ Continue while this round's purpose is unmet and there is still a next step
+ that is authorized, proportionate in cost, and expected to bring real
+@@ -122,14 +150,32 @@ look complete.
+ ## Boundaries
+ 
+ Before confirmation, nothing that costs, sends data out, or changes
+-anything: do not search, inspect the project, call a provider, or start a
+-worker. Local profile/registry reads for the card are allowed and make no
+-external request. If the question is vague, write locating it as this
+-round's purpose from the conversation you already have; do not invent
+-project knowledge to fill the brief. The reply `light`, `standard`, or
+-`heavy` confirms that printed count vector and disclosed provider/egress set
+-for one run; `調整` and `取消` spend nothing. Re-card only when the vector,
+-provider set, or egress scope changes.
++anything: do not search, call a provider, start a worker, run project code
++or tests, or create a package. Local profile/registry reads for the card
++are allowed and make no external request. Read-only orientation is a
++method you may use, not a stage: inside the project this session is in and
++the files the user named, read what it takes -- a README, the layout, an
++entry point -- to understand the situation, ask a necessary question, or
++write the brief, then stop; if the conversation already gives you that, do
++not read. A home directory or a parent of several projects is not the
++project; credentials and sensitive logs are not in scope just because they
++sit inside it; anything outside that scope needs the user, and a file they
++named needs no second permission. Do not keep scanning to guess a meaning
++you should ask about. What you read is material for understanding, not
++evidence: a claim that later rests on it still needs the capture and
++checks any claim needs. Nor does it widen egress: the card discloses that
++the research question may leave and local files do not; the question you
++card may be informed by what you read, but local excerpts, secrets, or
++detail do not leave as a "research question", summarized or otherwise --
++widening egress is a new card, while sub-queries inside the confirmed
++scope need none. A question that is open -- no settled boundary or
++answer -- is not one you misunderstand: write locating it as this round's
++purpose from what you have; do not invent project knowledge to fill the
++brief. The reply `light`, `standard`, or `heavy` confirms that printed
++count vector and disclosed provider/egress set for one run; `調整` and
++`取消` spend nothing. Re-card when the vector, provider set, or egress
++scope changes, or when the purpose or research scope moves past what was
++confirmed; sub-questions and methods inside them need no new card.
+ 
+ After confirmation, read [HARNESS.md](HARNESS.md), create the canonical
+ package, and run in the background. The host is the sole conclusion author.
+diff --git a/tests/test_docs.py b/tests/test_docs.py
+index 1e3c0a2..d54af3a 100644
+--- a/tests/test_docs.py
++++ b/tests/test_docs.py
+@@ -45,18 +45,21 @@ class DocumentationTests(unittest.TestCase):
+         boundaries = " ".join(self.section(text, "## Boundaries", "## Delivery").split())
+         for phrase in (
+             "Before confirmation",
+-            "do not search, inspect the project, call a provider, or start a worker",
++            "do not search, call a provider, start a worker",
+             "Local profile/registry reads",
+             "make no external request",
++            # Round 5: in-scope read-only orientation is allowed; what it
++            # read is not evidence and does not widen the disclosed egress.
++            "material for understanding, not evidence",
++            "widening egress is a new card",
+             "do not invent project knowledge",
+             "one run",
+             "spend nothing",
+-            "Re-card only when the vector, provider set, or egress scope changes",
++            "or when the purpose or research scope moves past what was confirmed",
+             "read [HARNESS.md](HARNESS.md)",
+         ):
+             self.assertIn(phrase, boundaries)
+-        # The not-yet-in-force orientation rule lives in the design record;
+-        # the live protocol carries no candidate rule marked as such.
++        # The live protocol carries no candidate rule marked as not in force.
+         self.assertNotIn("Target wording", text)
+         self.assertNotIn("not in force", boundaries)
+ 
+@@ -69,7 +72,8 @@ class DocumentationTests(unittest.TestCase):
+         normalized = " ".join(text.split())
+         for phrase in (
+             "traced to a captured source",
+-            "Ask the user again only for",
++            "New authorization is needed only for",
++            "bounds authorization, not questions",
+             "permission to act",
+         ):
+             self.assertIn(phrase, normalized)

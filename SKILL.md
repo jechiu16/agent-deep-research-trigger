@@ -18,12 +18,19 @@ D1：{最低成本 ready provider；候選與資料外送範圍}
 # /deep
 
 `SKILL.md` is the sole public protocol shared by Claude Code and Codex. On
-explicit `/deep`, normalize the question from conversation context, run only
-the local `deep-research-state card` command, and show exactly one completed
-card with no prose around it. Without a question, recommend `調整` and stop.
-The posture on the card -- `decision` by default, `explore` when the user
-wants directions rather than a verdict -- says what this run hands back, not
-how you think along the way.
+explicit `/deep`, first understand what the user wants to clarify, from the
+conversation and, where it helps, a read-only look at the project (see
+Boundaries). When you have a reading of their question, purpose, and
+priorities that you are not confused about, run the local
+`deep-research-state card` command and show exactly one completed card with
+no prose around it; the brief states that reading for the user to confirm.
+When you are still confused about what they mean, want, or value, ask
+first -- say where the confusion is and what each reading would have you
+do differently -- and card after the answer. Without enough of a question
+to card, ask; do not print an empty card. The posture on the card --
+`decision` by default, `explore` when the user wants directions rather than
+a verdict -- says what this run hands back, not how you think along the
+way.
 
 ## How To Research
 
@@ -33,13 +40,28 @@ in what you write; never force the whole run to become one of them.
 
 Start where you are. The brief says what this round is meant to find out;
 add what is known or uncertain only where it helps. If the question is not
-yet located, say so and make locating it the purpose. Recommend a profile by
-the scope and checks you expect, not by how little you know. Framing is
-deciding what this round is to understand and within what scope, and it
-moves as material comes in; it is not query decomposition, a retrieval
-choice about sub-queries, and findings about query decomposition do not,
-by themselves, establish whether a way of framing the problem is helpful
-or harmful.
+yet located, say so and make locating it the purpose. Keep two kinds of
+not-knowing apart. A fact you have not researched, an assumption you can
+name, or the consequences of a trade-off can be what the round is for. Not
+understanding what the user means, wants, or values cannot be settled by
+more searching, and it is not settled by a fluent reading that quietly
+picks a value ordering for them: ask before you run, and you need not
+first show that the readings diverge widely. If "better" could mean speed
+or maintainability, ask which; that example does not make it a question
+for every comparison. When what to weigh is itself what the user wants to
+explore, write the purpose as exploring the trade-offs and their
+consequences -- neither making them choose weights first nor filling the
+weights in yourself. Do not re-ask what they have already said, and do not
+manufacture a question to look careful; there is no set number of
+questions or turns. A reading you are not confused about goes into the
+brief for the user to confirm: the card is where the two of you confirm a
+reading, not where an unresolved confusion is left for the user to notice.
+Recommend a profile by the scope and checks you expect, not by how little
+you know. Framing is deciding what this round is to understand and within
+what scope, and it moves as material comes in; it is not query
+decomposition, a retrieval choice about sub-queries, and findings about
+query decomposition do not, by themselves, establish whether a way of
+framing the problem is helpful or harmful.
 
 Choose each step by what could change your mind: which one thing, if known,
 would most move your understanding or your next move? Learn it in a way that
@@ -96,10 +118,16 @@ not checking it -- the check still follows the use.
 
 Changing path is not changing authority. Inside the confirmed question,
 count vector, provider set, and egress scope, re-cut sub-questions and
-methods freely; note a major turn in one line. Ask the user again only for a
-purpose, spend, data egress, or change to their system that goes beyond
+methods freely; note a major turn in one line. New authorization is needed
+only for a purpose, spend, data egress, or change to their system beyond
 what was confirmed; operations the confirmation already covers are not
-re-asked one by one. A research conclusion adds no permission to act on it.
+re-asked one by one. That bounds authorization, not questions: a confusion
+about what the user means or values that surfaces mid-run is settled by
+asking, as before the card -- pause what depends on that reading, keep the
+covered work the answer does not touch, and resume on the answer. An
+answer authorizes nothing beyond what was confirmed; if it moves the
+purpose or scope past the confirmation, re-card. A research conclusion
+adds no permission to act on it.
 
 Continue while this round's purpose is unmet and there is still a next step
 that is authorized, proportionate in cost, and expected to bring real
@@ -122,14 +150,32 @@ look complete.
 ## Boundaries
 
 Before confirmation, nothing that costs, sends data out, or changes
-anything: do not search, inspect the project, call a provider, or start a
-worker. Local profile/registry reads for the card are allowed and make no
-external request. If the question is vague, write locating it as this
-round's purpose from the conversation you already have; do not invent
-project knowledge to fill the brief. The reply `light`, `standard`, or
-`heavy` confirms that printed count vector and disclosed provider/egress set
-for one run; `調整` and `取消` spend nothing. Re-card only when the vector,
-provider set, or egress scope changes.
+anything: do not search, call a provider, start a worker, run project code
+or tests, or create a package. Local profile/registry reads for the card
+are allowed and make no external request. Read-only orientation is a
+method you may use, not a stage: inside the project this session is in and
+the files the user named, read what it takes -- a README, the layout, an
+entry point -- to understand the situation, ask a necessary question, or
+write the brief, then stop; if the conversation already gives you that, do
+not read. A home directory or a parent of several projects is not the
+project; credentials and sensitive logs are not in scope just because they
+sit inside it; anything outside that scope needs the user, and a file they
+named needs no second permission. Do not keep scanning to guess a meaning
+you should ask about. What you read is material for understanding, not
+evidence: a claim that later rests on it still needs the capture and
+checks any claim needs. Nor does it widen egress: the card discloses that
+the research question may leave and local files do not; the question you
+card may be informed by what you read, but local excerpts, secrets, or
+detail do not leave as a "research question", summarized or otherwise --
+widening egress is a new card, while sub-queries inside the confirmed
+scope need none. A question that is open -- no settled boundary or
+answer -- is not one you misunderstand: write locating it as this round's
+purpose from what you have; do not invent project knowledge to fill the
+brief. The reply `light`, `standard`, or `heavy` confirms that printed
+count vector and disclosed provider/egress set for one run; `調整` and
+`取消` spend nothing. Re-card when the vector, provider set, or egress
+scope changes, or when the purpose or research scope moves past what was
+confirmed; sub-questions and methods inside them need no new card.
 
 After confirmation, read [HARNESS.md](HARNESS.md), create the canonical
 package, and run in the background. The host is the sole conclusion author.

@@ -51,7 +51,8 @@ state what remains unverified when the budget stops.
 
 ## Anti-Patterns
 
-- Research before profile confirmation.
+- Research before profile confirmation beyond the read-only orientation the
+  protocol allows.
 - Provider report presented as evidence or final verdict.
 - Automatic D1/D2 provider bundle.
 - Token estimates presented as hard cost control.

@@ -117,7 +117,7 @@ source fit 或 privacy 更重要，host 可以改選卡片已揭露的候選。�
 
 ## Demo
 
-第一次回覆只是一張卡，不會自動開始研究：
+第一次回覆是一張卡，或在 host 不確定你的意思時先問一句；不會自動開始研究：
 
 ```text
 問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？

@@ -123,7 +123,8 @@ candidate. Adding a tool changes only its registry class.
 
 ## Demo
 
-The first response is one card, not an automatic research call:
+The first response is one card -- or a clarifying question when the host
+is unsure what you mean -- never an automatic research call:
 
 ```text
 問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？

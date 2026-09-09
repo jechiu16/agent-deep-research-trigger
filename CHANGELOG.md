@@ -61,6 +61,20 @@ Semantic Versioning once the v2 runtime leaves development status.
   remains the byte-exact original, and provider text still cannot support
   a claim at any length. `synthesis_truncated` stays in the record and is
   always `false`.
+- Before confirmation, `SKILL.md` now allows read-only orientation inside
+  the session's project and the files the user named -- as far as it takes
+  to understand the situation, ask a necessary question, or write the
+  brief -- and asks the host to ask the user, before the card, when it is
+  confused about what they mean, want, or value instead of filling in a
+  reading for them. The prohibition on search, providers, workers, project
+  code, and package creation before confirmation is unchanged; what
+  orientation read is not evidence and does not widen egress
+  (`local_file_egress` stays `false`). The research core's
+  re-authorization sentence now says it bounds authorization, not
+  questions: a mid-run confusion is settled by asking, with the package
+  left `IN_PROGRESS`. `HARNESS.md`, `SCENARIOS.md`, and the README demo
+  line follow. Round 3 kept the pre-confirmation prohibition; round 5
+  enables in-scope orientation by the user's decision in that round.
 
 ### Fixed
 
