@@ -1,21 +1,30 @@
 # /deep Organizer Harness
 
 Internal runtime bridge for the public flow in [SKILL.md](SKILL.md). Read it
-only after the user selects `light`, `standard`, or `heavy`.
+only after the user selects `light`, `standard`, or `heavy`. SKILL.md says
+how to research; this file says how to use the runtime to record what you
+find, check what carries weight, and deliver. It does not prescribe the
+order of your thinking.
 
 ## Product Contract
 
 - The selected host is the Organizer and sole conclusion author.
 - D1/D2 are untrusted discovery memos, never evidence or verdicts.
 - Re-verification corrects or annotates; it never suppresses delivery.
-- Counts, not token-price guesses, stop external calls.
+- Counts, not token-price guesses, stop external calls. Budget is a
+  ceiling, not a plan of work.
+- The posture says what the run hands back. In every posture the state
+  holds checked facts, directions, and guesses side by side, each in its own
+  section.
 - Deliver one machine truth (`state.json`) and one human projection
   (`report.html`), plus their journal and raw evidence.
 
-An epistemically `BLOCKED` package is still delivered. Only integrity failure
-means the report is unsafe to act on.
-Evidence gaps render as `證據不足 / EVIDENCE_INSUFFICIENT`; incomplete handoff
-fields render as `交付不完整 / DELIVERY_INCOMPLETE`.
+An epistemically `BLOCKED` package is still delivered. Integrity failure
+means the package cannot be trusted as a record; it says nothing about
+whether the research was good, and an intact package says nothing about
+whether its sources are right or its inferences sound. Evidence gaps render
+as `證據不足 / EVIDENCE_INSUFFICIENT`; incomplete handoff fields render as
+`交付不完整 / DELIVERY_INCOMPLETE`.
 
 ## Runtime Bridge
 
@@ -33,7 +42,8 @@ Before confirmation, the only permitted command is local and read-only:
 "$CLI" card --question '<question>' --posture decision
 ```
 
-After confirmation, bind and start one contract:
+After confirmation, bind and start one contract (`--posture explore` uses the
+same commands):
 
 ```bash
 "$CLI" draft --question '<question>' --posture decision \
@@ -74,7 +84,9 @@ Copy the chosen vector from `budget_profiles.json`; a user-controlled override
 may change numbers but never names tools. Exact routes remain in
 `stage_permit_map`, and physical/time/storage limits remain defense-in-depth.
 Require one reserved `verification` mapping and one
-`final_inference_review/organizer_pass/host` mapping.
+`final_inference_review/organizer_pass/host` mapping. An `explore` contract
+drafts with `minimum_load_bearing_claims: 0`; every other posture keeps a
+positive floor.
 
 ## Provider Routing
 
@@ -85,9 +97,12 @@ enter a class, never a profile.
 A present credential is not execution readiness. The adapter, storage policy,
 request boundary, and required environment must all pass local preflight.
 
-1. Prefer direct source-of-record or local routes.
-2. For D1, choose the lowest-rank ready provider unless source fit or privacy
-   justifies another card-disclosed candidate.
+1. Anything that will become a claim needs a direct source-of-record or
+   local route; a provider payload cannot support it.
+2. A provider report is a means you choose -- to save time, to buy an
+   independent angle, or to reach explanations you cannot -- not a stage
+   the profile bought. For D1, choose the lowest-rank ready provider unless
+   source fit or privacy justifies another card-disclosed candidate.
 3. Use D2 only for a material challenge, new angle, or expansion selected by
    the host after seeing D1 and current evidence.
 4. Never call a bundle merely because budget remains.
@@ -104,23 +119,78 @@ either way -- a rejected call is never retried or resubmitted. Do not expect
 `cost_usage` to increment 1:1 with every attempted paid call; check
 `rejected_unbilled` actions when reconciling spend against attempts.
 
-## Research Loop
+## Recording What You Find
 
-1. Frame the decision, assumptions, exclusions, and flip conditions.
-2. Run D1 when `deep > 0`; pass its useful hypotheses, contradictions,
-   citations, and bounded session context to the Organizer.
-3. Let the Organizer choose the smallest targeted checks. Paid search routes
-   consume `search`; host/local/direct free routes consume `free`.
-4. Capture qualifying source bytes and reconcile every load-bearing claim:
-   `claim -> evidence -> source + source_origin -> raw artifact`.
-5. Correct claims disproved by direct evidence. Mark unresolved claims and
-   their revisit trigger; do not convert model agreement into corroboration.
-6. Add a `targeted_reverification` record covering the final load-bearing claim
-   IDs, with corrected and unverifiable IDs plus a concise disposition.
-7. The host writes the bounded decision and development handoff, then validates
-   and renders.
+The state has a place for each kind of statement. Record as you go. The
+minimum is small; the rest is added when it exists, or when whoever picks
+this up next would need it.
 
-Minimal re-verification record:
+- **Where you start.** `framing.assumptions` and `framing.exclusions`. When
+  you re-cut the sub-question, add one line there (本輪把問題改讀為…). The
+  contract question itself is fixed; concluding that it was the wrong
+  question is a finding to deliver, not a reason to swap it.
+- **A guess or a direction.** `hypotheses`: a stable `id` and readable
+  `text` are enough. Add `basis`, `next_check`, `source_ids`, `artifact_ids`
+  when they exist, and `excluded_reason` when a direction is ruled out --
+  keep the record, an exclusion is a finding. A hypothesis must not carry
+  `status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`;
+  promote it to `claims` with evidence to earn those.
+
+```json
+{
+  "id": "H1",
+  "text": "保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。",
+  "basis": "暫定假說；尚未測試跨 host 接手成本。",
+  "next_check": "用同一份研究資料測試另一個 host 能否找到下一步。"
+}
+```
+
+- **Set aside for now.** `open_questions`. Say it was not pursued and why
+  (scope, cost, authorization); that is not the same as shown false.
+- **A next check worth doing.** `planned_checks`, optionally with
+  `hypothesis_ids`.
+- **An inference you rely on.** `observations`, with its premises (which may
+  cite checked claims by id) and its uncertainty in `basis`. Two checked
+  premises do not make the conclusion drawn from them a checked fact; it
+  stays an inference unless checked itself. It never satisfies an evidence
+  floor and is rendered as "not evidence".
+- **A checked fact.** `claims` with the chain
+  `claim -> evidence -> source + source_origin -> raw artifact`. Capture the
+  bytes (`host-capture`, `artifact-add`); provider payloads cannot support a
+  claim. Correct claims disproved by direct evidence; mark unresolved claims
+  and their revisit trigger; do not convert model agreement into
+  corroboration. This chain applies to any claim presented as verified, in
+  every posture -- it is not optional in an exploration.
+- **What a provider report gave you.** Feed its useful hypotheses,
+  contradictions, and citations into `hypotheses` and `planned_checks`;
+  `"$CLI" citations` lists what is still unverified. Nothing from a report
+  enters `claims` until you have captured the source yourself.
+
+When the route changes, leave a one-line reason in `basis`,
+`framing.assumptions`, or `open_questions` -- only then:
+
+| Current finding | Reasonable next move |
+|---|---|
+| Sources keep repeating the same view | Change source type or angle, or stop that branch |
+| Several routes hold and nothing separates them | Find the check, counterexample, or small experiment that would |
+| The original premise fails, or a lead could change direction | Re-cut the sub-question and open the new direction; keep what still holds |
+| Remaining detail does not affect this run's goal | Mark the gap and deliver |
+
+No branch count, document count, or scan/deepen ratio is required.
+
+## Checking What Carries Weight
+
+A statement is checked in proportion to its use, not to the package status.
+A guess needs nothing. A direction that shapes the next step needs its
+`basis`. An inference that supports a recommendation needs its premises and
+uncertainty stated, and a flip condition. A claim that supports a
+recommendation, rules an option out, or shapes an action needs the full
+chain above and targeted re-verification. This is the host's
+responsibility; the validator checks the chain of what you marked verified,
+not whether you marked everything that carries weight. Paid search routes
+consume `search`; host/local/direct free routes consume `free`.
+
+A verdict run (`PASS`/`PARTIAL`) records its re-verification:
 
 ```json
 {
@@ -134,16 +204,28 @@ Minimal re-verification record:
 }
 ```
 
-A **heavy** run (`profile: "heavy"`) spends its second deep call specifically
-to buy an independent angle on the current frame, and its scientific/decision
-delivery is gated on showing for it:
+`checked_claim_ids` must equal the final `load_bearing_claim_ids`. The
+runtime requires this record for any host-led verdict even when that set is
+empty; write the disposition honestly rather than inventing a check.
 
-- an `anti_lock_in` record binding to that call, and
+**Heavy.** The second deep call is capacity for an independent angle on the
+current frame. Commission it when that angle is what the next step needs
+(Provider Routing, rule 3), not because the profile bought it; a heavy run
+that never needed D2 has spent nothing wrongly.
+
+The runtime gate, described as it is: a heavy scientific/decision `PASS`
+requires
+
+- an `anti_lock_in` record, and
 - each load-bearing claim's captured evidence spanning at least two distinct
   upstream sources -- capture files that all trace back to one upstream
   (e.g. three claims that each cite only `noaa.gov`, only `navy.mil`, and
   only `nps.gov`, respectively, with nothing cross-checking any one of them)
   does not satisfy this.
+
+The gate does not check whether D2 was actually used. If you judged it not
+worth spending, the record's disposition says so; do not contrive a call to
+satisfy the record.
 
 ```json
 {
@@ -174,72 +256,33 @@ as it is disclosed here (and, for the parts not addressed, usually also in
 }
 ```
 
-## Exploration Runs
+What does not depend on posture: the claim chain, raw-artifact integrity,
+quota, and confirmation binding.
 
-Choose `--posture explore` when the user is asking for directions or
-possibilities ("what else is worth exploring?") rather than a decision. An
-explore run delivers a direction map and ends `EXPLORED`, never `PASS` or
-`PARTIAL`; when the user later asks to pick one, start a formal `decision`
-contract. Same card, same profiles, same quota: `light/standard/heavy` cap
-what the run may spend, and D1/D2 are used when the host expects them to pay
-off, not because the profile bought them.
+**Applies before a verdict delivery (`PASS`/`PARTIAL`).** The runtime
+enforces, for a `PASS`: at least the contract's
+`minimum_load_bearing_claims` load-bearing claims, each `corroborated` with
+an available raw artifact, `checked` applicability, entailing evidence, and
+a source origin; `summary.decision` within the confirmed host envelope; the
+re-verification record above; for `decision` posture the coverage audit and
+one `inference_joints` entry marked `weakest_joint` and
+`adversarially_reviewed`; for `lookup` a directly fetched T1 source behind
+each load-bearing claim; for `standard`/`heavy` at least one host-captured
+or locally produced piece of evidence behind each load-bearing claim. For
+any verdict it also expects a one-line `human_status`, a
+`human_recommendation`, a load-bearing reason linked to a titled URL source,
+a limitation or flip condition, a reversible safe action with an `id` and
+description, and one acceptance test in `檢查方式 => 預期結果` form; a
+`PARTIAL` additionally needs a reversible safe action that depends on no
+unresolved claim. None of this is a checklist for an exploration.
 
-Save leads as they appear, in the sections that already exist:
-
-- `hypotheses`: one record per direction. The minimum is a stable `id` and a
-  readable `text`; add `basis`, `next_check`, `source_ids`, `artifact_ids`
-  as they become known, and `excluded_reason` once a direction is ruled out
-  (keep the record -- an exclusion is a finding). A hypothesis must not carry
-  `status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`;
-  promote it to `claims` with evidence to earn those.
-- `planned_checks`: the next checks worth doing, optionally with
-  `hypothesis_ids`.
-- `open_questions`: what this run still does not know.
-
-```json
-{
-  "id": "H1",
-  "text": "保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。",
-  "basis": "暫定假說；尚未測試跨 host 接手成本。",
-  "next_check": "用同一份研究資料測試另一個 host 能否找到下一步。"
-}
-```
-
-Switch breadth and depth on what you find; leave a one-line reason (in
-`basis` or `open_questions`) only when the route materially changes:
-
-| Current finding | Reasonable next move |
-|---|---|
-| Sources keep repeating the same view | Change source type or angle, or stop that branch |
-| Several routes hold and nothing separates them | Find the check, counterexample, or small experiment that would |
-| The original premise fails, or a lead could change direction | Re-cut the sub-question and open the new direction; keep what still holds |
-| Remaining detail does not affect this run's goal | Mark the gap and deliver |
-
-No branch count, document count, or scan/deepen ratio is required.
-
-Delivery: set `summary.status` to `EXPLORED`, a one-line `human_status`
-(e.g. 探索完成，方向仍待驗證), and put the next step -- or the reason to stop
--- in `human_recommendation`. `finalize`/`render` require only that: at least
-one hypothesis or open question with text, plus those two lines. No
-load-bearing claim set, `decision`, safe action, acceptance test, or
-`targeted_reverification` record is required, and finalize does not turn
-their absence into `BLOCKED`. An empty package is still not a delivery.
-
-What stays checked: any claim the package marks `load_bearing` or
-`corroborated` (or lists in `load_bearing_claim_ids`) must clear the same
-`claim -> evidence -> source + source_origin -> raw artifact` chain a PASS
-claim clears; raw-artifact integrity, quota, and confirmation binding are
-unchanged. Finishing as `EXPLORED` confers no verified semantics.
-
-Report (both tracks): leads render as tentative (`暫定假說`), exclusions keep
-their reason, the unknowns block is always present, and no bounded decision,
-load-bearing reasons, safe action, or acceptance test is shown or reported
-missing. A host-authored exploration report must keep those semantics; the
-deterministic fallback implements them in
-`rendering.py::_render_explore_first_screen`. Only packages recorded under
-`pure_trigger_v5` know this posture and status; older packages keep their
-recorded verdict vocabulary. `examples/explore/` holds an offline,
-demonstration-only package produced with this flow.
+**Applies to an exploration (`EXPLORED`).** Exempt only from the
+verdict-specific handoff requirements above and from the minimum claim
+count. Any claim presented as verified or load-bearing still meets the
+applicable checks, and profile gates are not lifted by this section.
+Required: at least one hypothesis or open question with text, a one-line
+`human_status`, and a `human_recommendation` that names the next step or
+the reason to stop.
 
 ## Execution And Delivery
 
@@ -298,6 +341,45 @@ match, this fails closed instead of recording a stale report. Do not patch
 state between the two calls -- if you must, re-run `finalize` and rewrite the
 file before `render --host-authored`.
 
+### What a status says
+
+- `PASS`: a bounded judgment whose load-bearing claims cleared the chain and
+  whose handoff is complete.
+- `PARTIAL`: the judgment stands with a named gap, and a reversible action
+  does not depend on that gap.
+- `EXPLORED` (explore posture only): understanding delivered, no judgment;
+  leads are tentative; any claim it presents as verified was still checked.
+  An explore run ends `EXPLORED` or `BLOCKED`, never `PASS` or `PARTIAL`,
+  and `EXPLORED` is rejected on every other posture. Finishing as
+  `EXPLORED` confers no verified semantics.
+- `BLOCKED`: delivered, with `human_status` saying which shortfall --
+  `交付不完整` (a delivery requirement unmet) or `證據不足` (the evidence does
+  not carry the claims). `finalize` seals every sound-but-undeliverable
+  package this way. It is not "the research failed".
+- `/ INVALID` on the report: validation found an `ERROR` of any kind, or the
+  embedded hash no longer matches the state. After `finalize` the errors that
+  remain are usually integrity ones (hash, journal, raw bytes, excerpt), but
+  the label is not integrity-only by definition; read the issue list.
+
+A status is a claim about the package's delivery shape. It is not a claim
+that the sources are right, that an inference is sound, or that anything in
+the handoff may be executed without the user.
+
+### When a verdict run cannot reach its verdict
+
+A run confirmed for a verdict may find that the premise failed, that the
+decisive check needs authorization or information it lacks, or that the
+evidence does not yet separate the options. Deliver anyway, under the
+statuses above: the package seals as `BLOCKED` with `交付不完整` or
+`證據不足`, and that label is honest -- the commissioned verdict was not
+delivered. Do not relabel the run as `EXPLORED` or change its posture; do
+not lower the bar on any statement already used to recommend, rule out, or
+shape an action. Put the reason the verdict is withheld and what would
+complete it into `summary.human_recommendation`, `summary.decision`, and
+`open_questions`, so the reader sees progress and the unfinished commission
+side by side. An integrity failure is never presented as a research result
+of any kind.
+
 ## Report Authoring
 
 Read `state.json` in full before writing. Every claim, number, and quotation
@@ -326,9 +408,11 @@ Hard constraints:
 
 Design intent, not a template -- fit the shape to the question:
 
-- Answer first. The reader already knows the question; put it in small
-  supporting text, not the headline. The headline is what to do or what is
-  true -- use `summary.headline` if present, else `summary.human_recommendation`.
+- Lead with what changed in understanding. The reader already knows the
+  question; put it in small supporting text, not the headline. For a verdict
+  run the headline is what to do or what is true; for an exploration it is
+  where to go next -- use `summary.headline` if present, else
+  `summary.human_recommendation`.
 - Display type is for one line. `summary.decision` is body copy, not a
   headline-sized wall of text.
 - Keep three different lists visually and structurally separate:
@@ -338,9 +422,10 @@ Design intent, not a template -- fit the shape to the question:
   single worst defect this instruction replaces -- do not reintroduce it.
 - Do not break Chinese sentence flow with inlined English source titles; use
   numbered references with a source list instead.
-- Evidence is the product: load-bearing claims, their status, and their
-  evidence chain belong in the default view. Collapse only genuine machinery
-  -- quota tables, hashes, validation internals.
+- The basis of every statement that carries weight must be visible in the
+  default view: load-bearing claims with their status and evidence chain,
+  inferences with their premises, leads marked as tentative. Collapse only
+  genuine machinery -- quota tables, hashes, validation internals.
 - Omit a section entirely rather than rendering an empty placeholder like
   「尚未記錄」.
 - `claims` are byte-backed and evidenced; `observations` are not, and must
@@ -354,8 +439,20 @@ Design intent, not a template -- fit the shape to the question:
   `research_harness/rendering.py::_render_observations` for the deterministic
   fallback's treatment), and never let it satisfy an evidence floor,
   load-bearing requirement, or diversity check. An observation needs no
-  `supporting_evidence_ids` or `source_origin_ids` -- if it has real evidence
-  behind it, it belongs in `claims`, not here.
+  `supporting_evidence_ids` or `source_origin_ids`. Its premises may cite
+  checked claims by id in `basis`; the synthesis drawn from them stays an
+  observation, labelled as inference, unless that judgment itself has been
+  checked to the same standard -- only then does it belong in `claims`.
+- Leads render as tentative (`暫定假說`) and exclusions keep their reason;
+  the unknowns block is always present; a lead is never shown with a claim
+  status, a load-bearing marker, or an evidence link. In an exploration, no
+  bounded decision, load-bearing reasons, safe action, or acceptance test is
+  shown or reported missing; checked facts it does contain are shown as
+  claims, apart from the leads, under whatever heading fits. The
+  deterministic fallback implements the lead rules in
+  `rendering.py::_render_explore_first_screen` but does not surface checked
+  facts on its first screen; a host-authored exploration report should, and
+  the two tracks are not claimed to be identical.
 
 Three field-shape notes:
 
@@ -371,6 +468,12 @@ Three field-shape notes:
   Never give one a `load_bearing`, `supporting_evidence_ids`, or `status`
   field -- those are `claims` vocabulary, and no validator ever reads them
   off an observation, so borrowing that shape only invites confusing the two.
+
+Only packages recorded under `pure_trigger_v5` know the explore posture and
+the `EXPLORED` status; older packages keep their recorded verdict
+vocabulary. `examples/explore/` holds an offline, demonstration-only package:
+it shows that tentative content can be saved and delivered, not that the
+exploration it contains was good.
 
 ## Recovery
 

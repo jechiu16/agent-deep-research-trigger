@@ -38,6 +38,16 @@ Semantic Versioning once the v2 runtime leaves development status.
 - `explore` contracts draft with `minimum_load_bearing_claims: 0`; every
   other posture keeps its positive floor. An explore run cannot end `PASS`
   or `PARTIAL`, and `EXPLORED` is rejected on any other posture.
+- `SKILL.md` now opens with a research-behaviour core (how to pick the next
+  step, when to continue, what needs checking, what is not authorized)
+  followed by Boundaries and Delivery; the card's Query Brief line asks what
+  this round is meant to find out. `HARNESS.md` replaces the fixed
+  seven-step Research Loop and the separate Exploration Runs section with
+  shared Recording What You Find, Checking What Carries Weight, and status
+  sections that describe the current gates as they are. The
+  pre-confirmation prohibition, statuses, gates, runtime, and CLI are
+  unchanged; `tests/test_docs.py` follows the new sections and no longer
+  pins `SKILL.md` to 60 lines.
 
 ## 2.0.0b10
 

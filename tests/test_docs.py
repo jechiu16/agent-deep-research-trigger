@@ -28,7 +28,7 @@ class DocumentationTests(unittest.TestCase):
             card,
             [
                 "問題：{正規化後的問題}",
-                "Query Brief：{決策、範圍、成功條件各一句}",
+                "Query Brief：{本輪想弄清楚什麼；必要時補充已知與不確定處}",
                 "建議：{light/standard/heavy}，因為{一個理由}",
                 "Light：deep {a}｜search {b}｜free unlimited",
                 "Standard：deep {a}｜search {b}｜free unlimited",
@@ -38,25 +38,47 @@ class DocumentationTests(unittest.TestCase):
                 "開始：light｜standard｜heavy｜調整｜取消",
             ],
         )
-        self.assertLessEqual(len(text.splitlines()), 60)
         self.assertIn("show exactly one completed card", " ".join(text.split()))
 
-    def test_preconfirmation_allows_only_local_card_reads(self) -> None:
+    def test_boundaries_keep_preconfirmation_prohibition_and_single_confirmation(self) -> None:
         text = self.read("SKILL.md")
-        before = " ".join(
-            self.section(text, "## Before Confirmation", "## After Confirmation").split()
-        )
+        boundaries = " ".join(self.section(text, "## Boundaries", "## Delivery").split())
         for phrase in (
-            "Do not search",
-            "inspect the project",
-            "call a provider",
-            "start a worker",
+            "Before confirmation",
+            "do not search, inspect the project, call a provider, or start a worker",
             "Local profile/registry reads",
             "make no external request",
+            "do not invent project knowledge",
+            "one run",
+            "spend nothing",
+            "Re-card only when the vector, provider set, or egress scope changes",
+            "read [HARNESS.md](HARNESS.md)",
         ):
-            self.assertIn(phrase, before)
-        self.assertIn("one run", before)
-        self.assertIn("Re-card only", before)
+            self.assertIn(phrase, boundaries)
+        # The not-yet-in-force orientation rule lives in the design record;
+        # the live protocol carries no candidate rule marked as such.
+        self.assertNotIn("Target wording", text)
+        self.assertNotIn("not in force", boundaries)
+
+    def test_research_core_keeps_authority_and_checking_boundaries(self) -> None:
+        """The core's prose may be rewritten; only its boundary statements are pinned."""
+
+        text = self.read("SKILL.md")
+        core = " ".join(self.section(text, "## How To Research", "## Boundaries").split())
+        self.assertTrue(core.strip())
+        normalized = " ".join(text.split())
+        for phrase in (
+            "traced to a captured source",
+            "Ask the user again only for",
+            "permission to act",
+        ):
+            self.assertIn(phrase, normalized)
+        for stale in (
+            "Use the cheapest ready D1 provider",
+            "## Before Confirmation",
+            "## After Confirmation",
+        ):
+            self.assertNotIn(stale, text)
 
     def test_host_authorship_reverification_and_delivery_are_public_rules(self) -> None:
         text = " ".join(self.read("SKILL.md").split())
@@ -132,22 +154,42 @@ class DocumentationTests(unittest.TestCase):
         ):
             self.assertIn(phrase, text)
 
-    def test_exploration_runs_are_documented_with_runtime_semantics(self) -> None:
+    def test_exploration_shares_the_recording_checking_and_status_rules(self) -> None:
         harness = self.read("HARNESS.md")
-        section = self.section(harness, "## Exploration Runs", "## Execution And Delivery")
+        for stale in ("## Exploration Runs", "## Research Loop", "Run D1 when", "Target wording"):
+            self.assertNotIn(stale, harness)
+        recording = " ".join(
+            self.section(harness, "## Recording What You Find", "## Checking What Carries Weight").split()
+        )
         for phrase in (
-            "--posture explore",
-            "`EXPLORED`",
-            "never `PASS` or",
-            "excluded_reason",
-            "next_check",
-            "must not carry",
+            "`excluded_reason`",
+            "`next_check`",
+            "`status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`",
             "No branch count",
-            "confers no verified semantics",
-            "暫定假說",
-            "pure_trigger_v5",
         ):
-            self.assertIn(phrase, section)
+            self.assertIn(phrase, recording)
+        checking = " ".join(
+            self.section(harness, "## Checking What Carries Weight", "## Execution And Delivery").split()
+        )
+        for phrase in (
+            "targeted_reverification",
+            "This is the host's responsibility",
+            "do not contrive a call",
+            "Exempt only from the verdict-specific handoff requirements",
+            "profile gates are not lifted",
+        ):
+            self.assertIn(phrase, checking)
+        status = " ".join(self.section(harness, "### What a status says", "## Report Authoring").split())
+        for phrase in (
+            "never `PASS` or `PARTIAL`",
+            "rejected on every other posture",
+            "confers no verified semantics",
+            "Do not relabel the run as `EXPLORED`",
+        ):
+            self.assertIn(phrase, status)
+        normalized = " ".join(harness.split())
+        for phrase in ("--posture explore", "`EXPLORED`", "暫定假說", "pure_trigger_v5"):
+            self.assertIn(phrase, normalized)
         self.assertIn("explore", self.read("SKILL.md"))
         for relative in ("README.md", "README.zh-TW.md"):
             self.assertIn("`explore`", self.read(relative))

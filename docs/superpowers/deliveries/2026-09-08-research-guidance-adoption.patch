@@ -1,0 +1,708 @@
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -5,7 +5,7 @@
+ 
+ <!-- PURE_TRIGGER_CARD_START -->
+ 問題：{正規化後的問題}
+-Query Brief：{決策、範圍、成功條件各一句}
++Query Brief：{本輪想弄清楚什麼；必要時補充已知與不確定處}
+ 建議：{light/standard/heavy}，因為{一個理由}
+ Light：deep {a}｜search {b}｜free unlimited
+ Standard：deep {a}｜search {b}｜free unlimited
+@@ -19,42 +19,106 @@
+ 
+ `SKILL.md` is the sole public protocol shared by Claude Code and Codex. On
+ explicit `/deep`, normalize the question from conversation context, run only
+-the local `deep-research-state card` command (`--posture explore` when the
+-user wants directions rather than a decision), and show exactly one completed
++the local `deep-research-state card` command, and show exactly one completed
+ card with no prose around it. Without a question, recommend `調整` and stop.
+-
+-## Before Confirmation
+-
+-Do not search, inspect the project, call a provider, or start a worker. Local
+-profile/registry reads for the card are allowed and make no external request.
+-The user's `light`, `standard`, or `heavy` reply confirms that printed count
+-vector and disclosed provider/egress set for one run. `調整` and `取消` spend
+-nothing. Re-card only when the vector, provider set, or egress scope changes.
+-
+-## After Confirmation
+-
+-Read [HARNESS.md](HARNESS.md), create the canonical package, and run in the
+-background. The selected host is the Organizer and sole conclusion author.
+-Provider reports, including D1/D2, buy breadth and structure only; they cannot
+-support a canonical claim.
+-
+-Use the cheapest ready D1 provider unless source fit or privacy gives a named
+-reason to choose another disclosed candidate. After each provider report, feed
+-its useful hypotheses, contradictions, citations, and prior session context to
+-the host. The host chooses targeted re-verification, consuming `search`; `free`
+-routes remain unlimited within physical/time safety bounds. Fix disproved
+-claims, mark unverifiable claims, and never withhold delivery for uncertainty.
+-
+-Stop external calls at the confirmed count limit. Finish from existing
+-materials and name the unresolved gap. Heavy may use a second deep call only
+-when the host expects a material new angle, challenge, or expansion; no hard
+-gate and no automatic provider bundle.
++The posture on the card -- `decision` by default, `explore` when the user
++wants directions rather than a verdict -- says what this run hands back, not
++how you think along the way.
++
++## How To Research
++
++One run holds three kinds of statement at once: facts you have checked,
++directions worth pursuing, and guesses you have not tested. Keep them apart
++in what you write; never force the whole run to become one of them.
++
++Start where you are. The brief says what this round is meant to find out;
++add what is known or uncertain only where it helps. If the question is not
++yet located, say so and make locating it the purpose. Recommend a profile by
++the scope and checks you expect, not by how little you know.
++
++Choose each step by what could change your mind: which one thing, if known,
++would most move your understanding or your next move? Learn it in a way that
++is sufficient to answer and proportionate in cost -- read the project, fetch
++the source of record, compare a case, seek a counterexample, ask the user,
++or commission a provider report. A report can save time, buy an independent
++angle, or reach explanations you cannot; it is a means you choose, not a
++stage you pass, and unspent budget is not unfinished work.
++
++Breadth is contact with different explanations, not more items. Change angle
++or re-cut the sub-question when options share a doubtful premise, sources
++keep repeating one view, or a finding unsettles the question as asked. If
++the original direction survives that contact, keep it; do not manufacture
++alternatives, objections, or a fixed number of branches.
++
++Depth goes where it materially improves this round's understanding,
++separates the explanations that matter, or changes the unknown behind the
++next step. Understanding a mechanism or locating a problem's scope counts as
++much as reaching a recommendation; leave detail that serves none of these.
++
++Checking follows use. A guess may stand unchecked while it is only a guess.
++Once a statement supports a recommendation, rules an option out, or shapes
++an action, it must hold at that weight: a fact is a claim traced to a
++captured source; an inference carries weight only when its premises,
++reasoning, and uncertainty are stated and hold up -- calling it "inference"
++does not excuse it from checking. The riskier the use, the higher the bar.
++Where the difference matters to understanding, a recommendation, or whoever
++picks this up next, say which a statement is: found, inferred, or guessed;
++set aside, or shown false; a next check worth doing, or a reversible step
++safe to take now -- neither of which means the whole answer is established.
++Do not label every sentence.
++
++Changing path is not changing authority. Inside the confirmed question,
++count vector, provider set, and egress scope, re-cut sub-questions and
++methods freely; note a major turn in one line. Ask the user again only for a
++purpose, spend, data egress, or change to their system that goes beyond
++what was confirmed; operations the confirmation already covers are not
++re-asked one by one. A research conclusion adds no permission to act on it.
++
++Continue while this round's purpose is unmet and there is still a next step
++that is authorized, proportionate in cost, and expected to bring real
++progress -- better understanding, separated explanations, a located
++problem, or a changed judgment. If the user asked for an answer and such a
++step exists, take it rather than handing it back. Otherwise deliver what is
++understood and where its limits are. One check not worth making does not
++end the research; the absence of any worthwhile one does. Do not pad a
++report to look complete.
++
++## Boundaries
++
++Before confirmation, nothing that costs, sends data out, or changes
++anything: do not search, inspect the project, call a provider, or start a
++worker. Local profile/registry reads for the card are allowed and make no
++external request. If the question is vague, write locating it as this
++round's purpose from the conversation you already have; do not invent
++project knowledge to fill the brief. The reply `light`, `standard`, or
++`heavy` confirms that printed count vector and disclosed provider/egress set
++for one run; `調整` and `取消` spend nothing. Re-card only when the vector,
++provider set, or egress scope changes.
++
++After confirmation, read [HARNESS.md](HARNESS.md), create the canonical
++package, and run in the background. The host is the sole conclusion author.
++Provider reports, including D1/D2, buy breadth and structure only; they
++cannot support a canonical claim -- the host's targeted re-verification is
++what makes a claim corroborated. Stop external calls at the confirmed count
++limit, finish from existing materials, and name the unresolved gap; no hard
++gate, no automatic provider bundle.
+ 
+ ## Delivery
+ 
+ Always deliver canonical `state.json`, `events.jsonl`, `raw/`, and a
+ hash-bound `report.html`, host-authored or, failing that, deterministically
+ rendered. Human-facing fields and HTML are Traditional Chinese; exact
+-excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged. Integrity
+-failure remains unsafe; evidence insufficiency remains an annotated status.
+-Neither prevents the package. An `explore` run ends `EXPLORED`, not a verdict.
++excerpts, titles, URLs, IDs, hashes, and diagnostics stay unchanged. Lead
++with the progress of understanding -- what is now known, where to go next,
++what could still change the judgment -- and, for a verdict run, what to do.
++Fix disproved claims, mark unverifiable claims, and never withhold delivery
++for uncertainty.
++
++Keep three things apart. Integrity: the package is intact and unaltered --
++the only thing the validator can prove. Correctness: a captured source can
++still be wrong and an inference can still be unsound; that judgment is
++yours, stated with what would overturn it. Adoptability: a reversible step
++can be safe before the whole answer is established, and an established
++answer is still not permission to act. A `BLOCKED` package is still
++delivered: it names an unmet delivery requirement or an evidence gap, not a
++failed research and not a broken package.
+--- a/HARNESS.md
++++ b/HARNESS.md
+@@ -1,21 +1,30 @@
+ # /deep Organizer Harness
+ 
+ Internal runtime bridge for the public flow in [SKILL.md](SKILL.md). Read it
+-only after the user selects `light`, `standard`, or `heavy`.
++only after the user selects `light`, `standard`, or `heavy`. SKILL.md says
++how to research; this file says how to use the runtime to record what you
++find, check what carries weight, and deliver. It does not prescribe the
++order of your thinking.
+ 
+ ## Product Contract
+ 
+ - The selected host is the Organizer and sole conclusion author.
+ - D1/D2 are untrusted discovery memos, never evidence or verdicts.
+ - Re-verification corrects or annotates; it never suppresses delivery.
+-- Counts, not token-price guesses, stop external calls.
++- Counts, not token-price guesses, stop external calls. Budget is a
++  ceiling, not a plan of work.
++- The posture says what the run hands back. In every posture the state
++  holds checked facts, directions, and guesses side by side, each in its own
++  section.
+ - Deliver one machine truth (`state.json`) and one human projection
+   (`report.html`), plus their journal and raw evidence.
+ 
+-An epistemically `BLOCKED` package is still delivered. Only integrity failure
+-means the report is unsafe to act on.
+-Evidence gaps render as `證據不足 / EVIDENCE_INSUFFICIENT`; incomplete handoff
+-fields render as `交付不完整 / DELIVERY_INCOMPLETE`.
++An epistemically `BLOCKED` package is still delivered. Integrity failure
++means the package cannot be trusted as a record; it says nothing about
++whether the research was good, and an intact package says nothing about
++whether its sources are right or its inferences sound. Evidence gaps render
++as `證據不足 / EVIDENCE_INSUFFICIENT`; incomplete handoff fields render as
++`交付不完整 / DELIVERY_INCOMPLETE`.
+ 
+ ## Runtime Bridge
+ 
+@@ -33,7 +42,8 @@
+ "$CLI" card --question '<question>' --posture decision
+ ```
+ 
+-After confirmation, bind and start one contract:
++After confirmation, bind and start one contract (`--posture explore` uses the
++same commands):
+ 
+ ```bash
+ "$CLI" draft --question '<question>' --posture decision \
+@@ -74,7 +84,9 @@
+ may change numbers but never names tools. Exact routes remain in
+ `stage_permit_map`, and physical/time/storage limits remain defense-in-depth.
+ Require one reserved `verification` mapping and one
+-`final_inference_review/organizer_pass/host` mapping.
++`final_inference_review/organizer_pass/host` mapping. An `explore` contract
++drafts with `minimum_load_bearing_claims: 0`; every other posture keeps a
++positive floor.
+ 
+ ## Provider Routing
+ 
+@@ -85,9 +97,12 @@
+ A present credential is not execution readiness. The adapter, storage policy,
+ request boundary, and required environment must all pass local preflight.
+ 
+-1. Prefer direct source-of-record or local routes.
+-2. For D1, choose the lowest-rank ready provider unless source fit or privacy
+-   justifies another card-disclosed candidate.
++1. Anything that will become a claim needs a direct source-of-record or
++   local route; a provider payload cannot support it.
++2. A provider report is a means you choose -- to save time, to buy an
++   independent angle, or to reach explanations you cannot -- not a stage
++   the profile bought. For D1, choose the lowest-rank ready provider unless
++   source fit or privacy justifies another card-disclosed candidate.
+ 3. Use D2 only for a material challenge, new angle, or expansion selected by
+    the host after seeing D1 and current evidence.
+ 4. Never call a bundle merely because budget remains.
+@@ -104,23 +119,78 @@
+ `cost_usage` to increment 1:1 with every attempted paid call; check
+ `rejected_unbilled` actions when reconciling spend against attempts.
+ 
+-## Research Loop
++## Recording What You Find
+ 
+-1. Frame the decision, assumptions, exclusions, and flip conditions.
+-2. Run D1 when `deep > 0`; pass its useful hypotheses, contradictions,
+-   citations, and bounded session context to the Organizer.
+-3. Let the Organizer choose the smallest targeted checks. Paid search routes
+-   consume `search`; host/local/direct free routes consume `free`.
+-4. Capture qualifying source bytes and reconcile every load-bearing claim:
+-   `claim -> evidence -> source + source_origin -> raw artifact`.
+-5. Correct claims disproved by direct evidence. Mark unresolved claims and
+-   their revisit trigger; do not convert model agreement into corroboration.
+-6. Add a `targeted_reverification` record covering the final load-bearing claim
+-   IDs, with corrected and unverifiable IDs plus a concise disposition.
+-7. The host writes the bounded decision and development handoff, then validates
+-   and renders.
++The state has a place for each kind of statement. Record as you go. The
++minimum is small; the rest is added when it exists, or when whoever picks
++this up next would need it.
++
++- **Where you start.** `framing.assumptions` and `framing.exclusions`. When
++  you re-cut the sub-question, add one line there (本輪把問題改讀為…). The
++  contract question itself is fixed; concluding that it was the wrong
++  question is a finding to deliver, not a reason to swap it.
++- **A guess or a direction.** `hypotheses`: a stable `id` and readable
++  `text` are enough. Add `basis`, `next_check`, `source_ids`, `artifact_ids`
++  when they exist, and `excluded_reason` when a direction is ruled out --
++  keep the record, an exclusion is a finding. A hypothesis must not carry
++  `status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`;
++  promote it to `claims` with evidence to earn those.
++
++```json
++{
++  "id": "H1",
++  "text": "保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。",
++  "basis": "暫定假說；尚未測試跨 host 接手成本。",
++  "next_check": "用同一份研究資料測試另一個 host 能否找到下一步。"
++}
++```
+ 
+-Minimal re-verification record:
++- **Set aside for now.** `open_questions`. Say it was not pursued and why
++  (scope, cost, authorization); that is not the same as shown false.
++- **A next check worth doing.** `planned_checks`, optionally with
++  `hypothesis_ids`.
++- **An inference you rely on.** `observations`, with its premises (which may
++  cite checked claims by id) and its uncertainty in `basis`. Two checked
++  premises do not make the conclusion drawn from them a checked fact; it
++  stays an inference unless checked itself. It never satisfies an evidence
++  floor and is rendered as "not evidence".
++- **A checked fact.** `claims` with the chain
++  `claim -> evidence -> source + source_origin -> raw artifact`. Capture the
++  bytes (`host-capture`, `artifact-add`); provider payloads cannot support a
++  claim. Correct claims disproved by direct evidence; mark unresolved claims
++  and their revisit trigger; do not convert model agreement into
++  corroboration. This chain applies to any claim presented as verified, in
++  every posture -- it is not optional in an exploration.
++- **What a provider report gave you.** Feed its useful hypotheses,
++  contradictions, and citations into `hypotheses` and `planned_checks`;
++  `"$CLI" citations` lists what is still unverified. Nothing from a report
++  enters `claims` until you have captured the source yourself.
++
++When the route changes, leave a one-line reason in `basis`,
++`framing.assumptions`, or `open_questions` -- only then:
++
++| Current finding | Reasonable next move |
++|---|---|
++| Sources keep repeating the same view | Change source type or angle, or stop that branch |
++| Several routes hold and nothing separates them | Find the check, counterexample, or small experiment that would |
++| The original premise fails, or a lead could change direction | Re-cut the sub-question and open the new direction; keep what still holds |
++| Remaining detail does not affect this run's goal | Mark the gap and deliver |
++
++No branch count, document count, or scan/deepen ratio is required.
++
++## Checking What Carries Weight
++
++A statement is checked in proportion to its use, not to the package status.
++A guess needs nothing. A direction that shapes the next step needs its
++`basis`. An inference that supports a recommendation needs its premises and
++uncertainty stated, and a flip condition. A claim that supports a
++recommendation, rules an option out, or shapes an action needs the full
++chain above and targeted re-verification. This is the host's
++responsibility; the validator checks the chain of what you marked verified,
++not whether you marked everything that carries weight. Paid search routes
++consume `search`; host/local/direct free routes consume `free`.
++
++A verdict run (`PASS`/`PARTIAL`) records its re-verification:
+ 
+ ```json
+ {
+@@ -134,17 +204,29 @@
+ }
+ ```
+ 
+-A **heavy** run (`profile: "heavy"`) spends its second deep call specifically
+-to buy an independent angle on the current frame, and its scientific/decision
+-delivery is gated on showing for it:
++`checked_claim_ids` must equal the final `load_bearing_claim_ids`. The
++runtime requires this record for any host-led verdict even when that set is
++empty; write the disposition honestly rather than inventing a check.
++
++**Heavy.** The second deep call is capacity for an independent angle on the
++current frame. Commission it when that angle is what the next step needs
++(Provider Routing, rule 3), not because the profile bought it; a heavy run
++that never needed D2 has spent nothing wrongly.
++
++The runtime gate, described as it is: a heavy scientific/decision `PASS`
++requires
+ 
+-- an `anti_lock_in` record binding to that call, and
++- an `anti_lock_in` record, and
+ - each load-bearing claim's captured evidence spanning at least two distinct
+   upstream sources -- capture files that all trace back to one upstream
+   (e.g. three claims that each cite only `noaa.gov`, only `navy.mil`, and
+   only `nps.gov`, respectively, with nothing cross-checking any one of them)
+   does not satisfy this.
+ 
++The gate does not check whether D2 was actually used. If you judged it not
++worth spending, the record's disposition says so; do not contrive a call to
++satisfy the record.
++
+ ```json
+ {
+   "id": "AL1",
+@@ -174,72 +256,33 @@
+ }
+ ```
+ 
+-## Exploration Runs
++What does not depend on posture: the claim chain, raw-artifact integrity,
++quota, and confirmation binding.
+ 
+-Choose `--posture explore` when the user is asking for directions or
+-possibilities ("what else is worth exploring?") rather than a decision. An
+-explore run delivers a direction map and ends `EXPLORED`, never `PASS` or
+-`PARTIAL`; when the user later asks to pick one, start a formal `decision`
+-contract. Same card, same profiles, same quota: `light/standard/heavy` cap
+-what the run may spend, and D1/D2 are used when the host expects them to pay
+-off, not because the profile bought them.
+-
+-Save leads as they appear, in the sections that already exist:
+-
+-- `hypotheses`: one record per direction. The minimum is a stable `id` and a
+-  readable `text`; add `basis`, `next_check`, `source_ids`, `artifact_ids`
+-  as they become known, and `excluded_reason` once a direction is ruled out
+-  (keep the record -- an exclusion is a finding). A hypothesis must not carry
+-  `status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`;
+-  promote it to `claims` with evidence to earn those.
+-- `planned_checks`: the next checks worth doing, optionally with
+-  `hypothesis_ids`.
+-- `open_questions`: what this run still does not know.
+-
+-```json
+-{
+-  "id": "H1",
+-  "text": "保留薄 skill，可能比新增獨立 runner 更符合日常專案探索。",
+-  "basis": "暫定假說；尚未測試跨 host 接手成本。",
+-  "next_check": "用同一份研究資料測試另一個 host 能否找到下一步。"
+-}
+-```
+-
+-Switch breadth and depth on what you find; leave a one-line reason (in
+-`basis` or `open_questions`) only when the route materially changes:
+-
+-| Current finding | Reasonable next move |
+-|---|---|
+-| Sources keep repeating the same view | Change source type or angle, or stop that branch |
+-| Several routes hold and nothing separates them | Find the check, counterexample, or small experiment that would |
+-| The original premise fails, or a lead could change direction | Re-cut the sub-question and open the new direction; keep what still holds |
+-| Remaining detail does not affect this run's goal | Mark the gap and deliver |
+-
+-No branch count, document count, or scan/deepen ratio is required.
+-
+-Delivery: set `summary.status` to `EXPLORED`, a one-line `human_status`
+-(e.g. 探索完成，方向仍待驗證), and put the next step -- or the reason to stop
+--- in `human_recommendation`. `finalize`/`render` require only that: at least
+-one hypothesis or open question with text, plus those two lines. No
+-load-bearing claim set, `decision`, safe action, acceptance test, or
+-`targeted_reverification` record is required, and finalize does not turn
+-their absence into `BLOCKED`. An empty package is still not a delivery.
+-
+-What stays checked: any claim the package marks `load_bearing` or
+-`corroborated` (or lists in `load_bearing_claim_ids`) must clear the same
+-`claim -> evidence -> source + source_origin -> raw artifact` chain a PASS
+-claim clears; raw-artifact integrity, quota, and confirmation binding are
+-unchanged. Finishing as `EXPLORED` confers no verified semantics.
+-
+-Report (both tracks): leads render as tentative (`暫定假說`), exclusions keep
+-their reason, the unknowns block is always present, and no bounded decision,
+-load-bearing reasons, safe action, or acceptance test is shown or reported
+-missing. A host-authored exploration report must keep those semantics; the
+-deterministic fallback implements them in
+-`rendering.py::_render_explore_first_screen`. Only packages recorded under
+-`pure_trigger_v5` know this posture and status; older packages keep their
+-recorded verdict vocabulary. `examples/explore/` holds an offline,
+-demonstration-only package produced with this flow.
++**Applies before a verdict delivery (`PASS`/`PARTIAL`).** The runtime
++enforces, for a `PASS`: at least the contract's
++`minimum_load_bearing_claims` load-bearing claims, each `corroborated` with
++an available raw artifact, `checked` applicability, entailing evidence, and
++a source origin; `summary.decision` within the confirmed host envelope; the
++re-verification record above; for `decision` posture the coverage audit and
++one `inference_joints` entry marked `weakest_joint` and
++`adversarially_reviewed`; for `lookup` a directly fetched T1 source behind
++each load-bearing claim; for `standard`/`heavy` at least one host-captured
++or locally produced piece of evidence behind each load-bearing claim. For
++any verdict it also expects a one-line `human_status`, a
++`human_recommendation`, a load-bearing reason linked to a titled URL source,
++a limitation or flip condition, a reversible safe action with an `id` and
++description, and one acceptance test in `檢查方式 => 預期結果` form; a
++`PARTIAL` additionally needs a reversible safe action that depends on no
++unresolved claim. None of this is a checklist for an exploration.
++
++**Applies to an exploration (`EXPLORED`).** Exempt only from the
++verdict-specific handoff requirements above and from the minimum claim
++count. Any claim presented as verified or load-bearing still meets the
++applicable checks, and profile gates are not lifted by this section.
++Required: at least one hypothesis or open question with text, a one-line
++`human_status`, and a `human_recommendation` that names the next step or
++the reason to stop.
+ 
+ ## Execution And Delivery
+ 
+@@ -298,6 +341,45 @@
+ state between the two calls -- if you must, re-run `finalize` and rewrite the
+ file before `render --host-authored`.
+ 
++### What a status says
++
++- `PASS`: a bounded judgment whose load-bearing claims cleared the chain and
++  whose handoff is complete.
++- `PARTIAL`: the judgment stands with a named gap, and a reversible action
++  does not depend on that gap.
++- `EXPLORED` (explore posture only): understanding delivered, no judgment;
++  leads are tentative; any claim it presents as verified was still checked.
++  An explore run ends `EXPLORED` or `BLOCKED`, never `PASS` or `PARTIAL`,
++  and `EXPLORED` is rejected on every other posture. Finishing as
++  `EXPLORED` confers no verified semantics.
++- `BLOCKED`: delivered, with `human_status` saying which shortfall --
++  `交付不完整` (a delivery requirement unmet) or `證據不足` (the evidence does
++  not carry the claims). `finalize` seals every sound-but-undeliverable
++  package this way. It is not "the research failed".
++- `/ INVALID` on the report: validation found an `ERROR` of any kind, or the
++  embedded hash no longer matches the state. After `finalize` the errors that
++  remain are usually integrity ones (hash, journal, raw bytes, excerpt), but
++  the label is not integrity-only by definition; read the issue list.
++
++A status is a claim about the package's delivery shape. It is not a claim
++that the sources are right, that an inference is sound, or that anything in
++the handoff may be executed without the user.
++
++### When a verdict run cannot reach its verdict
++
++A run confirmed for a verdict may find that the premise failed, that the
++decisive check needs authorization or information it lacks, or that the
++evidence does not yet separate the options. Deliver anyway, under the
++statuses above: the package seals as `BLOCKED` with `交付不完整` or
++`證據不足`, and that label is honest -- the commissioned verdict was not
++delivered. Do not relabel the run as `EXPLORED` or change its posture; do
++not lower the bar on any statement already used to recommend, rule out, or
++shape an action. Put the reason the verdict is withheld and what would
++complete it into `summary.human_recommendation`, `summary.decision`, and
++`open_questions`, so the reader sees progress and the unfinished commission
++side by side. An integrity failure is never presented as a research result
++of any kind.
++
+ ## Report Authoring
+ 
+ Read `state.json` in full before writing. Every claim, number, and quotation
+@@ -326,9 +408,11 @@
+ 
+ Design intent, not a template -- fit the shape to the question:
+ 
+-- Answer first. The reader already knows the question; put it in small
+-  supporting text, not the headline. The headline is what to do or what is
+-  true -- use `summary.headline` if present, else `summary.human_recommendation`.
++- Lead with what changed in understanding. The reader already knows the
++  question; put it in small supporting text, not the headline. For a verdict
++  run the headline is what to do or what is true; for an exploration it is
++  where to go next -- use `summary.headline` if present, else
++  `summary.human_recommendation`.
+ - Display type is for one line. `summary.decision` is body copy, not a
+   headline-sized wall of text.
+ - Keep three different lists visually and structurally separate:
+@@ -338,9 +422,10 @@
+   single worst defect this instruction replaces -- do not reintroduce it.
+ - Do not break Chinese sentence flow with inlined English source titles; use
+   numbered references with a source list instead.
+-- Evidence is the product: load-bearing claims, their status, and their
+-  evidence chain belong in the default view. Collapse only genuine machinery
+-  -- quota tables, hashes, validation internals.
++- The basis of every statement that carries weight must be visible in the
++  default view: load-bearing claims with their status and evidence chain,
++  inferences with their premises, leads marked as tentative. Collapse only
++  genuine machinery -- quota tables, hashes, validation internals.
+ - Omit a section entirely rather than rendering an empty placeholder like
+   「尚未記錄」.
+ - `claims` are byte-backed and evidenced; `observations` are not, and must
+@@ -354,8 +439,20 @@
+   `research_harness/rendering.py::_render_observations` for the deterministic
+   fallback's treatment), and never let it satisfy an evidence floor,
+   load-bearing requirement, or diversity check. An observation needs no
+-  `supporting_evidence_ids` or `source_origin_ids` -- if it has real evidence
+-  behind it, it belongs in `claims`, not here.
++  `supporting_evidence_ids` or `source_origin_ids`. Its premises may cite
++  checked claims by id in `basis`; the synthesis drawn from them stays an
++  observation, labelled as inference, unless that judgment itself has been
++  checked to the same standard -- only then does it belong in `claims`.
++- Leads render as tentative (`暫定假說`) and exclusions keep their reason;
++  the unknowns block is always present; a lead is never shown with a claim
++  status, a load-bearing marker, or an evidence link. In an exploration, no
++  bounded decision, load-bearing reasons, safe action, or acceptance test is
++  shown or reported missing; checked facts it does contain are shown as
++  claims, apart from the leads, under whatever heading fits. The
++  deterministic fallback implements the lead rules in
++  `rendering.py::_render_explore_first_screen` but does not surface checked
++  facts on its first screen; a host-authored exploration report should, and
++  the two tracks are not claimed to be identical.
+ 
+ Three field-shape notes:
+ 
+@@ -372,6 +469,12 @@
+   field -- those are `claims` vocabulary, and no validator ever reads them
+   off an observation, so borrowing that shape only invites confusing the two.
+ 
++Only packages recorded under `pure_trigger_v5` know the explore posture and
++the `EXPLORED` status; older packages keep their recorded verdict
++vocabulary. `examples/explore/` holds an offline, demonstration-only package:
++it shows that tentative content can be saved and delivered, not that the
++exploration it contains was good.
++
+ ## Recovery
+ 
+ ```bash
+--- a/tests/test_docs.py
++++ b/tests/test_docs.py
+@@ -28,7 +28,7 @@
+             card,
+             [
+                 "問題：{正規化後的問題}",
+-                "Query Brief：{決策、範圍、成功條件各一句}",
++                "Query Brief：{本輪想弄清楚什麼；必要時補充已知與不確定處}",
+                 "建議：{light/standard/heavy}，因為{一個理由}",
+                 "Light：deep {a}｜search {b}｜free unlimited",
+                 "Standard：deep {a}｜search {b}｜free unlimited",
+@@ -38,25 +38,47 @@
+                 "開始：light｜standard｜heavy｜調整｜取消",
+             ],
+         )
+-        self.assertLessEqual(len(text.splitlines()), 60)
+         self.assertIn("show exactly one completed card", " ".join(text.split()))
+ 
+-    def test_preconfirmation_allows_only_local_card_reads(self) -> None:
++    def test_boundaries_keep_preconfirmation_prohibition_and_single_confirmation(self) -> None:
+         text = self.read("SKILL.md")
+-        before = " ".join(
+-            self.section(text, "## Before Confirmation", "## After Confirmation").split()
+-        )
++        boundaries = " ".join(self.section(text, "## Boundaries", "## Delivery").split())
+         for phrase in (
+-            "Do not search",
+-            "inspect the project",
+-            "call a provider",
+-            "start a worker",
++            "Before confirmation",
++            "do not search, inspect the project, call a provider, or start a worker",
+             "Local profile/registry reads",
+             "make no external request",
++            "do not invent project knowledge",
++            "one run",
++            "spend nothing",
++            "Re-card only when the vector, provider set, or egress scope changes",
++            "read [HARNESS.md](HARNESS.md)",
++        ):
++            self.assertIn(phrase, boundaries)
++        # The not-yet-in-force orientation rule lives in the design record;
++        # the live protocol carries no candidate rule marked as such.
++        self.assertNotIn("Target wording", text)
++        self.assertNotIn("not in force", boundaries)
++
++    def test_research_core_keeps_authority_and_checking_boundaries(self) -> None:
++        """The core's prose may be rewritten; only its boundary statements are pinned."""
++
++        text = self.read("SKILL.md")
++        core = " ".join(self.section(text, "## How To Research", "## Boundaries").split())
++        self.assertTrue(core.strip())
++        normalized = " ".join(text.split())
++        for phrase in (
++            "traced to a captured source",
++            "Ask the user again only for",
++            "permission to act",
++        ):
++            self.assertIn(phrase, normalized)
++        for stale in (
++            "Use the cheapest ready D1 provider",
++            "## Before Confirmation",
++            "## After Confirmation",
+         ):
+-            self.assertIn(phrase, before)
+-        self.assertIn("one run", before)
+-        self.assertIn("Re-card only", before)
++            self.assertNotIn(stale, text)
+ 
+     def test_host_authorship_reverification_and_delivery_are_public_rules(self) -> None:
+         text = " ".join(self.read("SKILL.md").split())
+@@ -132,22 +154,42 @@
+         ):
+             self.assertIn(phrase, text)
+ 
+-    def test_exploration_runs_are_documented_with_runtime_semantics(self) -> None:
++    def test_exploration_shares_the_recording_checking_and_status_rules(self) -> None:
+         harness = self.read("HARNESS.md")
+-        section = self.section(harness, "## Exploration Runs", "## Execution And Delivery")
++        for stale in ("## Exploration Runs", "## Research Loop", "Run D1 when", "Target wording"):
++            self.assertNotIn(stale, harness)
++        recording = " ".join(
++            self.section(harness, "## Recording What You Find", "## Checking What Carries Weight").split()
++        )
+         for phrase in (
+-            "--posture explore",
+-            "`EXPLORED`",
+-            "never `PASS` or",
+-            "excluded_reason",
+-            "next_check",
+-            "must not carry",
++            "`excluded_reason`",
++            "`next_check`",
++            "`status`, `load_bearing`, `supporting_evidence_ids`, or `claim_type`",
+             "No branch count",
++        ):
++            self.assertIn(phrase, recording)
++        checking = " ".join(
++            self.section(harness, "## Checking What Carries Weight", "## Execution And Delivery").split()
++        )
++        for phrase in (
++            "targeted_reverification",
++            "This is the host's responsibility",
++            "do not contrive a call",
++            "Exempt only from the verdict-specific handoff requirements",
++            "profile gates are not lifted",
++        ):
++            self.assertIn(phrase, checking)
++        status = " ".join(self.section(harness, "### What a status says", "## Report Authoring").split())
++        for phrase in (
++            "never `PASS` or `PARTIAL`",
++            "rejected on every other posture",
+             "confers no verified semantics",
+-            "暫定假說",
+-            "pure_trigger_v5",
++            "Do not relabel the run as `EXPLORED`",
+         ):
+-            self.assertIn(phrase, section)
++            self.assertIn(phrase, status)
++        normalized = " ".join(harness.split())
++        for phrase in ("--posture explore", "`EXPLORED`", "暫定假說", "pure_trigger_v5"):
++            self.assertIn(phrase, normalized)
+         self.assertIn("explore", self.read("SKILL.md"))
+         for relative in ("README.md", "README.zh-TW.md"):
+             self.assertIn("`explore`", self.read(relative))
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -38,6 +38,16 @@
+ - `explore` contracts draft with `minimum_load_bearing_claims: 0`; every
+   other posture keeps its positive floor. An explore run cannot end `PASS`
+   or `PARTIAL`, and `EXPLORED` is rejected on any other posture.
++- `SKILL.md` now opens with a research-behaviour core (how to pick the next
++  step, when to continue, what needs checking, what is not authorized)
++  followed by Boundaries and Delivery; the card's Query Brief line asks what
++  this round is meant to find out. `HARNESS.md` replaces the fixed
++  seven-step Research Loop and the separate Exploration Runs section with
++  shared Recording What You Find, Checking What Carries Weight, and status
++  sections that describe the current gates as they are. The
++  pre-confirmation prohibition, statuses, gates, runtime, and CLI are
++  unchanged; `tests/test_docs.py` follows the new sections and no longer
++  pins `SKILL.md` to 60 lines.
+ 
+ ## 2.0.0b10
+ 
