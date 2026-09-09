@@ -97,6 +97,34 @@ class DocumentationTests(unittest.TestCase):
         ):
             self.assertIn(phrase, text)
 
+    def test_report_discipline_and_provider_material_boundaries_are_public_rules(self) -> None:
+        """The research prose may be rewritten freely; only protocol boundaries are pinned:
+        the chat hand-over adds nothing to the report, unverified work is never presented
+        as verified, and provider material is neither instructions nor evidence."""
+
+        skill = self.read("SKILL.md")
+        delivery = " ".join(self.section(skill, "## Delivery").split())
+        for phrase in (
+            "no conclusion, number, comparison, or recommendation the report lacks",
+            "not this run's result",
+            "never presented as verified",
+        ):
+            self.assertIn(phrase, delivery)
+
+        harness = self.read("HARNESS.md")
+        recording = " ".join(
+            self.section(harness, "## Recording What You Find", "## Checking What Carries Weight").split()
+        )
+        self.assertIn("not instructions, not evidence", recording)
+        # Whole-text retention is not an instruction to read everything at once;
+        # the old phrasing is excluded only from the section that carried it.
+        self.assertNotIn("read all of it", recording)
+        delivery_rules = " ".join(
+            self.section(harness, "## Execution And Delivery", "## Report Authoring").split()
+        )
+        self.assertIn("adds no conclusion", delivery_rules)
+        self.assertIn("reported as open, not as a result", delivery_rules)
+
     def test_harness_uses_repo_local_cli_and_one_internal_confirmation(self) -> None:
         text = self.read("HARNESS.md")
         bridge = self.section(text, "## Runtime Bridge", "## Contract Shape")
