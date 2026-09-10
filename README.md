@@ -104,7 +104,7 @@ does not track `git pull`, so re-copy after updating).
 4. **Type `/deep` and choose one printed profile.**
 
 ```text
-/deep Compare SQLite and DuckDB as Parallax's default local analytics engine.
+/deep Compare SQLite and DuckDB as this project's default local analytics engine.
 ```
 
 ## Profiles
@@ -119,7 +119,10 @@ The defaults are ordinary JSON and remain user-controlled:
 
 Providers live in the registry, not this table. Deep providers are ranked by
 current configured cost; source fit or privacy may justify another disclosed
-candidate. Adding a tool changes only its registry class.
+candidate. Adding a tool changes only its registry class. A draft enables
+every ready free route (Semantic Scholar, Crossref, Europe PMC, GitHub, PyPI,
+OSV, NVD, RFC Editor, plus host fetch and local inspection) and the card
+lists them; `--free-route` narrows the set.
 
 ## Demo
 
@@ -127,7 +130,7 @@ The first response is one card -- or a clarifying question when the host
 is unsure what you mean -- never an automatic research call:
 
 ```text
-問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
+問題：本專案應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
 Query Brief：選出預設值；限目前架構；成功條件是可逆實作與明確驗收。
 建議：light，因為目前 repository 已有可直接複驗的正式 ADR。
 Light：deep 0｜search 5｜free unlimited
@@ -140,8 +143,10 @@ D1：最低成本 ready provider；研究問題可外送，本機檔案不外送
 
 ## Field Acceptance
 
-Four real Parallax questions passed. The first three exercised the low-cost
-Light path. The fourth ran Standard end to end with `deep=1`, `search=1`,
+Four real questions on one project (Parallax, July 2026) passed under an
+earlier contract tier; the packages are kept as recorded. For the current
+explore posture see [examples/explore](examples/explore/README.md). The first
+three exercised the low-cost Light path. The fourth ran Standard end to end with `deep=1`, `search=1`,
 external direct captures, per-claim dispositions, and Traditional Chinese
 HTML; it also corrected D1's overly absolute framing of Quack.
 

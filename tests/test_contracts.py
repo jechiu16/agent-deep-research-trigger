@@ -6,7 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from research_harness.boundary import execute_probe
 from research_harness.contracts import (
+    FREE_PROBE_CEILING,
     contract_card_sha256,
     draft_host_led_contract,
     normalize_contract,
@@ -16,10 +18,15 @@ from research_harness.providers import (
     ProviderRegistryError,
     load_provider_registry,
     preflight_contract_routes,
+    provider_records_sha256,
     provider_registry_sha256,
+    referenced_provider_records,
     validate_provider_registry,
 )
+from research_harness.state import new_state
+from research_harness.storage import create_session
 from tests.helpers import (
+    NOW,
     confirmed_host_led_contract,
     confirmed_medium_contract,
     draft_medium_contract,
@@ -88,6 +95,75 @@ class ContractTests(unittest.TestCase):
             [("investigation", "perplexity"), ("anti_lock_in", "perplexity")],
         )
         self.assertEqual(heavy["resource_envelope"]["cost_budget"]["deep"], 2)
+
+    FREE_PROBE_ROUTES = ["crossref", "europe-pmc", "github", "ietf", "nvd", "osv", "pypi", "scholar"]
+
+    def _confirmed(self, contract: dict) -> dict:
+        records = referenced_provider_records(contract, self.registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(self.registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        return contract
+
+    def test_draft_builder_enables_every_ready_free_probe_route(self) -> None:
+        for profile_name, environ in (
+            ("light", {}),
+            ("standard", {"PERPLEXITY_API_KEY": "test-key"}),
+        ):
+            with self.subTest(profile=profile_name):
+                contract = draft_host_led_contract(
+                    "Choose a cache", "decision", profile_name, self.registry, environ, search_routes=[]
+                )
+                free = [
+                    item for item in contract["stage_permit_map"]
+                    if item["category"] == "probe"
+                ]
+                self.assertEqual([item["route"] for item in free], self.FREE_PROBE_ROUTES)
+                self.assertTrue(all(item["stage"] == "verification" for item in free))
+                self.assertTrue(all(item["count"] == FREE_PROBE_CEILING for item in free))
+                self.assertEqual(
+                    contract["resource_envelope"]["physical_ceiling"]["probe"],
+                    FREE_PROBE_CEILING * len(self.FREE_PROBE_ROUTES),
+                )
+                self.assertEqual(contract["resource_envelope"]["cost_budget"]["free"], "unlimited")
+                self.assertEqual(validate_contract(self._confirmed(contract), self.registry), [])
+                self.assertEqual(
+                    {record["id"] for record in referenced_provider_records(contract, self.registry)}
+                    & set(self.FREE_PROBE_ROUTES),
+                    set(self.FREE_PROBE_ROUTES),
+                )
+
+    def test_draft_builder_narrows_free_routes_on_request(self) -> None:
+        contract = draft_host_led_contract(
+            "Choose a cache", "decision", "light", self.registry, {}, search_routes=[], free_routes=["scholar"]
+        )
+        probes = [item for item in contract["stage_permit_map"] if item["category"] == "probe"]
+        self.assertEqual([item["route"] for item in probes], ["scholar"])
+        self.assertEqual(contract["resource_envelope"]["physical_ceiling"]["probe"], FREE_PROBE_CEILING)
+        with self.assertRaises(ValueError) as raised:
+            draft_host_led_contract(
+                "Choose a cache", "decision", "light", self.registry, {}, search_routes=[], free_routes=["sonar"]
+            )
+        self.assertIn("free route sonar is not ready", str(raised.exception))
+
+    def test_drafted_free_route_is_in_the_snapshot_and_executes(self) -> None:
+        contract = draft_host_led_contract(
+            "Choose a cache", "decision", "light", self.registry, {}, search_routes=[]
+        )
+        self._confirmed(contract)
+        with tempfile.TemporaryDirectory() as tempdir:
+            session = Path(tempdir) / "session"
+            create_session(session, new_state(contract, NOW, registry=self.registry, environ={}))
+            fixture = (Path(__file__).with_name("fixtures") / "scholar_success.json").read_bytes()
+            result = execute_probe(
+                session, "A1", "verification", "scholar", "retrieval augmented generation", NOW,
+                transport=lambda spec: (200, fixture), environ={},
+            )
+        self.assertEqual(result["occurrence"]["provider_id"], "scholar")
 
     def test_draft_builder_keeps_light_deep_free(self) -> None:
         light = draft_host_led_contract(

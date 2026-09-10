@@ -40,9 +40,28 @@ Semantic Versioning once the v2 runtime leaves development status.
   source key and upstream to the PDF capture it was derived from (one hop,
   hash-bound). A scanned PDF with no text layer is refused and stays
   provenance only. Several PDFs may share one local action.
+- `draft --free-route`: narrows the free probe routes a host-led draft
+  enables.
+- `transport.min_interval_s` in the provider registry: the request boundary
+  sleeps before a sync probe so consecutive requests to one route stay at
+  least that far apart (journal timestamps have second precision, so it
+  allows one extra second). `scholar` declares 1 s, the Semantic Scholar
+  key terms as of 2026-09-10; `S2_API_KEY` remains optional and is only
+  ever sent as a header, never journaled.
 
 ### Changed
 
+- A host-led draft now enables every ready free probe route (`scholar`,
+  `crossref`, `europe-pmc`, `github`, `pypi`, `osv`, `nvd`, `ietf`) at
+  `verification`, each with a physical ceiling of 40 calls, so they are in
+  the capability snapshot and callable. Before, only `host`, `host-web`, and
+  `local` were, and `execute --route scholar` was refused as not enabled.
+  The card lists the enabled free routes and says their queries leave to
+  those endpoints.
+- README, SCENARIOS, and the field-example notes no longer present one
+  project's questions as the framework's demo; SCENARIOS adds an
+  explore-posture acceptance question and admits a clarifying question
+  before the card.
 - The per-claim evidence-chain checks are shared (`_validate_claim_chain`):
   a PASS package runs them on every load-bearing claim as before, and an
   EXPLORED package runs them on any claim it marks `load_bearing` or

@@ -234,7 +234,7 @@ def _format_confirmation_card(payload: dict[str, Any]) -> str:
         [
             "",
             f"D1 候選（低價優先）：{candidates}；Search：{search_candidates}；外送：研究問題，不含本機檔案",
-            f"Free（不限次，本合約實際啟用）：{', '.join(payload.get('free_routes') or []) or '無'}；registry 裡其他免費路由不在本合約內",
+            f"Free（不限次，本合約實際啟用）：{', '.join(payload.get('free_routes') or []) or '無'}；查詢會送到這些端點，不含本機檔案；不在名單上的免費路由不能呼叫",
             "規則：D1 只買廣度與結構；host 複驗、修正並下結論；超限即停外呼並標註缺口。",
             "請回覆 light、standard、heavy 或 cancel。",
         ]
@@ -324,8 +324,9 @@ def _card_free_routes(registry: dict[str, Any], question: str, posture: str) -> 
 
     `free: unlimited` on the card is a count, not a promise that every free
     route in the registry is callable: only the routes in the draft's
-    `stage_permit_map` are. Drafting light needs no deep provider, so the
-    list is the same with or without keys.
+    `stage_permit_map` are (every ready free probe route, plus host, host-web,
+    and local). Drafting light needs no deep provider, so the list is the
+    same with or without keys.
     """
 
     cost_class = {
@@ -397,6 +398,7 @@ def command_draft(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         profile_path=Path(args.profiles) if args.profiles else None,
         deep_routes=args.deep_route,
         search_routes=args.search_route,
+        free_routes=args.free_route,
     )
     return contract, 0
 
@@ -1132,6 +1134,7 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--registry-overlay")
     draft.add_argument("--deep-route", action="append")
     draft.add_argument("--search-route", action="append")
+    draft.add_argument("--free-route", action="append")
     _add_json_flag(draft)
     draft.set_defaults(handler=command_draft)
 

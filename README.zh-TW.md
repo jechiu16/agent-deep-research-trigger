@@ -99,7 +99,7 @@ ln -s "$PWD" "$HOME/.agents/skills/deep"
 4. **輸入 `/deep`，再選擇卡片上的 profile。**
 
 ```text
-/deep 比較 SQLite 與 DuckDB，哪個適合當 Parallax 預設本機分析引擎？
+/deep 比較 SQLite 與 DuckDB，哪個適合當本專案預設本機分析引擎？
 ```
 
 ## Profiles
@@ -114,13 +114,16 @@ ln -s "$PWD" "$HOME/.agents/skills/deep"
 
 Provider 放在 registry，不放在這張表。Deep provider 依目前設定成本排序；若
 source fit 或 privacy 更重要，host 可以改選卡片已揭露的候選。新增工具只改 registry class。
+草約會啟用所有就緒的免費路由（Semantic Scholar、Crossref、Europe PMC、GitHub、
+PyPI、OSV、NVD、RFC Editor，加上 host 抓取與本機檢視），卡片會列出；`--free-route`
+可縮小名單。
 
 ## Demo
 
 第一次回覆是一張卡，或在 host 不確定你的意思時先問一句；不會自動開始研究：
 
 ```text
-問題：Parallax 應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
+問題：本專案應選 SQLite 還是 DuckDB 作為預設本機分析引擎？
 Query Brief：選出預設值；限目前架構；成功條件是可逆實作與明確驗收。
 建議：light，因為目前 repository 已有可直接複驗的正式 ADR。
 Light：deep 0｜search 5｜free unlimited
@@ -133,7 +136,9 @@ D1：最低成本 ready provider；研究問題可外送，本機檔案不外送
 
 ## 實戰驗收
 
-四個真實 Parallax 問題全部 `PASS`。前三題以 Light 驗證低成本路徑；第四題
+四個真實問題在單一專案（Parallax，2026 年 7 月）於較早的合約層級下全部 `PASS`，
+package 照原樣保留；目前的 explore 姿態見 [examples/explore](examples/explore/README.md)。
+前三題以 Light 驗證低成本路徑；第四題
 以 Standard 實際完成 `deep=1`、`search=1`、外部 direct capture、逐 claim
 disposition 與繁體中文 HTML。這一跑也修正了 D1 對 Quack 的過度絕對 framing。
 

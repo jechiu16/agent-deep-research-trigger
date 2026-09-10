@@ -31,11 +31,12 @@ import json
 import os
 import socket
 import hashlib
+import time
 import urllib.error
 import urllib.request
 import urllib.parse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -270,6 +271,47 @@ def _parse_timestamp(value: str) -> datetime:
         return datetime.fromisoformat(text)
     except ValueError as exc:
         raise BoundaryError(f"timestamp is not ISO-8601: {value!r}") from exc
+
+
+_sleep = time.sleep
+
+
+def _wall_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _pace_route(events: list[dict[str, Any]], provider: dict[str, Any], route: str) -> float:
+    """Sleep so consecutive requests to one route respect its `transport.min_interval_s`.
+
+    Journal timestamps have second precision, so the previous request may have
+    left up to a second after its `at`; the wait allows for that. Over-sleeping
+    costs a second; a rate-limit rejection burns the action id for good.
+    """
+
+    interval = provider.get("transport", {}).get("min_interval_s")
+    if isinstance(interval, bool) or not isinstance(interval, (int, float)) or interval <= 0:
+        return 0.0
+    last = None
+    for event in events:
+        if (
+            event.get("event") == "permit_acquired"
+            and event.get("route") == route
+            and isinstance(event.get("at"), str)
+        ):
+            last = event["at"]
+    if last is None:
+        return 0.0
+    try:
+        last_at = _parse_timestamp(last)
+    except BoundaryError:
+        return 0.0
+    if last_at.tzinfo is None:
+        last_at = last_at.replace(tzinfo=timezone.utc)
+    wait = float(interval) + 1.0 - (_wall_now() - last_at).total_seconds()
+    if wait <= 0:
+        return 0.0
+    _sleep(wait)
+    return wait
 
 
 def _elapsed_seconds(earlier: str, later: str) -> float:
@@ -622,6 +664,7 @@ def execute_probe(
             now,
             query_hash=sha256_hex(query.strip()),
         )
+        _pace_route(events, provider, route)
         try:
             status, payload = transport(spec)
         except (socket.timeout, TimeoutError) as exc:

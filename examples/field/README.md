@@ -1,5 +1,8 @@
 # Parallax Field Acceptance
 
+這四個 package 是 2026 年 7 月在單一專案、較早合約層級下的紀錄，照原樣保留，
+不是 `pure_trigger_v5` package；目前 explore 姿態的示範在 `examples/explore/`。
+
 2026-07-13 至 2026-07-14 以 Parallax commit
 `a8c4284e73156ac62e61d5e70a273781342c55fb` 跑四個真實問題。前三次選
 Light；第四次刻意選 Standard，實際運動 D1、targeted Search、direct capture、

@@ -6,11 +6,19 @@ import socket
 import tempfile
 import unittest
 import urllib.error
+from datetime import timedelta
 from pathlib import Path
+from unittest import mock
 from typing import Any
 
 from research_harness.boundary import AdapterParseError, BoundaryError, execute_probe
-from research_harness.providers import load_provider_registry
+from research_harness.contracts import contract_card_sha256, draft_host_led_contract
+from research_harness.providers import (
+    load_provider_registry,
+    provider_records_sha256,
+    provider_registry_sha256,
+    referenced_provider_records,
+)
 from research_harness.quota import permit_usage
 from research_harness.state import new_state
 from research_harness.storage import create_session, load_state, read_events
@@ -201,6 +209,48 @@ class ScholarAdapterTests(unittest.TestCase):
                 transport=fixture_transport("scholar_rate_limited.json", status=429),
                 environ={},
             )
+
+
+    @unittest.skipUnless(_SUCCESS_FIXTURE.exists(), _SUCCESS_FIXTURE_MISSING_REASON)
+    def test_boundary_paces_consecutive_scholar_requests(self) -> None:
+        from research_harness import boundary as boundary_module
+
+        # A host-led draft gives scholar a multi-invocation verification
+        # mapping; the demo fixture in setUp allows a single invocation.
+        contract = draft_host_led_contract(
+            "Choose a cache", "decision", "light", self.registry, {}, search_routes=[]
+        )
+        records = referenced_provider_records(contract, self.registry)
+        contract["confirmation"] = {
+            "confirmed_by": "user",
+            "confirmed_at": NOW,
+            "card_sha256": contract_card_sha256(contract),
+            "registry_sha256": provider_registry_sha256(self.registry),
+            "referenced_records_sha256": provider_records_sha256(records),
+        }
+        session = Path(self._tempdir.name) / "paced"
+        create_session(session, new_state(contract, NOW, registry=self.registry, environ={}))
+        slept: list[float] = []
+        first_at = boundary_module._parse_timestamp(NOW)
+        with mock.patch.object(boundary_module, "_sleep", slept.append), mock.patch.object(
+            boundary_module, "_wall_now", lambda: first_at + timedelta(seconds=0.4)
+        ):
+            for action_id, query in (("A1", "q one"), ("A2", "q two")):
+                execute_probe(
+                    session, action_id, 'verification', 'scholar', query, NOW,
+                    transport=fixture_transport("scholar_success.json"), environ={},
+                )
+        # First call: no earlier scholar permit, no sleep. Second: 1 s interval
+        # plus the one-second journal precision allowance, minus 0.4 s elapsed.
+        self.assertEqual(len(slept), 1)
+        self.assertAlmostEqual(slept[0], 1.6, places=6)
+
+    def test_pace_route_is_a_no_op_without_a_declared_interval(self) -> None:
+        from research_harness.boundary import _pace_route
+
+        events = [{"event": "permit_acquired", "route": "crossref", "at": NOW}]
+        self.assertEqual(_pace_route(events, {"transport": {"mode": "sync"}}, "crossref"), 0.0)
+        self.assertEqual(_pace_route([], {"transport": {"min_interval_s": 1}}, "scholar"), 0.0)
 
 
 class ScholarBuildTests(unittest.TestCase):

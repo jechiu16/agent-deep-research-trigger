@@ -1133,6 +1133,21 @@ class CliTests(unittest.TestCase):
         self.assertEqual(contract["resource_envelope"]["cost_budget"]["search"], 5)
         self.assertIsNone(contract["confirmation"].get("confirmed_at"))
 
+    def test_draft_free_route_narrows_the_free_probe_routes(self) -> None:
+        result = self.run_cli(
+            "draft", "--question", "Choose a cache", "--posture", "decision",
+            "--profile", "light", "--free-route", "crossref", "--free-route", "ietf", "--json",
+        )
+        contract = json.loads(result.stdout)
+        free = {
+            item["id"] for item in load_provider_registry()["providers"] if item.get("cost_class") == "free"
+        }
+        probes = [
+            item["route"] for item in contract["stage_permit_map"]
+            if item["category"] == "probe" and item["route"] in free
+        ]
+        self.assertEqual(probes, ["crossref", "ietf"])
+
     def test_providers_human_view_marks_disabled_routes(self) -> None:
         disabled = copy.deepcopy(
             next(item for item in load_provider_registry()["providers"] if item["id"] == "exa")
@@ -1748,11 +1763,15 @@ class CliTests(unittest.TestCase):
 
     def test_cli_card_names_the_free_routes_the_draft_enables(self) -> None:
         printed = self.run_cli("card", "--question", "Choose a cache", "--posture", "decision")
-        self.assertIn("Free（不限次，本合約實際啟用）：host, host-web, local", printed.stdout)
+        expected = [
+            "crossref", "europe-pmc", "github", "host", "host-web", "ietf",
+            "local", "nvd", "osv", "pypi", "scholar",
+        ]
+        self.assertIn("Free（不限次，本合約實際啟用）：" + ", ".join(expected) + "；查詢會送到這些端點", printed.stdout)
         payload = json.loads(
             self.run_cli("card", "--question", "Choose a cache", "--posture", "decision", "--json").stdout
         )
-        self.assertEqual(payload["free_routes"], ["host", "host-web", "local"])
+        self.assertEqual(payload["free_routes"], expected)
 
 
 if __name__ == "__main__":

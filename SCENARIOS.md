@@ -8,6 +8,7 @@ not authorship or evidence rules.
 | Scenario | Suggested profile | Why |
 |---|---|---|
 | Local source-of-record lookup | Light | Direct local/free evidence should settle it. |
+| Open question with no settled boundary or answer | Any, `explore` posture | Deliver leads, exclusions with reasons, and the next check as `EXPLORED`; no verdict is manufactured. |
 | Development decision with external uncertainty | Standard | One D1 adds breadth before focused checks. |
 | Ambiguous, high-impact decision | Heavy | A second deep angle may materially challenge or expand D1. |
 | Missing provider key | Same or cheaper | A credential is not readiness; stop or use disclosed ready/free routes. |
@@ -18,36 +19,49 @@ not authorship or evidence rules.
 ## Interaction Shape
 
 1. Literal `/deep` trigger.
-2. One card with Query Brief and `light`, `standard`, `heavy` count vectors.
+2. One card with Query Brief and `light`, `standard`, `heavy` count vectors,
+   or one clarifying question first when the host is confused about what the
+   user means, wants, or values.
 3. One user choice; background execution starts.
 4. D1/D2 return discovery memos to the host, not conclusions.
 5. Host chooses targeted re-verification, fixes or annotates findings, and writes the conclusion.
 6. Canonical JSON and Traditional Chinese HTML are delivered even with evidence gaps.
 
-## Parallax Acceptance Questions
+## Acceptance Questions
 
-Run these consecutively without manual runtime repair:
+Run these consecutively without manual runtime repair. The first three were
+run on one project in July 2026; the fourth on this skill's own question in
+September 2026.
 
 ```text
-/deep Should Parallax use SQLite or DuckDB as its default local analytics engine?
+/deep Should this project use SQLite or DuckDB as its default local analytics engine?
 ```
 
 Pass: inspect current local constraints, verify the decisive external facts,
 name a reversible implementation and flip condition.
 
 ```text
-/deep Which cache invalidation boundary in Parallax is most likely to prevent stale regime data without increasing coupling?
+/deep Which cache invalidation boundary in this project is most likely to prevent stale regime data without increasing coupling?
 ```
 
 Pass: preserve competing explanations, inspect the repo, and distinguish local
 observations from external design guidance.
 
 ```text
-/deep What is the smallest reliable acceptance test for Parallax's next long-running pipeline change?
+/deep What is the smallest reliable acceptance test for this project's next long-running pipeline change?
 ```
 
 Pass: connect source evidence to current code, produce an executable check, and
 state what remains unverified when the budget stops.
+
+```text
+/deep What should a general framework look like that helps a strong model and a user clarify a question with no settled boundary or answer?
+```
+
+Pass: card `explore`; locate the question instead of inventing a boundary for
+it; keep checked facts, directions, and untested guesses in their own
+sections; write "not found this round" where nothing was found, never "does
+not exist"; end `EXPLORED` with the next check named.
 
 ## Anti-Patterns
 

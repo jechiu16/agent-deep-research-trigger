@@ -103,6 +103,18 @@ positive floor.
 `cost_class: deep|search|free`; deep routes also declare `cost_rank`. New tools
 enter a class, never a profile.
 
+A host-led draft enables every ready free probe route (`scholar`, `crossref`,
+`europe-pmc`, `github`, `pypi`, `osv`, `nvd`, `ietf`) at `verification`
+beside `host`, `host-web`, and `local`; the card lists them, and their
+queries leave to those endpoints. `draft --free-route` narrows the set. A
+route absent from the draft is not in the capability snapshot and cannot be
+called; free routes consume no budget but keep a per-route physical ceiling.
+Semantic Scholar's keyless pool is often rate-limited, and a 429 burns the
+action: set `S2_API_KEY` in the host environment to use your own quota. The
+boundary paces a route to its declared `transport.min_interval_s` (scholar:
+one request per second) by sleeping before the call; never parallelize
+requests to one route.
+
 A present credential is not execution readiness. The adapter, storage policy,
 request boundary, and required environment must all pass local preflight.
 

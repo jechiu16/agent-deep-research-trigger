@@ -44,6 +44,10 @@ METERED_CATEGORIES = (
     "transport",
 )
 HOST_LED_WORKFLOW = "host_led_v1"
+# Physical ceiling per free probe route in a host-led draft. The cost budget
+# lists free routes as unlimited; this is the defense-in-depth count the
+# request boundary enforces per route, not a plan of work.
+FREE_PROBE_CEILING = 40
 
 
 def draft_host_led_contract(
@@ -56,6 +60,7 @@ def draft_host_led_contract(
     profile_path: Optional[Path] = None,
     deep_routes: Optional[list[str]] = None,
     search_routes: Optional[list[str]] = None,
+    free_routes: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Build one unconfirmed host-led contract from classes, not a fixed pipeline."""
 
@@ -119,9 +124,21 @@ def draft_host_led_contract(
         if not eligible(route, "search", "probe", "verification"):
             raise ValueError(f"search route {route} is not ready for verification")
 
+    if free_routes is None:
+        chosen_free = sorted(
+            provider["id"]
+            for provider in providers.values()
+            if eligible(provider["id"], "free", "probe", "verification")
+        )
+    else:
+        chosen_free = list(dict.fromkeys(free_routes))
+    for route in chosen_free:
+        if not eligible(route, "free", "probe", "verification"):
+            raise ValueError(f"free route {route} is not ready for verification")
+
     search_capacity = profile["search"] * len(chosen_search)
     physical = {
-        "probe": search_capacity,
+        "probe": search_capacity + FREE_PROBE_CEILING * len(chosen_free),
         "deep": deep_count,
         "processor": 0,
         "network_experiment": 0,
@@ -159,6 +176,13 @@ def draft_host_led_contract(
         }
         for route in chosen_search
         if profile["search"] > 0
+    )
+    mappings.extend(
+        {
+            "stage": "verification", "category": "probe", "route": route,
+            "invocations": FREE_PROBE_CEILING, "count": FREE_PROBE_CEILING, "reserved": False,
+        }
+        for route in chosen_free
     )
     for index, route in enumerate(chosen_deep):
         stage = "investigation" if index == 0 else "anti_lock_in"

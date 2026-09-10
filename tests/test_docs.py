@@ -294,11 +294,13 @@ class DocumentationTests(unittest.TestCase):
             ):
                 self.assertIn(term, diagram)
 
-    def test_scenarios_pin_three_real_parallax_acceptance_questions(self) -> None:
+    def test_scenarios_pin_the_acceptance_questions(self) -> None:
         text = self.read("SCENARIOS.md")
         for profile in ("Light", "Standard", "Heavy"):
             self.assertIn(profile, text)
-        self.assertEqual(text.count("\n/deep "), 3)
+        self.assertEqual(text.count("\n/deep "), 4)
+        self.assertNotIn("Parallax", text)
+        self.assertIn("`EXPLORED`", text)
         self.assertIn("without manual runtime repair", text)
         self.assertIn("Provider report presented as evidence or final verdict", text)
         self.assertIn("Withholding the package", text)

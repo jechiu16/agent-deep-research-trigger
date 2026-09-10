@@ -413,12 +413,13 @@
       },
       "metering": {
         "unit": "request",
-        "list_price": "free (shared pool; optional S2_API_KEY raises limits)",
-        "verified_at": "2026-07-11"
+        "list_price": "free (shared pool, often HTTP 429; optional S2_API_KEY grants 1 request/second across endpoints)",
+        "verified_at": "2026-09-10"
       },
       "transport": {
         "mode": "sync",
-        "polling": "not_applicable"
+        "polling": "not_applicable",
+        "min_interval_s": 1
       },
       "privacy": {
         "local_file_egress": false,
