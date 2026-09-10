@@ -62,6 +62,17 @@ Semantic Versioning once the v2 runtime leaves development status.
   project's questions as the framework's demo; SCENARIOS adds an
   explore-posture acceptance question and admits a clarifying question
   before the card.
+- Five evidence rules from the 2026-09-10 live run (package
+  `deep-runs/2026-09-10-evidence-rules`, claims C1-C33) are now one clause
+  each in `SKILL.md` and `HARNESS.md`: a search that finds nothing supports
+  "not found this round", never "does not exist"; an excerpt match proves
+  the words exist, support at the claim's scope is the host's judgment and
+  the neighbouring sentences can reverse it; an unread source supports
+  nothing beyond its existence and a captured PDF stays provenance until
+  extracted or read; a search returning only what you already knew is a
+  reason to change angle; next steps serve the confirmed purpose only.
+  `HARNESS.md` also says the host sets `summary.status` before `finalize`,
+  which only downgrades.
 - The per-claim evidence-chain checks are shared (`_validate_claim_chain`):
   a PASS package runs them on every load-bearing claim as before, and an
   EXPLORED package runs them on any claim it marks `load_bearing` or

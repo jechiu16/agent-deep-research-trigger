@@ -84,6 +84,25 @@ class DocumentationTests(unittest.TestCase):
         ):
             self.assertNotIn(stale, text)
 
+    def test_evidence_rules_from_the_live_run_are_pinned(self) -> None:
+        skill = " ".join(self.read("SKILL.md").split())
+        harness = " ".join(self.read("HARNESS.md").split())
+        for phrase in (
+            'never "does not exist"',
+            "an unread source supports nothing beyond its existence",
+            "a search returns only what you already knew",
+            "neighbouring sentences change its meaning",
+            "serve a purpose other than the confirmed one",
+        ):
+            self.assertIn(phrase, skill)
+        for phrase in (
+            "read them before you record",
+            "stays provenance until it is extracted or read",
+            "never promotes a status, it only downgrades",
+            '"not found this round" with what was searched',
+        ):
+            self.assertIn(phrase, harness)
+
     def test_host_authorship_reverification_and_delivery_are_public_rules(self) -> None:
         text = " ".join(self.read("SKILL.md").split())
         for phrase in (

@@ -167,7 +167,9 @@ this up next would need it.
 ```
 
 - **Set aside for now.** `open_questions`. Say it was not pursued and why
-  (scope, cost, authorization); that is not the same as shown false.
+  (scope, cost, authorization); that is not the same as shown false. A
+  search that found nothing goes here too, as "not found this round" with
+  what was searched and where.
 - **What would overturn it.** A claim's `would_change_if`, an observation's
   or hypothesis' `basis`, `open_questions` for the check not made and why,
   `summary.human_recommendation` for the next step or the reason to stop.
@@ -185,14 +187,19 @@ this up next would need it.
   `claim -> evidence -> source + source_origin -> raw artifact`. Capture the
   bytes (`host-capture`, `artifact-add`); `"$CLI" excerpt` turns a verbatim
   quotation into the exact byte bounds an evidence record needs and refuses
-  to guess when the bytes differ. A PDF's text sits in compressed streams,
+  to guess when the bytes differ. A match proves the words exist; whether
+  they support the claim at its scope is your judgment, recorded as
+  `entailment`, and the sentences around the match can narrow or reverse
+  it -- read them before you record. A PDF's text sits in compressed streams,
   so its own bytes cannot hold an excerpt: `"$CLI" pdf-text` extracts the
   text layer into a derived `local_output` artifact whose provenance names
   the PDF artifact, its sha256, and the extractor version; `excerpt` and
   evidence then point at the derived artifact, the validator resolves its
   upstream to the PDF capture, and the report says the quotation comes from
-  the extracted text of that PDF. A scanned PDF with no text layer stays
-  provenance only. Provider payloads cannot support a
+  the extracted text of that PDF, with the layer's ligatures and line
+  breaks as they are. A captured PDF stays provenance until it is extracted
+  or read; one with no text layer stays provenance. Provider payloads
+  cannot support a
   claim. Correct claims disproved by direct evidence; mark unresolved claims
   and their revisit trigger; do not convert model agreement into
   corroboration. This chain applies to any claim presented as verified, in
@@ -398,8 +405,10 @@ To author your own report:
 "$CLI" render "$SESSION" --host-authored --json
 ```
 
-`finalize` seals the same budget-gap annotation and insufficient-tier BLOCKED
-status `render` would seal, and returns the exact `state_sha256` the report
+Set `summary.status` yourself first (`EXPLORED`, `PASS`, or `PARTIAL`):
+`finalize` never promotes a status, it only downgrades to `BLOCKED`. It seals
+the same budget-gap annotation and insufficient-tier BLOCKED status `render`
+would seal, and returns the exact `state_sha256` the report
 must embed in `<meta data-state-sha256="...">` -- calling it again with
 nothing else changed returns the same hash. Write the file, then
 `render --host-authored` binds it to the sealed state and journals
