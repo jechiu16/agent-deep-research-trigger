@@ -173,7 +173,14 @@ this up next would need it.
   `claim -> evidence -> source + source_origin -> raw artifact`. Capture the
   bytes (`host-capture`, `artifact-add`); `"$CLI" excerpt` turns a verbatim
   quotation into the exact byte bounds an evidence record needs and refuses
-  to guess when the bytes differ. Provider payloads cannot support a
+  to guess when the bytes differ. A PDF's text sits in compressed streams,
+  so its own bytes cannot hold an excerpt: `"$CLI" pdf-text` extracts the
+  text layer into a derived `local_output` artifact whose provenance names
+  the PDF artifact, its sha256, and the extractor version; `excerpt` and
+  evidence then point at the derived artifact, the validator resolves its
+  upstream to the PDF capture, and the report says the quotation comes from
+  the extracted text of that PDF. A scanned PDF with no text layer stays
+  provenance only. Provider payloads cannot support a
   claim. Correct claims disproved by direct evidence; mark unresolved claims
   and their revisit trigger; do not convert model agreement into
   corroboration. This chain applies to any claim presented as verified, in
@@ -220,7 +227,10 @@ count or coverage comparison confirm the range you actually used. A
 confusion about what the user means or values is settled by asking, not
 by more material: pause what depends on that reading, leave the package
 `IN_PROGRESS` while you wait, and resume on the answer -- no status,
-record, or field marks the wait.
+record, or field marks the wait. At the same review points give the user
+a short progress note marked tentative -- what is known, what comes next,
+where they could redirect -- and go on; it waits for nothing and is not a
+confirmation.
 
 ## Checking What Carries Weight
 
@@ -341,6 +351,7 @@ Use boundary-owned calls; do not send a separate paid permit:
   --artifact-id HC1 --source-url '<url>' --source-title '<title>' \
   --upstream-key '<upstream>' --fidelity host_rendered \
   --marginal-purpose '<claim or uncertainty checked>' --json
+"$CLI" pdf-text "$SESSION" --artifact-id HC7 --derived-id HT7 --action-id L1 --json
 "$CLI" patch "$SESSION" --patch "/absolute/path/to/state-patch.json" --json
 "$CLI" validate "$SESSION" --json
 ```

@@ -404,6 +404,59 @@ def ingest_local_artifact(
         )
 
 
+def ingest_local_bytes(
+    session_dir: Path,
+    artifact_id: str,
+    media_type: str,
+    sensitivity: str,
+    retention: str,
+    include_in_html: bool,
+    provenance: dict[str, Any],
+    now: str,
+    payload: bytes,
+    redaction_review: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Ingest bytes the host produced in memory (e.g. text extracted from a PDF).
+
+    Same rules as `ingest_local_artifact`: the `local_output` provenance must
+    name an acquired local action, and the bytes pass the same storage
+    ceiling and secret floor as every other artifact. Nothing outside the
+    session is read.
+    """
+
+    session_dir = Path(session_dir)
+    with session_lock(session_dir):
+        _recover_session_unlocked(session_dir)
+        _load_state_unlocked(session_dir)
+        events, errors = _read_events_unlocked(session_dir)
+        if errors:
+            raise ArtifactPolicyError("event history is malformed")
+        if not isinstance(provenance, dict) or provenance.get("origin_kind") != "local_output":
+            raise ArtifactPolicyError("in-memory ingestion accepts only local_output provenance")
+        action_id = _require_nonempty(provenance.get("action_id"), "local action_id")
+        if not any(
+            event.get("event") == "permit_acquired"
+            and event.get("action_id") == action_id
+            and event.get("category") == "local"
+            and event.get("route") == "local"
+            for event in events
+        ):
+            raise ArtifactPolicyError("local_output does not match a recorded local action")
+        return _ingest_unlocked(
+            session_dir,
+            None,
+            artifact_id,
+            media_type,
+            sensitivity,
+            retention,
+            include_in_html,
+            provenance,
+            now,
+            redaction_review,
+            source_bytes=payload,
+        )
+
+
 def ingest_host_capture(
     session_dir: Path,
     artifact_id: str,

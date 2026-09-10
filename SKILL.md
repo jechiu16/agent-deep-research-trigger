@@ -11,7 +11,7 @@ Light：deep {a}｜search {b}｜free unlimited
 Standard：deep {a}｜search {b}｜free unlimited
 Heavy：deep {a}｜search {b}｜free unlimited
 D1：{最低成本 ready provider；候選與資料外送範圍}
-共通：背景執行；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
+共通：背景執行，關鍵節點回報進度；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
 開始：light｜standard｜heavy｜調整｜取消
 <!-- PURE_TRIGGER_CARD_END -->
 
@@ -90,9 +90,13 @@ it limits how you may use it -- a cut-off list, an unclear scope, a
 misplaced attribution, a quotation that matches in several places; and
 what the next worthwhile move is -- check, change source, narrow the claim,
 follow another route, or stop because the purpose is met. Think with
-these; do not fill them in after every read, capture, or patch. When an
-input is in doubt, pause what depends on it, not the run: do not silently
-take the first match, assume a list is complete, or fill a gap with content
+these; do not fill them in after every read, capture, or patch. At those
+same points tell the user, in a few lines marked tentative, what is now
+known, what you will do next, and where they could redirect you; do not
+wait for an answer -- between the card and the report they see nothing
+else. When an input is in doubt, pause what depends on it, not the run:
+do not silently take the first match, assume a list is complete, or fill
+a gap with content
 so the work reads smoothly. What covers a subset supports statements about
 that subset, not a comparison of the whole.
 

@@ -845,7 +845,10 @@ def _qualifying_profile_capture(
     """Return (canonical_source_key, upstream_key) for one clean, available host capture.
 
     Qualification rules: host capture provenance, available artifact, raw
-    bytes present, non-empty key/upstream.
+    bytes present, non-empty key/upstream. A `local_output` artifact that
+    records a one-hop, hash-bound derivation from a host capture (text the
+    host extracted from a captured PDF) resolves to that capture's key and
+    upstream; any other local output does not qualify.
     """
 
     evidence = evidence_map.get(evidence_id)
@@ -854,10 +857,25 @@ def _qualifying_profile_capture(
     artifact = artifacts.get(evidence.get("artifact_id"))
     if (
         not isinstance(artifact, dict)
-        or artifact.get("provenance", {}).get("origin_kind") != "host_capture"
         or artifact.get("availability") != "available"
         or artifact.get("id") not in raw_payloads
     ):
+        return None
+    provenance = artifact.get("provenance", {})
+    if provenance.get("origin_kind") == "local_output" and isinstance(
+        provenance.get("derived_from_artifact_id"), str
+    ):
+        origin = artifacts.get(provenance["derived_from_artifact_id"])
+        if (
+            not isinstance(origin, dict)
+            or origin.get("provenance", {}).get("origin_kind") != "host_capture"
+            or origin.get("availability") != "available"
+            or origin.get("id") not in raw_payloads
+            or origin.get("sha256") != provenance.get("derived_from_sha256")
+        ):
+            return None
+        artifact = origin
+    elif provenance.get("origin_kind") != "host_capture":
         return None
     capture = artifact.get("host_capture", {})
     key = capture.get("canonical_source_key")

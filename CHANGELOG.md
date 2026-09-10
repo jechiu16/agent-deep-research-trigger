@@ -32,6 +32,14 @@ Semantic Versioning once the v2 runtime leaves development status.
   as they are (no dash, quote, or whitespace normalization) and refuses a
   missing or ambiguous match instead of guessing; `--nth` picks one of
   several occurrences and `--text-file` carries text the shell cannot.
+- `pdf-text`: a free, local subcommand that extracts a captured PDF's text
+  layer (pypdf, an optional extra) into a derived `local_output` artifact
+  whose provenance names the PDF artifact, its sha256, the extractor
+  version, and page byte offsets. `excerpt` and evidence records then work
+  on the derived text, and the validator resolves such an artifact's
+  source key and upstream to the PDF capture it was derived from (one hop,
+  hash-bound). A scanned PDF with no text layer is refused and stays
+  provenance only. Several PDFs may share one local action.
 
 ### Changed
 
@@ -75,6 +83,13 @@ Semantic Versioning once the v2 runtime leaves development status.
   left `IN_PROGRESS`. `HARNESS.md`, `SCENARIOS.md`, and the README demo
   line follow. Round 3 kept the pre-confirmation prohibition; round 5
   enables in-scope orientation by the user's decision in that round.
+- The card names the free routes the host-led draft actually enables
+  (`Free（不限次，本合約實際啟用）`, taken from a light draft's
+  `stage_permit_map`), because `free: unlimited` is a count and the
+  registry lists free routes no draft enables. The card's delivery line
+  and the public template now say the host reports progress at key
+  points; `SKILL.md` and `HARNESS.md` ask for a short tentative progress
+  note at the review points the host already takes, waiting for nothing.
 
 ### Fixed
 

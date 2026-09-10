@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
+import io
 import json
 import os
 import sys
@@ -25,6 +27,7 @@ from research_harness.artifacts import (
     ingest_fetched_source,
     ingest_host_capture,
     ingest_local_artifact,
+    ingest_local_bytes,
     promote_provider_payload,
 )
 from research_harness.budgets import load_budget_profiles
@@ -206,7 +209,7 @@ def _format_confirmation_card(payload: dict[str, Any]) -> str:
         "Query Brief",
         f"問題：{brief['question']}",
         f"研究模式：{brief['posture']}",
-        "交付：背景執行；host 撰寫結論；canonical JSON + 繁體中文 HTML",
+        "交付：背景執行，關鍵節點回報進度；host 撰寫結論；canonical JSON + 繁體中文 HTML",
     ]
     if brief["posture"] == "explore":
         lines.append("探索：交付暫定方向、排除結果與下一個檢查，不做選型；寫入的正式主張仍逐項查核")
@@ -231,6 +234,7 @@ def _format_confirmation_card(payload: dict[str, Any]) -> str:
         [
             "",
             f"D1 候選（低價優先）：{candidates}；Search：{search_candidates}；外送：研究問題，不含本機檔案",
+            f"Free（不限次，本合約實際啟用）：{', '.join(payload.get('free_routes') or []) or '無'}；registry 裡其他免費路由不在本合約內",
             "規則：D1 只買廣度與結構；host 複驗、修正並下結論；超限即停外呼並標註缺口。",
             "請回覆 light、standard、heavy 或 cancel。",
         ]
@@ -315,6 +319,33 @@ def _card_provider_state(provider: dict[str, Any], missing: list[str]) -> str:
     return "locally-verified"
 
 
+def _card_free_routes(registry: dict[str, Any], question: str, posture: str) -> list[str]:
+    """The free routes a host-led draft actually enables, taken from the draft.
+
+    `free: unlimited` on the card is a count, not a promise that every free
+    route in the registry is callable: only the routes in the draft's
+    `stage_permit_map` are. Drafting light needs no deep provider, so the
+    list is the same with or without keys.
+    """
+
+    cost_class = {
+        provider.get("id"): provider.get("cost_class")
+        for provider in registry.get("providers", [])
+        if isinstance(provider, dict)
+    }
+    try:
+        draft = draft_host_led_contract(question, posture, "light", registry, os.environ)
+    except ValueError:
+        return []
+    return sorted(
+        {
+            mapping["route"]
+            for mapping in draft.get("stage_permit_map", [])
+            if isinstance(mapping, dict) and cost_class.get(mapping.get("route")) == "free"
+        }
+    )
+
+
 def command_card(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     registry = _registry(args.registry_overlay)
     profiles = load_budget_profiles(Path(args.profiles) if args.profiles else None)
@@ -345,6 +376,7 @@ def command_card(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "profiles": profiles["profiles"],
         "d1_candidates": candidates,
         "search_candidates": search_candidates,
+        "free_routes": _card_free_routes(registry, args.question, args.posture),
         "rules": {
             "conclusion_author": "host",
             "provider_reports_role": "discovery_only",
@@ -830,6 +862,114 @@ def command_excerpt(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     }, 0
 
 
+def command_pdf_text(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Free, local: extract a captured PDF's text layer into a derived artifact.
+
+    A PDF's text sits inside compressed streams, so `excerpt` cannot find a
+    quotation in the PDF's own bytes. This writes the text layer (pypdf,
+    deterministic for a given version) as a `local_output` artifact whose
+    provenance names the PDF artifact, its sha256, the extractor version,
+    and where each page starts; `excerpt` and evidence then point at the
+    derived artifact and the validator resolves its upstream to the PDF
+    capture. A scanned PDF with no text layer yields nothing and stays
+    provenance only. Uses one local action, acquiring it when it has not
+    been acquired yet; several PDFs may share the same action id. Needs the
+    optional dependency pypdf.
+    """
+
+    session_dir = Path(args.session)
+    state = load_state(session_dir)
+    source = next(
+        (
+            item
+            for item in state.get("artifact_index", [])
+            if isinstance(item, dict) and item.get("id") == args.artifact_id
+        ),
+        None,
+    )
+    if source is None:
+        raise ValueError(f"artifact {args.artifact_id} is not in artifact_index")
+    if source.get("availability") != "available":
+        raise ValueError(
+            f"artifact {args.artifact_id} is {source.get('availability')}, not available"
+        )
+    raw_path = _confined_raw_path(session_dir, source.get("relative_path"))
+    if not raw_path.is_file():
+        raise ValueError(f"artifact {args.artifact_id} has no raw file at {raw_path.name}")
+    payload = raw_path.read_bytes()
+    if not payload.startswith(b"%PDF"):
+        raise ValueError(f"artifact {args.artifact_id} is not a PDF (no %PDF header)")
+    if hashlib.sha256(payload).hexdigest() != source.get("sha256"):
+        raise ValueError(f"artifact {args.artifact_id} bytes do not match its recorded sha256")
+
+    try:
+        import pypdf
+    except ImportError as exc:
+        raise ValueError(
+            "pdf-text needs the optional dependency pypdf "
+            "(pip install 'agent-deep-research-trigger[pdf]')"
+        ) from exc
+
+    reader = pypdf.PdfReader(io.BytesIO(payload))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    text = "\n\n".join(pages)
+    if not text.strip():
+        raise ValueError(
+            f"artifact {args.artifact_id} has no extractable text layer (scanned PDF?); "
+            "it stays provenance only"
+        )
+    offsets: list[int] = []
+    position = 0
+    for index, page in enumerate(pages):
+        offsets.append(position)
+        position += len(page.encode("utf-8")) + (2 if index < len(pages) - 1 else 0)
+
+    now = args.now or _now()
+    events, event_errors = read_events(session_dir)
+    if event_errors:
+        raise ValueError("event history is malformed: " + "; ".join(event_errors))
+    acquired = any(
+        event.get("event") == "permit_acquired"
+        and event.get("action_id") == args.action_id
+        and event.get("category") == "local"
+        and event.get("route") == "local"
+        for event in events
+    )
+    if not acquired:
+        acquire_permits(session_dir, args.action_id, args.stage, "local", "local", 1, now)
+
+    provenance = {
+        "origin_kind": "local_output",
+        "action_id": args.action_id,
+        "derivation": "pdf_text_layer",
+        "derived_from_artifact_id": source["id"],
+        "derived_from_sha256": source["sha256"],
+        "tool": "pypdf",
+        "tool_version": getattr(pypdf, "__version__", "unknown"),
+        "page_count": len(pages),
+        "page_byte_offsets": offsets,
+        "page_separator": "\n\n",
+    }
+    artifact = ingest_local_bytes(
+        session_dir,
+        args.derived_id,
+        "text/plain",
+        source.get("sensitivity", "public"),
+        source.get("retention", "session"),
+        bool(source.get("include_in_html", True)),
+        provenance,
+        now,
+        text.encode("utf-8"),
+    )
+    return {
+        "artifact": artifact,
+        "derived_from": source["id"],
+        "page_count": len(pages),
+        "characters": len(text),
+        "tool_version": provenance["tool_version"],
+    }, 0
+
+
 def command_artifact_add(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.origin_kind in {"provider_payload", "processor_output"}:
         raise ValueError("provider artifacts require a bound adapter operation")
@@ -1179,6 +1319,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_json_flag(excerpt)
     excerpt.set_defaults(handler=command_excerpt)
+
+    pdf_text = subparsers.add_parser(
+        "pdf-text",
+        help="free, local: extract a captured PDF's text layer into a derived artifact that excerpt can search",
+    )
+    pdf_text.add_argument("session")
+    pdf_text.add_argument("--artifact-id", required=True, help="the captured PDF artifact")
+    pdf_text.add_argument("--derived-id", required=True, help="id for the derived text artifact")
+    pdf_text.add_argument(
+        "--action-id",
+        required=True,
+        help="local action the derivation is recorded under; acquired if not yet acquired, shareable across PDFs",
+    )
+    pdf_text.add_argument("--stage", default="local_applicability")
+    pdf_text.add_argument("--now")
+    _add_json_flag(pdf_text)
+    pdf_text.set_defaults(handler=command_pdf_text)
 
     add = subparsers.add_parser("artifact-add", help="securely ingest local or fetched bytes")
     add.add_argument("session")

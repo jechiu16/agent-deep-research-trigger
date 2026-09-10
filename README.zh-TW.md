@@ -127,7 +127,7 @@ Light：deep 0｜search 5｜free unlimited
 Standard：deep 1｜search 15｜free unlimited
 Heavy：deep 2｜search 30｜free unlimited
 D1：最低成本 ready provider；研究問題可外送，本機檔案不外送
-共通：背景執行；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
+共通：背景執行，關鍵節點回報進度；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
 開始：light｜standard｜heavy｜調整｜取消
 ```
 
@@ -158,7 +158,9 @@ renderer 產生備援版本。不另外產生第二份完整 Markdown 報告。
 
 ## Platform Support（平台支援）
 
-Linux、macOS、Windows 都只靠 Python 標準函式庫就能跑，不必額外安裝套件。有
+Linux、macOS、Windows 都只靠 Python 標準函式庫就能跑，不必額外安裝套件。唯一
+的選裝是 `pdf-text`：把已擷取 PDF 的文字層抽出來，讓論文裡的引文能進證據鏈；
+`pip install -e .[pdf]` 會裝 pypdf，沒裝時命令會明說，PDF 就只當出處。有
 兩項 POSIX-only 的保證在 Windows 上會誠實降級、絕不假裝成立：目錄 fsync 的
 當機一致性（Windows 上 rename/unlink 不保證撐得過斷電當機），以及私有
 0600/0700 檔案權限（Windows 的 `chmod` 沒辦法限制成只有擁有者可讀寫）。

@@ -134,7 +134,7 @@ Light：deep 0｜search 5｜free unlimited
 Standard：deep 1｜search 15｜free unlimited
 Heavy：deep 2｜search 30｜free unlimited
 D1：最低成本 ready provider；研究問題可外送，本機檔案不外送
-共通：背景執行；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
+共通：背景執行，關鍵節點回報進度；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口
 開始：light｜standard｜heavy｜調整｜取消
 ```
 
@@ -167,7 +167,11 @@ the host cannot. No second full Markdown report is generated.
 ## Platform Support
 
 Linux, macOS, and Windows all run on the Python standard library alone --
-no extra dependency on any of them. Two POSIX-only guarantees are honestly
+no extra dependency on any of them. The one optional extra is `pdf-text`,
+which extracts a captured PDF's text layer so quotations from papers can
+enter the evidence chain: `pip install -e .[pdf]` pulls in pypdf; without
+it the command says so and the PDF stays provenance only. Two POSIX-only
+guarantees are honestly
 degraded, never faked, on Windows: directory-fsync crash durability (a
 rename/unlink there is not guaranteed to survive a hard crash) and private
 0600/0700 file modes (Windows `chmod` cannot restrict access to the owning

@@ -1615,6 +1615,145 @@ class CliTests(unittest.TestCase):
         self.assertIn(
             state_sha256(state), Path(result["report_path"]).read_text(encoding="utf-8")
         )
+    @staticmethod
+    def _minimal_pdf(text: str) -> bytes:
+        """A one-page PDF with an uncompressed content stream and a correct xref."""
+
+        content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+            b"/Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]
+        out = bytearray(b"%PDF-1.4\n")
+        offsets = []
+        for number, body in enumerate(objects, start=1):
+            offsets.append(len(out))
+            out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+        xref = len(out)
+        out += f"xref\n0 {len(objects) + 1}\n".encode() + b"0000000000 65535 f \n"
+        for offset in offsets:
+            out += f"{offset:010d} 00000 n \n".encode()
+        out += (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        ).encode()
+        return bytes(out)
+
+    def test_cli_pdf_text_derives_a_searchable_text_artifact_from_a_captured_pdf(self) -> None:
+        try:
+            import pypdf  # noqa: F401
+        except ImportError:
+            self.skipTest("pypdf is not installed")
+        session = self._host_session_with_capture(
+            "pdf", self._minimal_pdf("The sensemaking loop alternates foraging and synthesis.")
+        )
+        payload = json.loads(
+            self.run_cli(
+                "pdf-text", str(session), "--artifact-id", "HC1", "--derived-id", "HT1",
+                "--action-id", "L1", "--now", NOW, "--json",
+            ).stdout
+        )
+        self.assertEqual(payload["derived_from"], "HC1")
+        self.assertEqual(payload["page_count"], 1)
+        artifact = payload["artifact"]
+        provenance = artifact["provenance"]
+        self.assertEqual(provenance["origin_kind"], "local_output")
+        self.assertEqual(provenance["derivation"], "pdf_text_layer")
+        self.assertEqual(provenance["derived_from_artifact_id"], "HC1")
+        state = load_state(session)
+        source = next(item for item in state["artifact_index"] if item["id"] == "HC1")
+        self.assertEqual(provenance["derived_from_sha256"], source["sha256"])
+        self.assertEqual(provenance["page_byte_offsets"], [0])
+        self.assertTrue(
+            (session / artifact["relative_path"]).read_bytes().startswith(b"The sensemaking loop")
+        )
+
+        # excerpt works on the derived text, and evidence built on it validates;
+        # the validator resolves the derived artifact's upstream to the PDF capture.
+        found = json.loads(
+            self.run_cli(
+                "excerpt", str(session), "--artifact-id", "HT1",
+                "--text", "alternates foraging and synthesis", "--json",
+            ).stdout
+        )
+        self.assertEqual(found["matches"], 1)
+        apply_state_patch(
+            session,
+            [
+                {"op": "add", "path": "/source_origins/-", "value": {"id": "O1", "kind": "primary-publication", "independent": True}},
+                {"op": "add", "path": "/sources/-", "value": {
+                    "id": "S1", "origin_id": "O1", "tier": "T1", "title": "Captured paper",
+                    "url": "https://example.test/source", "canonical_source_key": "https://example.test/source",
+                    "upstream_key": "upstream-1", "direct_fetch": True,
+                }},
+                {"op": "add", "path": "/evidence/-", "value": {
+                    "id": "E1", "artifact_id": "HT1", "source_id": "S1", "origin_id": "O1",
+                    "source_tier": "T1", "excerpt": found["excerpt"],
+                    "excerpt_start": found["excerpt_start"], "excerpt_end": found["excerpt_end"],
+                    "entailment": "entailed", "applicability": "checked", "retrieved_at": NOW,
+                }},
+                {"op": "add", "path": "/claims/-", "value": {
+                    "id": "C1", "text": "The loop alternates foraging and synthesis.", "scope": "one paper",
+                    "qualifiers": [], "load_bearing": False, "claim_type": "source-of-record",
+                    "status": "corroborated", "supporting_evidence_ids": ["E1"], "counter_evidence_ids": [],
+                    "source_origin_ids": ["O1"], "applicability": "checked",
+                    "would_change_if": "the paper is retracted", "engineering_implication_ids": [],
+                }},
+            ],
+            state["session"]["revision"],
+            NOW,
+        )
+        self.assertEqual([issue.code for issue in validate_session(session).errors], [])
+        from research_harness.validation import _qualifying_profile_capture
+
+        state = load_state(session)
+        artifacts = {item["id"]: item for item in state["artifact_index"]}
+        evidence = {item["id"]: item for item in state["evidence"]}
+        raw = {aid: (session / item["relative_path"]).read_bytes() for aid, item in artifacts.items()}
+        self.assertEqual(
+            _qualifying_profile_capture("E1", evidence, artifacts, raw),
+            ("https://example.test/source", "upstream-1"),
+        )
+
+        # a second PDF shares the same local action without a second permit
+        second = self.root / "pdf-second.pdf"
+        second.write_bytes(self._minimal_pdf("Second paper text."))
+        self.run_cli(
+            "host-capture", str(session), "--payload", str(second), "--artifact-id", "HC2",
+            "--source-url", "https://example.test/second.pdf", "--source-title", "Second",
+            "--upstream-key", "upstream-2", "--fidelity", "raw_http",
+            "--marginal-purpose", "second source", "--now", NOW, "--json",
+        )
+        again = json.loads(
+            self.run_cli(
+                "pdf-text", str(session), "--artifact-id", "HC2", "--derived-id", "HT2",
+                "--action-id", "L1", "--now", NOW, "--json",
+            ).stdout
+        )
+        self.assertEqual(again["derived_from"], "HC2")
+        self.assertEqual([issue.code for issue in validate_session(session).errors], [])
+
+    def test_cli_pdf_text_refuses_a_non_pdf_artifact(self) -> None:
+        session = self._host_session_with_capture("notpdf", b"<html>not a pdf</html>")
+        result = self.run_cli(
+            "pdf-text", str(session), "--artifact-id", "HC1", "--derived-id", "HT1",
+            "--action-id", "L1", "--now", NOW, "--json", check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not a PDF", result.stdout + result.stderr)
+        self.assertNotIn("HT1", json.dumps(load_state(session)["artifact_index"]))
+
+    def test_cli_card_names_the_free_routes_the_draft_enables(self) -> None:
+        printed = self.run_cli("card", "--question", "Choose a cache", "--posture", "decision")
+        self.assertIn("Free（不限次，本合約實際啟用）：host, host-web, local", printed.stdout)
+        payload = json.loads(
+            self.run_cli("card", "--question", "Choose a cache", "--posture", "decision", "--json").stdout
+        )
+        self.assertEqual(payload["free_routes"], ["host", "host-web", "local"])
+
 
 if __name__ == "__main__":
     unittest.main()

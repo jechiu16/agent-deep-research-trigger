@@ -34,7 +34,7 @@ class DocumentationTests(unittest.TestCase):
                 "Standard：deep {a}｜search {b}｜free unlimited",
                 "Heavy：deep {a}｜search {b}｜free unlimited",
                 "D1：{最低成本 ready provider；候選與資料外送範圍}",
-                "共通：背景執行；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口",
+                "共通：背景執行，關鍵節點回報進度；host 複驗並寫結論；交付 JSON + 繁體中文 HTML；超限即停並標註缺口",
                 "開始：light｜standard｜heavy｜調整｜取消",
             ],
         )
